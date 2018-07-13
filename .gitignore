@@ -1,0 +1,16 @@
+data/raw/
+data/3DMOT2015Labels/
+output/
+
+# Python
+venv*/
+*.pyc
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Editors
+.vscode/
+
+# OS
+.DS_Store
