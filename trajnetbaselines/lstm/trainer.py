@@ -1,12 +1,12 @@
 import argparse
+import pickle
 import time
 import random
 
-import pysparkling
 import torch
+import trajnettools
 
 from .. import augmentation
-from .. import readers
 from .loss import PredictionLoss
 from .lstm import LSTM, LSTMPredictor, scene_to_xy
 from .pooling import Pooling
@@ -134,7 +134,17 @@ def main(epochs=35):
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
+    parser.add_argument('--load-state', default=None,
+                        help='load a pickled state dictionary before training')
+    parser.add_argument('--nonstrict-load-state', default=None,
+                        help='load a pickled state dictionary before training')
     args = parser.parse_args()
+
+    # refactor load state
+    args.load_state_strict = True
+    if args.nonstrict_load_state:
+        args.load_state = args.nonstrict_load_state
+        args.load_state_strict = False
 
     # add args.device
     args.device = torch.device('cpu')
@@ -151,22 +161,17 @@ def main(epochs=35):
         args.output = 'output/' + args.type + '_lstm.pkl'
 
     # read in datasets
-    sc = pysparkling.Context()
-    scenes = (sc
-              .wholeTextFiles(args.train_input_files)
-              .values()
-              .map(readers.trajnet)
-              .collect())
-    val_scenes = (sc
-                  .wholeTextFiles(args.val_input_files)
-                  .values()
-                  .map(readers.trajnet)
-                  .collect())
+    train_scenes = list(trajnettools.load(args.train_input_files))
+    val_scenes = list(trajnettools.load(args.val_input_files))
 
+    # train
     model = LSTM(pool=pool)
+    if args.load_state:
+        with open(args.load_state, 'rb') as f:
+            model.load_state_dict(pickle.load(f), strict=args.load_state_strict)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
     trainer = Trainer(model, optimizer=optimizer, device=args.device)
-    trainer.train(scenes, val_scenes, epochs=args.epochs)
+    trainer.train(train_scenes, val_scenes, epochs=args.epochs)
     LSTMPredictor(trainer.model).save(args.output)
 
 

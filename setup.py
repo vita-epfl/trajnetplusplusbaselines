@@ -23,7 +23,6 @@ setup(
     install_requires=[
         'numpy',
         'pykalman',
-        'pysparkling',
         'scipy',
         'torch',
         'trajnettools',

@@ -1,5 +1,6 @@
 import pysparkling
 import trajnettools
+import trajnetbaselines
 
 
 def eval(input_files):
@@ -14,7 +15,7 @@ def eval(input_files):
              .cache())
 
     # Kalman Filter (Lin)
-    kalman_predictions = paths.mapValues(trajnettools.kalman.predict)
+    kalman_predictions = paths.mapValues(trajnetbaselines.kalman.predict)
     paths_kf = (paths
                 .mapValues(lambda paths: paths[0])
                 .leftOuterJoin(kalman_predictions)
@@ -39,7 +40,7 @@ def eval(input_files):
     final_l2['kf'] = paths_kf.values().map(trajnettools.metrics.final_l2).mean()
 
     # LSTM
-    lstm_predictor = trajnettools.lstm.LSTMPredictor.load('output/vanilla_lstm.pkl')
+    lstm_predictor = trajnetbaselines.lstm.LSTMPredictor.load('output/vanilla_lstm.pkl')
     lstm_predictions = paths.mapValues(lstm_predictor)
     paths_lstm = (paths
                   .mapValues(lambda paths: paths[0])
@@ -51,8 +52,8 @@ def eval(input_files):
     final_l2['lstm'] = paths_lstm.values().map(trajnettools.metrics.final_l2).mean()
 
     # OLSTM
-    # olstm_predictor = trajnettools.lstm.OLSTMPredictor.load('output/olstm.pkl')
-    olstm_predictor = trajnettools.lstm.LSTMPredictor.load('output/occupancy_lstm.pkl')
+    # olstm_predictor = trajnetbaselines.lstm.OLSTMPredictor.load('output/olstm.pkl')
+    olstm_predictor = trajnetbaselines.lstm.LSTMPredictor.load('output/occupancy_lstm.pkl')
     olstm_predictions = paths.mapValues(olstm_predictor)
     paths_olstm = (paths
                    .mapValues(lambda paths: paths[0])

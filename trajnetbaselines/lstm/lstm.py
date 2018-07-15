@@ -65,7 +65,10 @@ class LSTM(torch.nn.Module):
         # unmask
         normal = torch.full((track_mask.size(0), 5), NAN, device=obs1.device)
         mask_index = [i for i, m in enumerate(track_mask) if m]
-        for i, h, c, n in zip(mask_index, hidden_cell_stacked[0], hidden_cell_stacked[1], normal_masked):
+        for i, h, c, n in zip(mask_index,
+                              hidden_cell_stacked[0],
+                              hidden_cell_stacked[1],
+                              normal_masked):
             hidden_cell_state[0][i] = h
             hidden_cell_state[1][i] = c
             normal[i] = n
@@ -160,6 +163,10 @@ class LSTMPredictor(object):
     def save(self, filename):
         with open(filename, 'wb') as f:
             torch.save(self, f)
+
+        # during dev, good for compatibility across API changes:
+        with open(filename.replace('.pkl', '') + '_state_dict.pkl', 'wb') as f:
+            torch.save(self.model.state_dict(), f)
 
     @staticmethod
     def load(filename):
