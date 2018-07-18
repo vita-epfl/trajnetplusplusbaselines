@@ -18,7 +18,7 @@ def predict(paths):
     kf = pykalman.KalmanFilter(transition_matrices=transition_matrix,
                                observation_matrices=observation_matrix,
                                transition_covariance=1e-5 * np.eye(4),
-                               observation_covariance=0.25**2 * np.eye(2),
+                               observation_covariance=0.05**2 * np.eye(2),
                                initial_state_mean=initial_state_mean)
     # kf.em([(r.x, r.y) for r in path[:9]], em_vars=['transition_matrices',
     #                                                'observation_matrices'])
@@ -41,5 +41,5 @@ def predict(paths):
             predictions += pred
     predictions /= 5.0
 
-    return [trajnettools.Row(first_frame + i * frame_diff, ped_id, x, y)
+    return [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id, x, y)
             for i, (x, y) in enumerate(predictions[1:])]

@@ -183,4 +183,4 @@ class LSTMPredictor(object):
             outputs = self.model(xy[:9], n_predict=n_predict)[-n_predict:]
             # outputs = self.model(xy[:9], xy[9:-1])[-n_predict:]
 
-        return [trajnettools.Row(0, ped_id, x, y) for x, y in outputs]
+        return [trajnettools.TrackRow(0, ped_id, x, y) for x, y in outputs]
