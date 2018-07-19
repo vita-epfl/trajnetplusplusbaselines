@@ -23,6 +23,7 @@ setup(
     install_requires=[
         'numpy',
         'pykalman',
+        'python-json-logger',
         'scipy',
         'torch',
         'trajnettools',

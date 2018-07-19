@@ -1,4 +1,5 @@
 import argparse
+import logging
 import pickle
 import time
 import random
@@ -10,6 +11,7 @@ from .. import augmentation
 from .loss import PredictionLoss
 from .lstm import LSTM, LSTMPredictor, scene_to_xy
 from .pooling import Pooling
+from .. import __version__ as VERSION
 
 
 class Trainer(object):
@@ -26,56 +28,68 @@ class Trainer(object):
         self.device = device if device is not None else torch.device('cpu')
         self.model = self.model.to(self.device)
         self.criterion = self.criterion.to(self.device)
+        self.log = logging.getLogger(self.__class__.__name__)
 
-    def train(self, scenes, val_scenes, epochs=35):
+    def loop(self, scenes, val_scenes, epochs=35):
         for epoch in range(1, epochs + 1):
-            start_time = time.time()
-            preprocess_time = 0.0
-            optim_time = 0.0
+            self.train(scenes, epoch)
+            self.val(val_scenes, epoch)
 
-            print('epoch', epoch)
-            self.lr_scheduler.step()
+    def lr(self):
+        for param_group in self.optimizer.param_groups:
+            return param_group['lr']
 
-            random.shuffle(scenes)
-            epoch_loss = 0.0
-            self.model.train()
-            for scene_i, (_, scene) in enumerate(scenes):
-                scene_start = time.time()
-                scene = augmentation.random_rotation(scene)
-                xy = scene_to_xy(scene).to(self.device)
-                preprocess_time += time.time() - scene_start
+    def train(self, scenes, epoch):
+        start_time = time.time()
 
-                optim_start = time.time()
-                loss = self.train_batch(xy)
-                optim_time += time.time() - optim_start
+        print('epoch', epoch)
+        self.lr_scheduler.step()
 
-                epoch_loss += loss
+        random.shuffle(scenes)
+        epoch_loss = 0.0
+        self.model.train()
+        for scene_i, (_, scene) in enumerate(scenes):
+            scene_start = time.time()
+            scene = augmentation.random_rotation(scene)
+            xy = scene_to_xy(scene).to(self.device)
+            preprocess_time = time.time() - scene_start
 
-                if scene_i % 100 == 0:
-                    print({
-                        'type': 'train',
-                        'epoch': epoch,
-                        'batch': scene_i,
-                        'n_batch': len(scenes),
-                        'loss': loss,
-                    })
+            loss = self.train_batch(xy)
+            epoch_loss += loss
+            total_time = time.time() - scene_start
 
-            val_loss = 0.0
-            eval_start = time.time()
-            self.model.train()  # so that it does not return positions but still normals
-            for _, scene in val_scenes:
-                xy = scene_to_xy(scene).to(self.device)
-                val_loss += self.val_batch(xy)
-            eval_time = time.time() - eval_start
+            if scene_i % 100 == 0:
+                self.log.info({
+                    'type': 'train',
+                    'epoch': epoch, 'batch': scene_i, 'n_batches': len(scenes),
+                    'time': total_time,
+                    'data_time': preprocess_time,
+                    'lr': self.lr(),
+                    'loss': loss,
+                })
 
-            print({
-                'train_loss': epoch_loss / len(scenes),
-                'val_loss': val_loss / len(val_scenes),
-                'duration': time.time() - start_time,
-                'preprocess_time': preprocess_time,
-                'optim_time': optim_time,
-                'eval_time': eval_time,
-            })
+        self.log.info({
+            'type': 'train-epoch',
+            'epoch': epoch,
+            'loss': epoch_loss / len(scenes),
+            'time': time.time() - start_time,
+        })
+
+    def val(self, val_scenes, epoch):
+        val_loss = 0.0
+        eval_start = time.time()
+        self.model.train()  # so that it does not return positions but still normals
+        for _, scene in val_scenes:
+            xy = scene_to_xy(scene).to(self.device)
+            val_loss += self.val_batch(xy)
+        eval_time = time.time() - eval_start
+
+        self.log.info({
+            'type': 'val-epoch',
+            'epoch': epoch,
+            'loss': val_loss / len(val_scenes),
+            'time': eval_time,
+        })
 
     def train_batch(self, xy):
         # augmentation: random coordinate shifts
@@ -140,7 +154,26 @@ def main(epochs=35):
                         help='load a pickled state dictionary before training')
     args = parser.parse_args()
 
-    # refactor load state
+    # configure logging
+    import datetime
+    from pythonjsonlogger import jsonlogger
+    import socket
+    import sys
+    log_file = 'output/{}_{}.log'.format(
+        args.type,
+        datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S'))
+    file_handler = logging.FileHandler(log_file, mode='w')
+    file_handler.setFormatter(jsonlogger.JsonFormatter('(message) (levelname) (name) (asctime)'))
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    logging.basicConfig(level=logging.INFO, handlers=[stdout_handler, file_handler])
+    logging.info({
+        'type': 'process',
+        'argv': sys.argv,
+        'version': VERSION,
+        'hostname': socket.gethostname(),
+    })
+
+    # refactor args for --load-state
     args.load_state_strict = True
     if args.nonstrict_load_state:
         args.load_state = args.nonstrict_load_state
@@ -161,8 +194,12 @@ def main(epochs=35):
         args.output = 'output/' + args.type + '_lstm.pkl'
 
     # read in datasets
-    train_scenes = list(trajnettools.load_all(args.train_input_files, as_paths=True))
-    val_scenes = list(trajnettools.load_all(args.val_input_files, as_paths=True))
+    train_scenes = list(trajnettools.load_all(args.train_input_files,
+                                              as_paths=True,
+                                              sample={'syi.ndjson': 0.05}))
+    val_scenes = list(trajnettools.load_all(args.val_input_files,
+                                            as_paths=True,
+                                            sample={'syi.ndjson': 0.05}))
 
     # train
     model = LSTM(pool=pool)
@@ -171,7 +208,7 @@ def main(epochs=35):
             model.load_state_dict(pickle.load(f), strict=args.load_state_strict)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
     trainer = Trainer(model, optimizer=optimizer, device=args.device)
-    trainer.train(train_scenes, val_scenes, epochs=args.epochs)
+    trainer.loop(train_scenes, val_scenes, epochs=args.epochs)
     LSTMPredictor(trainer.model).save(args.output)
 
 

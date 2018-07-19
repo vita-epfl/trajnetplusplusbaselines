@@ -19,6 +19,8 @@ def scene_to_xy(scene):
 
     for ped_index, path in enumerate(scene):
         for row in path:
+            if row.frame not in frame_to_index:
+                continue
             entry = xy[frame_to_index[row.frame]][ped_index]
             entry[0] = row.x
             entry[1] = row.y
