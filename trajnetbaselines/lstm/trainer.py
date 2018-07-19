@@ -39,7 +39,7 @@ class Trainer(object):
             random.shuffle(scenes)
             epoch_loss = 0.0
             self.model.train()
-            for scene_i, scene in enumerate(scenes):
+            for scene_i, (_, scene) in enumerate(scenes):
                 scene_start = time.time()
                 scene = augmentation.random_rotation(scene)
                 xy = scene_to_xy(scene).to(self.device)
@@ -63,7 +63,7 @@ class Trainer(object):
             val_loss = 0.0
             eval_start = time.time()
             self.model.train()  # so that it does not return positions but still normals
-            for scene in val_scenes:
+            for _, scene in val_scenes:
                 xy = scene_to_xy(scene).to(self.device)
                 val_loss += self.val_batch(xy)
             eval_time = time.time() - eval_start
@@ -126,9 +126,9 @@ def main(epochs=35):
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social'),
                         help='type of LSTM to train')
-    parser.add_argument('--train-input-files', default='output/train/**/*.txt',
+    parser.add_argument('--train-input-files', default='output/train/**/*.ndjson',
                         help='glob expression for train input files')
-    parser.add_argument('--val-input-files', default='output/val/**/*.txt',
+    parser.add_argument('--val-input-files', default='output/val/**/*.ndjson',
                         help='glob expression for validation input files')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
@@ -161,8 +161,8 @@ def main(epochs=35):
         args.output = 'output/' + args.type + '_lstm.pkl'
 
     # read in datasets
-    train_scenes = list(trajnettools.load(args.train_input_files))
-    val_scenes = list(trajnettools.load(args.val_input_files))
+    train_scenes = list(trajnettools.load_all(args.train_input_files, as_paths=True))
+    val_scenes = list(trajnettools.load_all(args.val_input_files, as_paths=True))
 
     # train
     model = LSTM(pool=pool)

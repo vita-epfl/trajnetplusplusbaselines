@@ -12,22 +12,18 @@ NAN = float('nan')
 def scene_to_xy(scene):
     """Return a Torch Tensor representing the scene."""
     frames = [r.frame for r in scene[0]]
-    pedestrians = set(r.pedestrian for path in scene for r in path)
+    pedestrians = [path[0].pedestrian for path in scene]
 
-    # fixed order for pedestrians with primary pedestrian first
-    primary_pedesitran = scene[0][0].pedestrian
-    pedestrians.remove(primary_pedesitran)
-    pedestrians = [primary_pedesitran] + list(pedestrians)
+    frame_to_index = {frame: i for i, frame in enumerate(frames)}
+    xy = torch.full((len(frames), len(pedestrians), 2), NAN)
 
-    xy = defaultdict(dict)
-    for path in scene:
+    for ped_index, path in enumerate(scene):
         for row in path:
-            xy[row.pedestrian][row.frame] = (row.x, row.y)
+            entry = xy[frame_to_index[row.frame]][ped_index]
+            entry[0] = row.x
+            entry[1] = row.y
 
-    return torch.Tensor([
-        [xy[ped].get(frame, (NAN, NAN)) for ped in pedestrians]
-        for frame in frames
-    ])
+    return xy
 
 
 class LSTM(torch.nn.Module):
