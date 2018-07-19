@@ -152,6 +152,13 @@ def main(epochs=35):
                         help='load a pickled state dictionary before training')
     parser.add_argument('--nonstrict-load-state', default=None,
                         help='load a pickled state dictionary before training')
+
+    hyperparameters = parser.add_argument_group('hyperparameters')
+    hyperparameters.add_argument('--hidden-dim', type=int, default=128,
+                                 help='RNN hidden dimension')
+    hyperparameters.add_argument('--coordinate-embedding-dim', type=int, default=64,
+                                 help='coordinate embedding dimension')
+
     args = parser.parse_args()
 
     # configure logging
@@ -169,6 +176,7 @@ def main(epochs=35):
     logging.info({
         'type': 'process',
         'argv': sys.argv,
+        'args': vars(args),
         'version': VERSION,
         'hostname': socket.gethostname(),
     })
@@ -184,11 +192,6 @@ def main(epochs=35):
     if not args.disable_cuda and torch.cuda.is_available():
         args.device = torch.device('cuda')
 
-    # configure pooling layer
-    pool = None
-    if args.type != 'vanilla':
-        pool = Pooling(type_=args.type)
-
     # set model output file
     if args.output is None:
         args.output = 'output/' + args.type + '_lstm.pkl'
@@ -201,8 +204,15 @@ def main(epochs=35):
                                             as_paths=True,
                                             sample={'syi.ndjson': 0.05}))
 
+    # create model
+    pool = None
+    if args.type != 'vanilla':
+        pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim)
+    model = LSTM(pool=pool,
+                 embedding_dim=args.coordinate_embedding_dim,
+                 hidden_dim=args.hidden_dim)
+
     # train
-    model = LSTM(pool=pool)
     if args.load_state:
         with open(args.load_state, 'rb') as f:
             model.load_state_dict(pickle.load(f), strict=args.load_state_strict)
