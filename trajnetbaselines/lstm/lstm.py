@@ -9,8 +9,11 @@ from .modules import Hidden2Normal, InputEmbedding
 NAN = float('nan')
 
 
-def scene_to_xy(scene):
-    """Return a Torch Tensor representing the scene."""
+def scene_to_xy(scene, drop_distance=5.0):
+    """Return a Torch Tensor representing the scene.
+
+    Drop other paths that are never closer than drop_distance.
+    """
     frames = [r.frame for r in scene[0]]
     pedestrians = [path[0].pedestrian for path in scene]
 
@@ -24,6 +27,13 @@ def scene_to_xy(scene):
             entry = xy[frame_to_index[row.frame]][ped_index]
             entry[0] = row.x
             entry[1] = row.y
+
+    if drop_distance is not None:
+        drop_distance_2 = drop_distance**2
+        all_distances = xy - xy[:, 0:1]
+        all_distances_2 = torch.sum(torch.mul(all_distances, all_distances), dim=2)
+        mask = torch.min(all_distances_2, dim=0)[0] < drop_distance_2
+        xy = xy[:, mask]
 
     return xy
 
