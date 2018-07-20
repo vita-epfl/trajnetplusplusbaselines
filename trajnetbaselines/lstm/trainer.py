@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import logging
 import pickle
 import time
@@ -23,7 +24,7 @@ class Trainer(object):
             self.model.parameters(), lr=1e-3, momentum=0.9, weight_decay=1e-4)
         self.lr_scheduler = (lr_scheduler
                              if lr_scheduler is not None
-                             else torch.optim.lr_scheduler.StepLR(self.optimizer, 10))
+                             else torch.optim.lr_scheduler.StepLR(self.optimizer, 15))
 
         self.device = device if device is not None else torch.device('cpu')
         self.model = self.model.to(self.device)
@@ -140,9 +141,9 @@ def main(epochs=35):
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social'),
                         help='type of LSTM to train')
-    parser.add_argument('--train-input-files', default='output/train/**/*.ndjson',
+    parser.add_argument('--train-input-files', default='data/train/**/*.ndjson',
                         help='glob expression for train input files')
-    parser.add_argument('--val-input-files', default='output/val/**/*.ndjson',
+    parser.add_argument('--val-input-files', default='data/val/**/*.ndjson',
                         help='glob expression for validation input files')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
@@ -161,15 +162,16 @@ def main(epochs=35):
 
     args = parser.parse_args()
 
+    # set model output file
+    timestamp = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    if args.output is None:
+        args.output = 'output/{}_lstm_{}.pkl'.format(args.type, timestamp)
+
     # configure logging
-    import datetime
     from pythonjsonlogger import jsonlogger
     import socket
     import sys
-    log_file = 'output/{}_{}.log'.format(
-        args.type,
-        datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S'))
-    file_handler = logging.FileHandler(log_file, mode='w')
+    file_handler = logging.FileHandler(args.output + '.log', mode='w')
     file_handler.setFormatter(jsonlogger.JsonFormatter('(message) (levelname) (name) (asctime)'))
     stdout_handler = logging.StreamHandler(sys.stdout)
     logging.basicConfig(level=logging.INFO, handlers=[stdout_handler, file_handler])
@@ -191,10 +193,6 @@ def main(epochs=35):
     args.device = torch.device('cpu')
     if not args.disable_cuda and torch.cuda.is_available():
         args.device = torch.device('cuda')
-
-    # set model output file
-    if args.output is None:
-        args.output = 'output/' + args.type + '_lstm.pkl'
 
     # read in datasets
     train_scenes = list(trajnettools.load_all(args.train_input_files,
