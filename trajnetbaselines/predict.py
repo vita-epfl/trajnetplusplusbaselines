@@ -1,14 +1,12 @@
 import argparse
-import matplotlib.pyplot as plt
-import trajnettools
-from trajnettools.trajectories import show_paths
+import trajnettools.show
 
 from . import kalman
 from . import lstm
 
 
 def predict(ground_truth, output_file):
-    with show_paths(ground_truth, output_file) as ax:
+    with trajnettools.show.paths(ground_truth, output_file) as ax:
         # KF prediction
         kf = kalman.predict(ground_truth)
         ax.plot([ground_truth[0][8].x] + [r.x for r in kf],
@@ -23,11 +21,11 @@ def predict(ground_truth, output_file):
         ax.plot([lstmp[-1].x], [lstmp[-1].y], color='blue', marker='o', linestyle='None')
 
         # OLSTM prediction
-        # olstm_predictor = lstm.LSTMPredictor.load('output/occupancy_lstm.pkl')
-        # olstmp = olstm_predictor(ground_truth)
-        # ax.plot([ground_truth[0][8].x] + [r.x for r in olstmp],
-        #         [ground_truth[0][8].y] + [r.y for r in olstmp], color='green', label='O-LSTM')
-        # ax.plot([olstmp[-1].x], [olstmp[-1].y], color='green', marker='o', linestyle='None')
+        olstm_predictor = lstm.LSTMPredictor.load('output/occupancy_lstm.pkl')
+        olstmp = olstm_predictor(ground_truth)
+        ax.plot([ground_truth[0][8].x] + [r.x for r in olstmp],
+                [ground_truth[0][8].y] + [r.y for r in olstmp], color='green', label='O-LSTM')
+        ax.plot([olstmp[-1].x], [olstmp[-1].y], color='green', marker='o', linestyle='None')
 
         # LSTM prediction
         slstm_predictor = lstm.LSTMPredictor.load('output/social_lstm.pkl')
