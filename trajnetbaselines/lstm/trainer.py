@@ -32,7 +32,7 @@ class Trainer(object):
         self.log = logging.getLogger(self.__class__.__name__)
 
     def loop(self, scenes, val_scenes, epochs=35):
-        for epoch in range(1, epochs + 1):
+        for epoch in range(epochs):
             self.train(scenes, epoch)
             self.val(val_scenes, epoch)
 
@@ -59,21 +59,21 @@ class Trainer(object):
             epoch_loss += loss
             total_time = time.time() - scene_start
 
-            if scene_i % 100 == 0:
+            if scene_i % 10 == 0:
                 self.log.info({
                     'type': 'train',
                     'epoch': epoch, 'batch': scene_i, 'n_batches': len(scenes),
-                    'time': total_time,
-                    'data_time': preprocess_time,
+                    'time': round(total_time, 3),
+                    'data_time': round(preprocess_time, 3),
                     'lr': self.lr(),
-                    'loss': loss,
+                    'loss': round(loss, 3),
                 })
 
         self.log.info({
             'type': 'train-epoch',
-            'epoch': epoch,
-            'loss': epoch_loss / len(scenes),
-            'time': time.time() - start_time,
+            'epoch': epoch + 1,
+            'loss': round(epoch_loss / len(scenes), 3),
+            'time': round(time.time() - start_time, 1),
         })
 
     def val(self, val_scenes, epoch):
@@ -87,9 +87,9 @@ class Trainer(object):
 
         self.log.info({
             'type': 'val-epoch',
-            'epoch': epoch,
-            'loss': val_loss / len(val_scenes),
-            'time': eval_time,
+            'epoch': epoch + 1,
+            'loss': round(val_loss / len(val_scenes), 3),
+            'time': round(eval_time, 1),
         })
 
     def train_batch(self, xy):

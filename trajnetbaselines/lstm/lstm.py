@@ -32,6 +32,10 @@ def scene_to_xy(scene, drop_distance=5.0):
         drop_distance_2 = drop_distance**2
         all_distances = xy - xy[:, 0:1]
         all_distances_2 = torch.sum(torch.mul(all_distances, all_distances), dim=2)
+
+        # handle nan entries
+        all_distances_2[torch.isnan(all_distances_2)] = drop_distance_2
+
         mask = torch.min(all_distances_2, dim=0)[0] < drop_distance_2
         xy = xy[:, mask]
 

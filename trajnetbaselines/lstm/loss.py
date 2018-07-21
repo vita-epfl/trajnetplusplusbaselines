@@ -3,14 +3,18 @@ import torch
 
 
 class PredictionLoss(torch.nn.Module):
-    """Negative Log of a 2D Gaussian."""
-    def __init__(self, size_average=True, reduce=True):
+    """2D Gaussian with a flat background.
+
+    p(x) = 0.1 + 0.9 * N(x|mu, sigma)
+    """
+    def __init__(self, size_average=True, reduce=True, background_rate=0.1):
         super(PredictionLoss, self).__init__()
         self.size_average = size_average
         self.reduce = reduce
+        self.background_rate = background_rate
 
     @staticmethod
-    def log_gaussian_2d(mu1mu2s1s2rho, x1x2):
+    def gaussian_2d(mu1mu2s1s2rho, x1x2):
         """This supports backward().
 
         Insprired by
@@ -33,13 +37,16 @@ class PredictionLoss(torch.nn.Module):
 
         z = (norm1 / s1) ** 2 + (norm2 / s2) ** 2 - 2 * rho * norm1 * norm2 / sigma1sigma2
 
-        log_numerator = -z / (2 * (1 - rho ** 2))
+        numerator = torch.exp(-z / (2 * (1 - rho ** 2)))
         denominator = 2 * math.pi * sigma1sigma2 * torch.sqrt(1 - rho ** 2)
 
-        return log_numerator - torch.log(denominator)
+        return numerator / denominator
 
     def forward(self, inputs, targets):
-        values = -self.log_gaussian_2d(inputs, targets)
+        values = -torch.log(
+            self.background_rate +
+            (1 - self.background_rate) * self.gaussian_2d(inputs, targets)
+        )
         if not self.reduce:
             return values
         if self.size_average:
