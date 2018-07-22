@@ -1,7 +1,6 @@
 import argparse
 import datetime
 import logging
-import pickle
 import time
 import random
 
@@ -213,7 +212,17 @@ def main(epochs=35):
     # train
     if args.load_state:
         with open(args.load_state, 'rb') as f:
-            model.load_state_dict(pickle.load(f), strict=args.load_state_strict)
+            pretrained_state_dict = torch.load(f)
+        model.load_state_dict(pretrained_state_dict, strict=args.load_state_strict)
+
+        # pre-optimize all parameters that were not in the loaded state dict
+        pretrained_params = set(pretrained_state_dict.keys())
+        untrained_params = [p for n, p in model.named_parameters()
+                            if n not in pretrained_params]
+        pre_optimizer = torch.optim.Adam(untrained_params, lr=1e-3, weight_decay=1e-4)
+        pre_trainer = Trainer(model, optimizer=pre_optimizer, device=args.device)
+        pre_trainer.loop(train_scenes, val_scenes, epochs=1)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
     trainer = Trainer(model, optimizer=optimizer, device=args.device)
     trainer.loop(train_scenes, val_scenes, epochs=args.epochs)
