@@ -16,7 +16,7 @@ def read_log(path):
 
 
 def plots(log_files, output_prefix, labels=None):
-    if labels is None:
+    if not labels:
         labels = log_files
     datas = [read_log(log_file) for log_file in log_files]
 
@@ -45,14 +45,17 @@ def plots(log_files, output_prefix, labels=None):
 
     with trajnettools.show.canvas(output_prefix + 'epoch-loss.png') as ax:
         for data, label in zip(datas, labels):
+            val_color = None
             if 'val-epoch' in data:
                 x = [row.get('epoch') for row in data['val-epoch']]
                 y = [row.get('loss') for row in data['val-epoch']]
-                ax.plot(x, y, label=label + ' (val)')
+                val_line, = ax.plot(x, y, label=label + ' (val)')
+                val_color = val_line.get_color()
             if 'train-epoch' in data:
                 x = [row.get('epoch') for row in data['train-epoch']]
                 y = [row.get('loss') for row in data['train-epoch']]
-                ax.plot(x, y, label=label + ' (train)')
+                ax.plot(x, y, label=label + ' (train)',
+                        color=val_color, linestyle='dotted')
 
         ax.set_xlabel('epoch')
         ax.set_ylabel('loss')
@@ -117,6 +120,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('log_file', nargs='+',
                         help='path to log file')
+    parser.add_argument('--label', nargs='+',
+                        help='labels in the same order as files')
     parser.add_argument('-o', '--output', default=None,
                         help='output prefix (default is log_file + .)')
     args = parser.parse_args()
@@ -124,7 +129,7 @@ def main():
     if args.output is None:
         args.output = args.log_file[-1] + '.'
 
-    plots(args.log_file, args.output)
+    plots(args.log_file, args.output, args.label)
 
 
 if __name__ == '__main__':

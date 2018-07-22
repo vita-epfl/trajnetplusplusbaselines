@@ -1,7 +1,7 @@
 [BASIC]
 
 variable-rgx=[a-z0-9_]{1,30}$
-good-names=n,nx,ny,xy
+good-names=n,nx,ny,xy,r
 
 [TYPECHECK]
 

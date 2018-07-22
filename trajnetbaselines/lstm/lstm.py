@@ -1,6 +1,7 @@
 from collections import defaultdict
 import itertools
 
+import numpy as np
 import torch
 import trajnettools
 
@@ -9,7 +10,7 @@ from .modules import Hidden2Normal, InputEmbedding
 NAN = float('nan')
 
 
-def scene_to_xy(scene, drop_distance=5.0):
+def scene_to_xy(scene):
     """Return a Torch Tensor representing the scene.
 
     Drop other paths that are never closer than drop_distance.
@@ -28,18 +29,13 @@ def scene_to_xy(scene, drop_distance=5.0):
             entry[0] = row.x
             entry[1] = row.y
 
-    if drop_distance is not None:
-        drop_distance_2 = drop_distance**2
-        all_distances = xy - xy[:, 0:1]
-        all_distances_2 = torch.sum(torch.mul(all_distances, all_distances), dim=2)
-
-        # handle nan entries
-        all_distances_2[torch.isnan(all_distances_2)] = drop_distance_2
-
-        mask = torch.min(all_distances_2, dim=0)[0] < drop_distance_2
-        xy = xy[:, mask]
-
     return xy
+
+
+def drop_distant(xy, r=5.0):
+    distance_2 = np.sum(np.square(xy - xy[:, 0:1]), axis=2)
+    mask = np.nanmin(distance_2, axis=0) < r**2
+    return xy[:, mask]
 
 
 class LSTM(torch.nn.Module):
@@ -112,7 +108,8 @@ class LSTM(torch.nn.Module):
 
         assert ((prediction_truth is None) + (n_predict is None)) == 1
         if n_predict is not None:
-            prediction_truth = [None for _ in range(n_predict)]
+            # -1 because one prediction is done by the encoder already
+            prediction_truth = [None for _ in range(n_predict - 1)]
 
         # initialize: Because of tracks with different lengths and the masked
         # update, the hidden state for every LSTM needs to be a separate object
@@ -134,16 +131,11 @@ class LSTM(torch.nn.Module):
 
             # save outputs
             normals.append(normal)
-            positions.append(obs2)
+            positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
-        # do not include the last prediction as this will be done with the
-        # decoder below
-        normals = normals[:-1]
-        positions = positions[1:]  # positions are not predicted, but truth
-
-        # initialize predictions with last two positions
+        # initialize predictions with last position to form velocity
         prediction_truth = list(itertools.chain.from_iterable(
-            (positions[-2:], prediction_truth)
+            (observed[-1:], prediction_truth)
         ))
 
         # decoder, predictions
@@ -176,7 +168,7 @@ class LSTMPredictor(object):
         with open(filename, 'wb') as f:
             torch.save(self, f)
 
-        # during dev, good for compatibility across API changes:
+        # during development, good for compatibility across API changes:
         with open(filename.replace('.pkl', '') + '_state_dict.pkl', 'wb') as f:
             torch.save(self.model.state_dict(), f)
 

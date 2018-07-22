@@ -10,7 +10,7 @@ import trajnettools
 
 from .. import augmentation
 from .loss import PredictionLoss
-from .lstm import LSTM, LSTMPredictor, scene_to_xy
+from .lstm import LSTM, LSTMPredictor, drop_distant
 from .pooling import Pooling
 from .. import __version__ as VERSION
 
@@ -51,11 +51,12 @@ class Trainer(object):
         self.model.train()
         for scene_i, (_, scene) in enumerate(scenes):
             scene_start = time.time()
+            scene = drop_distant(scene)
             scene = augmentation.random_rotation(scene)
-            xy = scene_to_xy(scene).to(self.device)
+            scene = torch.Tensor(scene).to(self.device)
             preprocess_time = time.time() - scene_start
 
-            loss = self.train_batch(xy)
+            loss = self.train_batch(scene)
             epoch_loss += loss
             total_time = time.time() - scene_start
 
@@ -81,8 +82,9 @@ class Trainer(object):
         eval_start = time.time()
         self.model.train()  # so that it does not return positions but still normals
         for _, scene in val_scenes:
-            xy = scene_to_xy(scene).to(self.device)
-            val_loss += self.val_batch(xy)
+            scene = drop_distant(scene)
+            scene = torch.Tensor(scene).to(self.device)
+            val_loss += self.val_batch(scene)
         eval_time = time.time() - eval_start
 
         self.log.info({
@@ -136,7 +138,7 @@ class Trainer(object):
 
 def main(epochs=35):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', default=epochs,
+    parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social'),
@@ -196,10 +198,8 @@ def main(epochs=35):
 
     # read in datasets
     train_scenes = list(trajnettools.load_all(args.train_input_files,
-                                              as_paths=True,
                                               sample={'syi.ndjson': 0.05}))
     val_scenes = list(trajnettools.load_all(args.val_input_files,
-                                            as_paths=True,
                                             sample={'syi.ndjson': 0.05}))
 
     # create model
