@@ -19,7 +19,7 @@ def predict(ground_truth, output_file):
         lstmp = lstm_predictor(ground_truth)
         ax.plot([ground_truth[0][8].x] + [r.x for r in lstmp],
                 [ground_truth[0][8].y] + [r.y for r in lstmp],
-                color='blue', label='LSTM', marker='o', markersize=6.5)
+                color='blue', label='LSTM', marker='o', markersize=2.5)
         ax.plot([lstmp[-1].x], [lstmp[-1].y], color='blue', marker='o', linestyle='None')
 
         # OLSTM prediction
@@ -27,7 +27,7 @@ def predict(ground_truth, output_file):
         olstmp = olstm_predictor(ground_truth)
         ax.plot([ground_truth[0][8].x] + [r.x for r in olstmp],
                 [ground_truth[0][8].y] + [r.y for r in olstmp],
-                color='green', label='O-LSTM', marker='o', markersize=6.5)
+                color='green', label='O-LSTM', marker='o', markersize=2.5)
         ax.plot([olstmp[-1].x], [olstmp[-1].y], color='green', marker='o', linestyle='None')
 
         # SLSTM prediction
@@ -35,7 +35,7 @@ def predict(ground_truth, output_file):
         slstmp = slstm_predictor(ground_truth)
         ax.plot([ground_truth[0][8].x] + [r.x for r in slstmp],
                 [ground_truth[0][8].y] + [r.y for r in slstmp],
-                color='red', label='Social LSTM', marker='o', markersize=6.5)
+                color='red', label='Social LSTM', marker='o', markersize=2.5)
         ax.plot([slstmp[-1].x], [slstmp[-1].y], color='red', marker='o', linestyle='None')
 
 
