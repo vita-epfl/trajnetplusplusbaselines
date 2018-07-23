@@ -87,8 +87,8 @@ def plots(log_files, output_prefix, labels=None):
                               for row in data['train']])
                 y = np.array([row.get('data_time') / row.get('time') * 100.0
                               for row in data['train']])
-                if len(x) / x[-1] > 10:
-                    stride = int(len(x) / x[-1] / 3.0)  # 3 per epoch
+                stride = int(len(x) / (x[-1] - x[0]) / 3.0)  # 3 per epoch
+                if stride > 5:
                     x_binned = np.array([x[i] for i in range(0, len(x), stride)][:-1])
                     y_binned = np.stack([y[i:i + stride] for i in range(0, len(x), stride)][:-1])
                     y_mean = np.mean(y_binned, axis=1)
@@ -111,8 +111,8 @@ def plots(log_files, output_prefix, labels=None):
                               for row in data['train']])
                 y = np.array([row.get('loss')
                               for row in data['train']])
-                if len(x) / x[-1] > 10:
-                    stride = int(len(x) / x[-1] / 3.0)  # 3 per epoch
+                stride = int(len(x) / (x[-1] - x[0]) / 3.0)  # 3 per epoch
+                if stride > 5:
                     x_binned = np.array([x[i] for i in range(0, len(x), stride)][:-1])
                     y_binned = np.stack([y[i:i + stride] for i in range(0, len(x), stride)][:-1])
                     y_mean = np.mean(y_binned, axis=1)
@@ -124,7 +124,7 @@ def plots(log_files, output_prefix, labels=None):
                     ax.plot(x, y, label=label)
 
         ax.set_xlabel('epoch')
-        ax.set_ylabel('loss')
+        ax.set_ylabel('training loss')
         ax.set_ylim(-5, 2)
         if min(y_mean) > -0.1:
             ax.set_yscale('log', nonposy='clip')
