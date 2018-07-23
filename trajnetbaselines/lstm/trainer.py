@@ -141,6 +141,8 @@ def main(epochs=35):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
+    parser.add_argument('--lr', default=1e-3, type=float,
+                        help='initial learning rate')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social'),
                         help='type of LSTM to train')
@@ -155,7 +157,9 @@ def main(epochs=35):
 
     pretrain = parser.add_argument_group('pretraining')
     pretrain.add_argument('--pre-epochs', default=5, type=int,
-                          help='number of epochs for pre-pretraining')
+                          help='number of epochs')
+    pretrain.add_argument('--pre-lr', default=1e-3, type=float,
+                          help='initial learning rate')
     pretrain.add_argument('--load-state', default=None,
                           help='load a pickled state dictionary before training')
     pretrain.add_argument('--nonstrict-load-state', default=None,
@@ -225,12 +229,12 @@ def main(epochs=35):
         pretrained_params = set(pretrained_state_dict.keys())
         untrained_params = [p for n, p in model.named_parameters()
                             if n not in pretrained_params]
-        pre_optimizer = torch.optim.Adam(untrained_params, lr=1e-3, weight_decay=1e-4)
+        pre_optimizer = torch.optim.Adam(untrained_params, lr=args.pre_lr, weight_decay=1e-4)
         pre_trainer = Trainer(model, optimizer=pre_optimizer, device=args.device)
         for pre_epoch in range(-args.pre_epochs, 0):
             pre_trainer.train(train_scenes, epoch=pre_epoch)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
     trainer = Trainer(model, optimizer=optimizer, device=args.device)
     trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs)
 
