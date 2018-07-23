@@ -53,7 +53,7 @@ class LSTM(torch.nn.Module):
         # mu_vel_x, mu_vel_y, sigma_vel_x, sigma_vel_y, rho
         self.hidden2normal = Hidden2Normal(self.hidden_dim)
 
-    def step(self, lstm, hidden_cell_state, obs1, obs2):
+    def step(self, lstm, hidden_cell_state, obs1, obs2, detach_hidden_pool=True):
         """Do one step: two inputs to one normal prediction."""
         # mask
         track_mask = (torch.isnan(obs1[:, 0]) + torch.isnan(obs2[:, 0])) == 0
@@ -66,7 +66,10 @@ class LSTM(torch.nn.Module):
         # step
         coordinate_emb = self.input_embedding(obs2 - obs1)
         if self.pool is not None:
-            hidden_cell_stacked[0] += self.pool(hidden_cell_stacked[0], obs1, obs2)
+            hidden_states_to_pool_in = hidden_cell_stacked[0]
+            if detach_hidden_pool:
+                hidden_states_to_pool_in = hidden_states_to_pool_in.detach()
+            hidden_cell_stacked[0] += self.pool(hidden_states_to_pool_in, obs1, obs2)
         hidden_cell_stacked = lstm(coordinate_emb, hidden_cell_stacked)
         normal_masked = self.hidden2normal(hidden_cell_stacked[0])
 
@@ -169,7 +172,7 @@ class LSTMPredictor(object):
             torch.save(self, f)
 
         # during development, good for compatibility across API changes:
-        with open(filename.replace('.pkl', '') + '_state_dict.pkl', 'wb') as f:
+        with open(filename + '.state_dict', 'wb') as f:
             torch.save(self.model.state_dict(), f)
 
     @staticmethod

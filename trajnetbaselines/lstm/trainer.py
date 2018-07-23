@@ -154,7 +154,7 @@ def main(epochs=35):
                         help='disable CUDA')
 
     pretrain = parser.add_argument_group('pretraining')
-    pretrain.add_argument('--pre-epochs', default=3, type=int,
+    pretrain.add_argument('--pre-epochs', default=5, type=int,
                           help='number of epochs for pre-pretraining')
     pretrain.add_argument('--load-state', default=None,
                           help='load a pickled state dictionary before training')
