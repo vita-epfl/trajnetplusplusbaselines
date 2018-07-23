@@ -13,7 +13,7 @@ def one_cold(i, n):
 
 
 class Pooling(torch.nn.Module):
-    def __init__(self, cell_side=0.5, n=6, hidden_dim=128, type_='occupancy'):
+    def __init__(self, cell_side=1.0, n=6, hidden_dim=128, type_='occupancy'):
         super(Pooling, self).__init__()
         self.cell_side = cell_side
         self.n = n

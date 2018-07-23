@@ -30,10 +30,12 @@ class Trainer(object):
         self.criterion = self.criterion.to(self.device)
         self.log = logging.getLogger(self.__class__.__name__)
 
-    def loop(self, scenes, val_scenes, epochs=35):
+    def loop(self, train_scenes, val_scenes, out, epochs=35):
         for epoch in range(epochs):
-            self.train(scenes, epoch)
+            LSTMPredictor(self.model).save(out + '.epoch{}'.format(epoch))
+            self.train(train_scenes, epoch)
             self.val(val_scenes, epoch)
+        LSTMPredictor(self.model).save(out)
 
     def lr(self):
         for param_group in self.optimizer.param_groups:
@@ -150,10 +152,14 @@ def main(epochs=35):
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
-    parser.add_argument('--load-state', default=None,
-                        help='load a pickled state dictionary before training')
-    parser.add_argument('--nonstrict-load-state', default=None,
-                        help='load a pickled state dictionary before training')
+
+    pretrain = parser.add_argument_group('pretraining')
+    pretrain.add_argument('--pre-epochs', default=3, type=int,
+                          help='number of epochs for pre-pretraining')
+    pretrain.add_argument('--load-state', default=None,
+                          help='load a pickled state dictionary before training')
+    pretrain.add_argument('--nonstrict-load-state', default=None,
+                          help='load a pickled state dictionary before training')
 
     hyperparameters = parser.add_argument_group('hyperparameters')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,
@@ -221,12 +227,12 @@ def main(epochs=35):
                             if n not in pretrained_params]
         pre_optimizer = torch.optim.Adam(untrained_params, lr=1e-3, weight_decay=1e-4)
         pre_trainer = Trainer(model, optimizer=pre_optimizer, device=args.device)
-        pre_trainer.loop(train_scenes, val_scenes, epochs=1)
+        for pre_epoch in range(-args.pre_epochs, 0):
+            pre_trainer.train(train_scenes, epoch=pre_epoch)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
     trainer = Trainer(model, optimizer=optimizer, device=args.device)
-    trainer.loop(train_scenes, val_scenes, epochs=args.epochs)
-    LSTMPredictor(trainer.model).save(args.output)
+    trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs)
 
 
 if __name__ == '__main__':

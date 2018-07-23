@@ -1,5 +1,8 @@
 import argparse
+import datetime
 import json
+
+import matplotlib.ticker
 import numpy as np
 import pysparkling
 import trajnettools.show
@@ -19,6 +22,20 @@ def plots(log_files, output_prefix, labels=None):
     if not labels:
         labels = log_files
     datas = [read_log(log_file) for log_file in log_files]
+
+    with trajnettools.show.canvas(output_prefix + 'time.png') as ax:
+        for data, label in zip(datas, labels):
+            if 'train' in data:
+                x = np.array([row.get('epoch') + row.get('batch') / row.get('n_batches')
+                              for row in data['train']])
+                y = [datetime.datetime.strptime(row.get('asctime')[:-4], '%Y-%m-%d %H:%M:%S')
+                     for row in data['train']]
+                y = [(yi - y[0]).total_seconds() / 3600.0 for yi in y]
+                ax.plot(x, y, label=label)
+
+        ax.set_xlabel('epoch')
+        ax.set_ylabel('time [h]')
+        ax.legend()
 
     with trajnettools.show.canvas(output_prefix + 'lr.png') as ax:
         for data, label in zip(datas, labels):
@@ -63,23 +80,22 @@ def plots(log_files, output_prefix, labels=None):
             ax.set_yscale('log', nonposy='clip')
         ax.legend()
 
-    with trajnettools.show.canvas(output_prefix + 'time.png') as ax:
+    with trajnettools.show.canvas(output_prefix + 'preprocess_time.png') as ax:
         for data, label in zip(datas, labels):
             if 'train' in data:
                 x = np.array([row.get('epoch') + row.get('batch') / row.get('n_batches')
                               for row in data['train']])
-                y = np.array([row.get('data_time') / row.get('time') * 100.0 for row in data['train']])
+                y = np.array([row.get('data_time') / row.get('time') * 100.0
+                              for row in data['train']])
                 if len(x) / x[-1] > 10:
                     stride = int(len(x) / x[-1] / 3.0)  # 3 per epoch
-                    x_binned = np.array([x[i] for i in range(0, len(x), stride)])
-                    y_mean = [np.mean(y[np.logical_and(x1 < x, x < x2)])
-                              for x1, x2 in zip(x_binned[:-1], x_binned[1:])]
-                    y_min = [np.min(y[np.logical_and(x1 < x, x < x2)])
-                             for x1, x2 in zip(x_binned[:-1], x_binned[1:])]
-                    y_max = [np.max(y[np.logical_and(x1 < x, x < x2)])
-                             for x1, x2 in zip(x_binned[:-1], x_binned[1:])]
-                    ax.fill_between(x_binned[:-1], y_min, y_max, alpha=0.2)
-                    ax.plot(x_binned[:-1], y_mean, label=label)
+                    x_binned = np.array([x[i] for i in range(0, len(x), stride)][:-1])
+                    y_binned = np.stack([y[i:i + stride] for i in range(0, len(x), stride)][:-1])
+                    y_mean = np.mean(y_binned, axis=1)
+                    y_min = np.min(y_binned, axis=1)
+                    y_max = np.max(y_binned, axis=1)
+                    ax.fill_between(x_binned, y_min, y_max, alpha=0.2)
+                    ax.plot(x_binned, y_mean, label=label)
                 else:
                     ax.plot(x, y, label=label)
 
@@ -93,18 +109,17 @@ def plots(log_files, output_prefix, labels=None):
             if 'train' in data:
                 x = np.array([row.get('epoch') + row.get('batch') / row.get('n_batches')
                               for row in data['train']])
-                y = np.array([row.get('loss') for row in data['train']])
+                y = np.array([row.get('loss')
+                              for row in data['train']])
                 if len(x) / x[-1] > 10:
                     stride = int(len(x) / x[-1] / 3.0)  # 3 per epoch
-                    x_binned = np.array([x[i] for i in range(0, len(x), stride)])
-                    y_mean = [np.mean(y[np.logical_and(x1 < x, x < x2)])
-                              for x1, x2 in zip(x_binned[:-1], x_binned[1:])]
-                    y_min = [np.min(y[np.logical_and(x1 < x, x < x2)])
-                             for x1, x2 in zip(x_binned[:-1], x_binned[1:])]
-                    y_max = [np.max(y[np.logical_and(x1 < x, x < x2)])
-                             for x1, x2 in zip(x_binned[:-1], x_binned[1:])]
-                    ax.fill_between(x_binned[:-1], y_min, y_max, alpha=0.2)
-                    ax.plot(x_binned[:-1], y_mean, label=label)
+                    x_binned = np.array([x[i] for i in range(0, len(x), stride)][:-1])
+                    y_binned = np.stack([y[i:i + stride] for i in range(0, len(x), stride)][:-1])
+                    y_mean = np.mean(y_binned, axis=1)
+                    y_min = np.min(y_binned, axis=1)
+                    y_max = np.max(y_binned, axis=1)
+                    ax.fill_between(x_binned, y_min, y_max, alpha=0.2)
+                    ax.plot(x_binned, y_mean, label=label)
                 else:
                     ax.plot(x, y, label=label)
 
