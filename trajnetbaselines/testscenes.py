@@ -37,6 +37,16 @@ def linear_random(scene_id, start_frame, perpendicular_distance=0.2, random_radi
     return static_person + linear_person + [scene]
 
 
+def opposing(scene_id, start_frame, perpendicular_distance=0.2):
+    person0 = [TrackRow(start_frame + i * 10, 0, -5.0 + i * 0.5, 0.0)
+               for i in range(21)]
+    person1 = [TrackRow(start_frame + i * 10, 1, 5.0 - i * 0.5, perpendicular_distance)
+               for i in range(21)]
+
+    scene = SceneRow(scene_id, 0, start_frame, start_frame + 200)
+    return person0 + person1 + [scene]
+
+
 def main():
     sc = pysparkling.Context()
     sc.parallelize(
@@ -44,7 +54,9 @@ def main():
         linear_static(1, 1000, perpendicular_distance=0.2) +
         linear_static(2, 2000, perpendicular_distance=0.5) +
         linear_random(3, 3000, perpendicular_distance=0.2, random_radius=0.2) +
-        linear_random(4, 4000, perpendicular_distance=1.0, random_radius=0.5)
+        linear_random(4, 4000, perpendicular_distance=1.0, random_radius=0.5) +
+        opposing(5, 5000, perpendicular_distance=0.2) +
+        opposing(6, 6000, perpendicular_distance=1.5)
     ).map(trajnettools.writers.trajnet).saveAsTextFile('data/testscenes.ndjson')
 
 

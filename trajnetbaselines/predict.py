@@ -46,13 +46,15 @@ def main():
     parser.add_argument('dataset_file')
     parser.add_argument('-o', '--output',
                         help='output file prefix')
+    parser.add_argument('-n', type=int, default=5,
+                        help='number of scenes to predict')
     args = parser.parse_args()
 
     if args.output is None:
         args.output = args.dataset_file
 
     reader = trajnettools.Reader(args.dataset_file, scene_type='paths')
-    for scene_id, ground_truth in reader.scenes(limit=5):
+    for scene_id, ground_truth in reader.scenes(limit=args.n):
         output_file = '{output_prefix}.prediction{scene}.png'.format(
             output_prefix=args.output, scene=scene_id)
         predict(ground_truth, output_file)
