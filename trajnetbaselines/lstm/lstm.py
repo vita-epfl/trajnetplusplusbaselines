@@ -10,28 +10,6 @@ from .modules import Hidden2Normal, InputEmbedding
 NAN = float('nan')
 
 
-def scene_to_xy(scene):
-    """Return a Torch Tensor representing the scene.
-
-    Drop other paths that are never closer than drop_distance.
-    """
-    frames = [r.frame for r in scene[0]]
-    pedestrians = [path[0].pedestrian for path in scene]
-
-    frame_to_index = {frame: i for i, frame in enumerate(frames)}
-    xy = torch.full((len(frames), len(pedestrians), 2), NAN)
-
-    for ped_index, path in enumerate(scene):
-        for row in path:
-            if row.frame not in frame_to_index:
-                continue
-            entry = xy[frame_to_index[row.frame]][ped_index]
-            entry[0] = row.x
-            entry[1] = row.y
-
-    return xy
-
-
 def drop_distant(xy, r=5.0):
     distance_2 = np.sum(np.square(xy - xy[:, 0:1]), axis=2)
     mask = np.nanmin(distance_2, axis=0) < r**2
@@ -180,13 +158,15 @@ class LSTMPredictor(object):
         with open(filename, 'rb') as f:
             return torch.load(f)
 
-    def __call__(self, scene, n_predict=12):
+    def __call__(self, paths, n_predict=12):
         self.model.eval()
 
-        observed_path = scene[0]
+        observed_path = paths[0]
         ped_id = observed_path[0].pedestrian
         with torch.no_grad():
-            xy = scene_to_xy(scene)
+            xy = trajnettools.Reader.paths_to_xy(paths)
+            xy = drop_distant(xy)
+            xy = torch.Tensor(xy)  #.to(self.device)
             outputs = self.model(xy[:9], n_predict=n_predict)[-n_predict:]
             # outputs = self.model(xy[:9], xy[9:-1])[-n_predict:]
 

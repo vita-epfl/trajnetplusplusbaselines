@@ -78,8 +78,15 @@ class Pooling(torch.nn.Module):
         if oij.size(0) == 0:
             return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
         oi = oij[:, 0] * self.n + oij[:, 1]
-        occ = torch.zeros(self.n * self.n, self.pooling_dim, device=xy.device)
-        for oii, v in zip(oi, other_values):
-            occ[oii, :] += v
+
+        # slow implementation of occupancy
+        # occ = torch.zeros(self.n * self.n, self.pooling_dim, device=xy.device)
+        # for oii, v in zip(oi, other_values):
+        #     occ[oii, :] += v
+
+        # faster occupancy
+        occ = torch.zeros(self.n * self.n * 8 * 8, self.pooling_dim, device=xy.device)
+        occ[oi, :] += other_values
+        occ = torch.nn.functional.lp_pool2d(occ, 1, 8)  # sum is lp with norm=1
 
         return occ.view(-1)

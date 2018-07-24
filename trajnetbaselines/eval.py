@@ -43,6 +43,9 @@ class Evaluator(object):
 
         return self
 
+    def result(self):
+        return self.average_l2, self.average_l2_nonlinear, self.final_l2
+
 
 def eval(input_file):
     print('dataset', input_file)
@@ -76,7 +79,7 @@ def eval(input_file):
     slstm_predictor = trajnetbaselines.lstm.LSTMPredictor.load('output/social_lstm.pkl')
     evaluator.aggregate('slstm', slstm_predictor)
 
-    return evaluator.average_l2, evaluator.average_l2_nonlinear, evaluator.final_l2
+    return evaluator.result()
 
 
 def main():
