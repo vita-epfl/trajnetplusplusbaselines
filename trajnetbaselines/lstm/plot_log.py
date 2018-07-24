@@ -37,6 +37,20 @@ def plots(log_files, output_prefix, labels=None):
         ax.set_ylabel('time [h]')
         ax.legend()
 
+    with trajnettools.show.canvas(output_prefix + 'epoch-time.png') as ax:
+        for data, label in zip(datas, labels):
+            if 'train-epoch' in data:
+                x = np.array([row.get('epoch') for row in data['train-epoch']])
+                y = [datetime.datetime.strptime(row.get('asctime')[:-4], '%Y-%m-%d %H:%M:%S')
+                     for row in data['train-epoch']]
+                y = [(yi - prev_yi).total_seconds() / 60.0
+                     for prev_yi, yi in zip(y[:-1], y[1:])]
+                ax.plot(x[1:], y, label=label)
+
+        ax.set_xlabel('epoch')
+        ax.set_ylabel('epoch-time [min]')
+        ax.legend()
+
     with trajnettools.show.canvas(output_prefix + 'lr.png') as ax:
         for data, label in zip(datas, labels):
             if 'train' in data:

@@ -1,3 +1,5 @@
+"""Command line tool to predict paths."""
+
 import argparse
 import trajnettools.show
 

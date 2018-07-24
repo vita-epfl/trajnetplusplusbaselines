@@ -1,3 +1,5 @@
+"""Command line tool to train an LSTM model."""
+
 import argparse
 import datetime
 import logging
@@ -160,6 +162,8 @@ def main(epochs=35):
                           help='number of epochs')
     pretrain.add_argument('--pre-lr', default=1e-3, type=float,
                           help='initial learning rate')
+    pretrain.add_argument('--pre-lr-div-schedule', default=3, type=int,
+                          help='pre-training learning rate division schedule')
     pretrain.add_argument('--load-state', default=None,
                           help='load a pickled state dictionary before training')
     pretrain.add_argument('--nonstrict-load-state', default=None,
@@ -230,7 +234,9 @@ def main(epochs=35):
         untrained_params = [p for n, p in model.named_parameters()
                             if n not in pretrained_params]
         pre_optimizer = torch.optim.Adam(untrained_params, lr=args.pre_lr, weight_decay=1e-4)
-        pre_trainer = Trainer(model, optimizer=pre_optimizer, device=args.device)
+        pre_lr_scheduler = torch.optim.lr_scheduler.StepLR(pre_optimizer, args.pre_lr_div_schedule)
+        pre_trainer = Trainer(model, optimizer=pre_optimizer,
+                              lr_scheduler=pre_lr_scheduler, device=args.device)
         for pre_epoch in range(-args.pre_epochs, 0):
             pre_trainer.train(train_scenes, epoch=pre_epoch)
 

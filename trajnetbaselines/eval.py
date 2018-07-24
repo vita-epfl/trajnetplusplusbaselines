@@ -1,123 +1,144 @@
-import pysparkling
+"""Command line tool to create a table of evaluations metrics."""
+
+import pickle
+
 import trajnettools
 import trajnetbaselines
 
 
-def eval(input_files):
-    average_l2 = {}
-    average_l2_non_linear = {}
-    final_l2 = {}
+class Evaluator(object):
+    def __init__(self, scenes, nonlinear_scene_index):
+        self.scenes = scenes
+        self.nonlinear_scene_index = nonlinear_scene_index
 
-    sc = pysparkling.Context()
-    paths = (sc
-             .wholeTextFiles(input_files)
-             .mapValues(trajnettools.readers.trajnet)
-             .cache())
+        self.average_l2 = {'N': len(scenes)}
+        self.average_l2_nonlinear = {'N': len(nonlinear_scene_index)}
+        self.final_l2 = {'N': len(scenes)}
 
-    # Kalman Filter (Lin)
-    kalman_predictions = paths.mapValues(trajnetbaselines.kalman.predict)
-    paths_kf = (paths
-                .mapValues(lambda paths: paths[0])
-                .leftOuterJoin(kalman_predictions)
-                .cache())
-    average_l2_kf = paths_kf.mapValues(trajnettools.metrics.average_l2).cache()
+    def aggregate(self, name, predictor):
+        print('evaluating', name)
 
-    # determine non-linear sequences
-    mean_kf = average_l2_kf.values().mean()
-    nonlinear_sequences = set(average_l2_kf
-                              .filter(lambda seq_kf: seq_kf[1] > mean_kf)
-                              .keys()
-                              .toLocalIterator())
+        average = 0.0
+        nonlinear = 0.0
+        final = 0.0
 
-    # N
-    average_l2['N'] = paths.count()
-    average_l2_non_linear['N'] = len(nonlinear_sequences)
-    final_l2['N'] = paths.count()
+        for scene_i, paths in enumerate(self.scenes):
+            prediction = predictor(paths)
+            average_l2 = trajnettools.metrics.average_l2(paths[0], prediction)
+            final_l2 = trajnettools.metrics.final_l2(paths[0], prediction)
 
-    # KF
-    average_l2['kf'] = mean_kf
-    average_l2_non_linear['kf'] = average_l2_kf.filter(lambda seq_v: seq_v[0] in nonlinear_sequences).values().mean()
-    final_l2['kf'] = paths_kf.values().map(trajnettools.metrics.final_l2).mean()
+            # aggregate
+            average += average_l2
+            final += final_l2
+            if scene_i in self.nonlinear_scene_index:
+                nonlinear += average_l2
+
+        average /= len(self.scenes)
+        nonlinear /= len(self.nonlinear_scene_index)
+        final /= len(self.scenes)
+
+        self.average_l2[name] = average
+        self.average_l2_nonlinear[name] = nonlinear
+        self.final_l2[name] = final
+
+        return self
+
+
+def eval(input_file):
+    print('dataset', input_file)
+
+    sample = 0.05 if 'syi.ndjson' in input_file else None
+    reader = trajnettools.Reader(input_file, scene_type='paths')
+    scenes = [s for _, s in reader.scenes(sample=sample)]
+
+    # non-linear scenes from high Kalman Average L2
+    nonlinear_score = []
+    for paths in scenes:
+        kalman_prediction = trajnetbaselines.kalman.predict(paths)
+        nonlinear_score.append(trajnettools.metrics.average_l2(paths[0], kalman_prediction))
+    mean_nonlinear = sum(nonlinear_score) / len(scenes)
+    nonlinear_scene_index = {i for i, nl in enumerate(nonlinear_score) if nl > mean_nonlinear}
+
+    evaluator = Evaluator(scenes, nonlinear_scene_index)
+
+    # Kalman Filter (Lin) and non-linear scenes
+    evaluator.aggregate('kf', trajnetbaselines.kalman.predict)
 
     # LSTM
     lstm_predictor = trajnetbaselines.lstm.LSTMPredictor.load('output/vanilla_lstm.pkl')
-    lstm_predictions = paths.mapValues(lstm_predictor)
-    paths_lstm = (paths
-                  .mapValues(lambda paths: paths[0])
-                  .leftOuterJoin(lstm_predictions)
-                  .cache())
-    average_l2_lstm = paths_lstm.mapValues(trajnettools.metrics.average_l2).cache()
-    average_l2['lstm'] = average_l2_lstm.values().mean()
-    average_l2_non_linear['lstm'] = average_l2_lstm.filter(lambda seq_v: seq_v[0] in nonlinear_sequences).values().mean()
-    final_l2['lstm'] = paths_lstm.values().map(trajnettools.metrics.final_l2).mean()
+    evaluator.aggregate('lstm', lstm_predictor)
 
     # OLSTM
-    # olstm_predictor = trajnetbaselines.lstm.OLSTMPredictor.load('output/olstm.pkl')
     olstm_predictor = trajnetbaselines.lstm.LSTMPredictor.load('output/occupancy_lstm.pkl')
-    olstm_predictions = paths.mapValues(olstm_predictor)
-    paths_olstm = (paths
-                   .mapValues(lambda paths: paths[0])
-                   .leftOuterJoin(olstm_predictions)
-                   .cache())
-    average_l2_olstm = paths_olstm.mapValues(trajnettools.metrics.average_l2).cache()
-    average_l2['olstm'] = average_l2_olstm.values().mean()
-    average_l2_non_linear['olstm'] = average_l2_olstm.filter(lambda seq_v: seq_v[0] in nonlinear_sequences).values().mean()
-    final_l2['olstm'] = paths_olstm.values().map(trajnettools.metrics.final_l2).mean()
+    evaluator.aggregate('olstm', olstm_predictor)
 
-    return average_l2, average_l2_non_linear, final_l2
+    # Social LSTM
+    slstm_predictor = trajnetbaselines.lstm.LSTMPredictor.load('output/social_lstm.pkl')
+    evaluator.aggregate('slstm', slstm_predictor)
+
+    return evaluator.average_l2, evaluator.average_l2_nonlinear, evaluator.final_l2
 
 
 def main():
     datasets = [
-        'output/val/biwi_eth/*.txt',
-        'output/val/biwi_hotel/*.txt',
-        'output/val/crowds_zara01/*.txt',
-        'output/val/crowds_zara02/*.txt',
-        'output/val/crowds_uni_examples/*.txt',
+        # 'data/val/biwi_eth.ndjson',
+        'data/val/biwi_hotel.ndjson',
+        # 'data/val/crowds_zara01.ndjson',
+        'data/val/crowds_zara02.ndjson',
+        # 'data/val/crowds_uni_examples.ndjson',
 
-        'output/val/crowds_zara03/*.txt',
-        'output/val/crowds_students001/*.txt',
-        'output/val/crowds_students003/*.txt',
-        'output/val/mot_pets2009_s2l1/*.txt',
+        'data/val/crowds_zara03.ndjson',
+        'data/val/crowds_students001.ndjson',
+        'data/val/crowds_students003.ndjson',
+        # 'data/val/mot_pets2009_s2l1.ndjson',
+
+        'data/val/dukemtmc.ndjson',
+        # 'data/val/syi.ndjson',
+        # 'data/val/wildtrack.ndjson',
     ]
     results = {dataset
-               .replace('output/', '')
-               .replace('.txt', ''): eval(dataset)
+               .replace('data/', '')
+               .replace('.ndjson', ''): eval(dataset)
                for dataset in datasets}
+    with open('eval.pkl', 'wb') as f:
+        pickle.dump(results, f)
 
     print('## Average L2 [m]')
-    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM'.format(dataset=''))
+    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM | S-LSTM'.format(dataset=''))
     for dataset, (r, _, _) in results.items():
         print(
             '{dataset:>30s}'
             ' | {r[N]:>4}'
             ' | {r[kf]:.2f}'
             ' | {r[lstm]:.2f}'
-            ' | {r[olstm]:.2f}'.format(dataset=dataset, r=r)
+            ' |  {r[olstm]:.2f} '
+            ' |  {r[slstm]:.2f}'.format(dataset=dataset, r=r)
         )
 
     print('')
     print('## Average L2 (non-linear sequences) [m]')
-    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM'.format(dataset=''))
+    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM | S-LSTM'.format(dataset=''))
     for dataset, (_, r, _) in results.items():
         print(
             '{dataset:>30s}'
             ' | {r[N]:>4}'
             ' | {r[kf]:.2f}'
             ' | {r[lstm]:.2f}'
-            ' | {r[olstm]:.2f}'.format(dataset=dataset, r=r)
+            ' |  {r[olstm]:.2f} '
+            ' |  {r[slstm]:.2f}'.format(dataset=dataset, r=r)
         )
 
     print('')
     print('## Final L2 [m]')
-    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM'.format(dataset=''))
+    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM | S-LSTM'.format(dataset=''))
     for dataset, (_, _, r) in results.items():
         print(
             '{dataset:>30s}'
             ' | {r[N]:>4}'
             ' | {r[kf]:.2f}'
             ' | {r[lstm]:.2f}'
-            ' | {r[olstm]:.2f}'.format(dataset=dataset, r=r)
+            ' |  {r[olstm]:.2f} '
+            ' |  {r[slstm]:.2f}'.format(dataset=dataset, r=r)
         )
 
 
