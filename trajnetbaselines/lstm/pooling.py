@@ -13,7 +13,7 @@ def one_cold(i, n):
 
 
 class Pooling(torch.nn.Module):
-    def __init__(self, cell_side=1.0, n=6, hidden_dim=128, type_='occupancy'):
+    def __init__(self, cell_side=1.0, n=4, hidden_dim=128, type_='occupancy'):
         super(Pooling, self).__init__()
         self.cell_side = cell_side
         self.n = n
@@ -57,7 +57,7 @@ class Pooling(torch.nn.Module):
             for i in range(n)
         ], dim=0)
 
-    def occupancy(self, xy, other_xy, other_values=None):
+    def occupancy(self, xy, other_xy, other_values=None, pool_size=8):
         """Returns the occupancy."""
         if xy[0] != xy[0] or \
            other_xy.size(0) == 0:
@@ -72,12 +72,14 @@ class Pooling(torch.nn.Module):
         if not oxy.size(0):
             return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
 
-        oij = ((oxy - xy) / self.cell_side + self.n / 2)
-        range_violations = torch.sum((oij < 0) + (oij >= self.n), dim=1)
-        oij = oij[range_violations == 0, :].long()
+        oij = ((oxy - xy) / (self.cell_side / pool_size) + self.n * pool_size / 2)
+        range_violations = torch.sum((oij < 0) + (oij >= self.n * pool_size), dim=1)
+        range_mask = range_violations == 0
+        oij = oij[range_mask].long()
+        other_values = other_values[range_mask]
         if oij.size(0) == 0:
             return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
-        oi = oij[:, 0] * self.n + oij[:, 1]
+        oi = oij[:, 0] * self.n * pool_size + oij[:, 1]
 
         # slow implementation of occupancy
         # occ = torch.zeros(self.n * self.n, self.pooling_dim, device=xy.device)
@@ -85,8 +87,9 @@ class Pooling(torch.nn.Module):
         #     occ[oii, :] += v
 
         # faster occupancy
-        occ = torch.zeros(self.n * self.n * 8 * 8, self.pooling_dim, device=xy.device)
-        occ[oi, :] += other_values
-        occ = torch.nn.functional.lp_pool2d(occ, 1, 8)  # sum is lp with norm=1
+        occ = torch.zeros(self.n**2 * pool_size**2, self.pooling_dim, device=xy.device)
+        occ[oi] = other_values
+        occ_2d = occ.view(self.n * pool_size, self.n * pool_size, -1)
+        occ_summed = torch.nn.functional.lp_pool2d(occ_2d, 1, pool_size)  # sum is lp with norm=1
 
-        return occ.view(-1)
+        return occ_summed.view(-1)
