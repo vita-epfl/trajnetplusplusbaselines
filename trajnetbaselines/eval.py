@@ -100,7 +100,7 @@ def main():
                .replace('data/', '')
                .replace('.ndjson', ''): eval(dataset)
                for dataset in datasets}
-    with open('eval.pkl', 'wb') as f:
+    with open('output/eval.pkl', 'wb') as f:
         pickle.dump(results, f)
 
     print('## Average L2 [m]')
