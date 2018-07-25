@@ -89,7 +89,7 @@ class Pooling(torch.nn.Module):
         # faster occupancy
         occ = torch.zeros(self.n**2 * pool_size**2, self.pooling_dim, device=xy.device)
         occ[oi] = other_values
-        occ_2d = occ.view(self.n * pool_size, self.n * pool_size, -1)
+        occ_2d = occ.view(1, -1, self.n * pool_size, self.n * pool_size)
         occ_summed = torch.nn.functional.lp_pool2d(occ_2d, 1, pool_size)  # sum is lp with norm=1
 
         return occ_summed.view(-1)
