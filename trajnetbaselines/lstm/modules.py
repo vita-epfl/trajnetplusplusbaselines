@@ -7,7 +7,7 @@ class InputEmbedding(torch.nn.Module):
     Input scaling is important for ReLU activation combined with the initial
     bias distribution. Otherwise some units will never be active.
     """
-    def __init__(self, embedding_dim, scale, use_tags=True):
+    def __init__(self, input_dim, embedding_dim, scale, use_tags=True):
         super(InputEmbedding, self).__init__()
         self.embedding_dim = embedding_dim
         self.scale = scale
@@ -17,7 +17,7 @@ class InputEmbedding(torch.nn.Module):
         if use_tags:
             linear_embedding_dim -= 2
         self.input_embeddings = torch.nn.Sequential(
-            torch.nn.Linear(2, linear_embedding_dim),
+            torch.nn.Linear(input_dim, linear_embedding_dim),
             torch.nn.ReLU(),
         )
 

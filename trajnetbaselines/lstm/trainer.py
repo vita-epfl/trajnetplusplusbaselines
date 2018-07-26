@@ -168,6 +168,8 @@ def main(epochs=35):
                           help='load a pickled state dictionary before training')
     pretrain.add_argument('--nonstrict-load-state', default=None,
                           help='load a pickled state dictionary before training')
+    pretrain.add_argument('--drop-input-embedding', default=False, action='store_true',
+                          help='drop input embedding before loading state')
 
     hyperparameters = parser.add_argument_group('hyperparameters')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,
@@ -227,6 +229,10 @@ def main(epochs=35):
     if args.load_state:
         with open(args.load_state, 'rb') as f:
             pretrained_state_dict = torch.load(f)
+        if args.drop_input_embedding:
+            pretrained_state_dict = {name: value
+                                     for name, value in pretrained_state_dict.items()
+                                     if 'input_embedding' not in name}
         model.load_state_dict(pretrained_state_dict, strict=args.load_state_strict)
 
         # pre-optimize all parameters that were not in the loaded state dict

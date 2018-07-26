@@ -1,15 +1,16 @@
+import numpy as np
+import pytest
 import torch
-
 import trajnetbaselines
 
 NAN = float('nan')
 
 
 def test_simple_grid():
-    pool = trajnetbaselines.lstm.Pooling(n=2)
+    pool = trajnetbaselines.lstm.Pooling(n=2, pool_size=4, blur_size=3)
     obs = torch.Tensor([
         [0.0, 0.0],
-        [-0.2, -0.2],
+        [-1.0, -1.0],
     ])
     occupancies = pool.occupancies(obs).numpy().tolist()
     assert occupancies == [[
@@ -19,6 +20,27 @@ def test_simple_grid():
         0, 0,
         0, 1,
     ]]
+
+
+def test_simple_grid_midpoint():
+    """Testing a midpoint between grid cells.
+
+    Using a large pool size as a every data point has to go into a grid
+    cell first. Therefore, data can never be exactly between two cells.
+    """
+    pool = trajnetbaselines.lstm.Pooling(n=2, pool_size=100, blur_size=99)
+    obs = torch.Tensor([
+        [0.0, 0.0],
+        [-1.0, 0.0],
+    ])
+    occupancies = pool.occupancies(obs).numpy()
+    assert occupancies == pytest.approx(np.array([[
+        0.5, 0.5,
+        0.0, 0,
+    ], [
+        0, 0.0,
+        0.5, 0.5,
+    ]]), abs=0.01)
 
 
 def test_nan():

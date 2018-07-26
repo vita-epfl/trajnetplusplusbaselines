@@ -2,8 +2,6 @@ from collections import defaultdict
 
 import torch
 
-from .modules import Hidden2Normal, InputEmbedding
-
 
 def one_cold(i, n):
     """Inverse one-hot encoding."""
@@ -13,19 +11,29 @@ def one_cold(i, n):
 
 
 class Pooling(torch.nn.Module):
-    def __init__(self, cell_side=1.0, n=4, hidden_dim=128, type_='occupancy'):
+    def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
+                 type_='occupancy', pool_size=8, blur_size=7):
         super(Pooling, self).__init__()
         self.cell_side = cell_side
         self.n = n
-        self.hidden_dim = hidden_dim
         self.type_ = type_
+        self.pool_size = pool_size
+        self.blur_size = blur_size
 
         self.pooling_dim = 1
         if self.type_ == 'directional':
             self.pooling_dim = 2
         if self.type_ == 'social':
             self.pooling_dim = hidden_dim
-        self.embedding = torch.nn.Linear(n * n * self.pooling_dim, hidden_dim)
+
+        if out_dim is None:
+            out_dim = hidden_dim
+        self.out_dim = out_dim
+
+        self.embedding = torch.nn.Sequential(
+            torch.nn.Linear(n * n * self.pooling_dim, out_dim),
+            torch.nn.ReLU(),
+        )
 
     def forward(self, hidden_state, obs1, obs2):
         if self.type_ == 'occupancy':
@@ -57,14 +65,14 @@ class Pooling(torch.nn.Module):
             for i in range(n)
         ], dim=0)
 
-    def occupancy(self, xy, other_xy, other_values=None, pool_size=8):
+    def occupancy(self, xy, other_xy, other_values=None):
         """Returns the occupancy."""
         if xy[0] != xy[0] or \
            other_xy.size(0) == 0:
             return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
 
         if other_values is None:
-            other_values = torch.ones(other_xy.size(0), 1)
+            other_values = torch.ones(other_xy.size(0), 1, device=xy.device)
 
         mask = torch.isnan(other_xy[:, 0]) == 0
         oxy = other_xy[mask]
@@ -72,14 +80,14 @@ class Pooling(torch.nn.Module):
         if not oxy.size(0):
             return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
 
-        oij = ((oxy - xy) / (self.cell_side / pool_size) + self.n * pool_size / 2)
-        range_violations = torch.sum((oij < 0) + (oij >= self.n * pool_size), dim=1)
+        oij = ((oxy - xy) / (self.cell_side / self.pool_size) + self.n * self.pool_size / 2)
+        range_violations = torch.sum((oij < 0) + (oij >= self.n * self.pool_size), dim=1)
         range_mask = range_violations == 0
         oij = oij[range_mask].long()
         other_values = other_values[range_mask]
         if oij.size(0) == 0:
             return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
-        oi = oij[:, 0] * self.n * pool_size + oij[:, 1]
+        oi = oij[:, 0] * self.n * self.pool_size + oij[:, 1]
 
         # slow implementation of occupancy
         # occ = torch.zeros(self.n * self.n, self.pooling_dim, device=xy.device)
@@ -87,9 +95,13 @@ class Pooling(torch.nn.Module):
         #     occ[oii, :] += v
 
         # faster occupancy
-        occ = torch.zeros(self.n**2 * pool_size**2, self.pooling_dim, device=xy.device)
+        occ = torch.zeros(self.n**2 * self.pool_size**2, self.pooling_dim, device=xy.device)
         occ[oi] = other_values
-        occ_2d = occ.view(1, -1, self.n * pool_size, self.n * pool_size)
-        occ_summed = torch.nn.functional.lp_pool2d(occ_2d, 1, pool_size)  # sum is lp with norm=1
+        occ = torch.transpose(occ, 0, 1)
+        occ_2d = occ.view(1, -1, self.n * self.pool_size, self.n * self.pool_size)
+        # blurring (avg with stride 1) has similar effect to bilinear interpolation
+        occ_blurred = torch.nn.functional.avg_pool2d(
+            occ_2d, self.blur_size, 1, int(self.blur_size / 2), count_include_pad=True)
+        occ_summed = torch.nn.functional.lp_pool2d(occ_blurred, 1, self.pool_size)
 
         return occ_summed.view(-1)

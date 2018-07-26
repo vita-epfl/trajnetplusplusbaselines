@@ -5,9 +5,9 @@ import torch
 class PredictionLoss(torch.nn.Module):
     """2D Gaussian with a flat background.
 
-    p(x) = 0.1 + 0.9 * N(x|mu, sigma)
+    p(x) = 0.2 * N(x|mu, 3.0)  +  0.8 * N(x|mu, sigma)
     """
-    def __init__(self, size_average=True, reduce=True, background_rate=0.1):
+    def __init__(self, size_average=True, reduce=True, background_rate=0.2):
         super(PredictionLoss, self).__init__()
         self.size_average = size_average
         self.reduce = reduce
@@ -43,9 +43,14 @@ class PredictionLoss(torch.nn.Module):
         return numerator / denominator
 
     def forward(self, inputs, targets):
+        inputs_bg = inputs.clone()
+        inputs_bg[:, 2] = 3.0  # sigma_x
+        inputs_bg[:, 3] = 3.0  # sigma_y
+        inputs_bg[:, 4] = 0.0  # rho
+
         values = -torch.log(
-            self.background_rate +
-            (1 - self.background_rate) * self.gaussian_2d(inputs, targets)
+            self.background_rate * self.gaussian_2d(inputs_bg, targets) +
+            (1.0 - self.background_rate) * self.gaussian_2d(inputs, targets)
         )
         if not self.reduce:
             return values

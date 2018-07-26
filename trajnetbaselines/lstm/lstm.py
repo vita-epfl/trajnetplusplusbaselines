@@ -17,13 +17,17 @@ def drop_distant(xy, r=5.0):
 
 
 class LSTM(torch.nn.Module):
-    def __init__(self, embedding_dim=64, hidden_dim=128, pool=None):
+    def __init__(self, embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True):
         super(LSTM, self).__init__()
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
-
-        self.input_embedding = InputEmbedding(self.embedding_dim, 4.0)
         self.pool = pool
+        self.pool_to_input = pool_to_input
+
+        if self.pool is not None and self.pool_to_input:
+            self.input_embedding = InputEmbedding(2 + self.pool.out_dim, self.embedding_dim, 4.0)
+        else:
+            self.input_embedding = InputEmbedding(2, self.embedding_dim, 4.0)
         self.encoder = torch.nn.LSTMCell(self.embedding_dim, self.hidden_dim)
         self.decoder = torch.nn.LSTMCell(self.embedding_dim, self.hidden_dim)
 
@@ -31,7 +35,7 @@ class LSTM(torch.nn.Module):
         # mu_vel_x, mu_vel_y, sigma_vel_x, sigma_vel_y, rho
         self.hidden2normal = Hidden2Normal(self.hidden_dim)
 
-    def step(self, lstm, hidden_cell_state, obs1, obs2, detach_hidden_pool=True):
+    def step(self, lstm, hidden_cell_state, obs1, obs2):
         """Do one step: two inputs to one normal prediction."""
         # mask
         track_mask = (torch.isnan(obs1[:, 0]) + torch.isnan(obs2[:, 0])) == 0
@@ -41,14 +45,20 @@ class LSTM(torch.nn.Module):
             torch.stack([c for m, c in zip(track_mask, hidden_cell_state[1]) if m], dim=0),
         ]
 
+        # input embedding and optional pooling
+        if self.pool is None:
+            input_emb = self.input_embedding(obs2 - obs1)
+        elif self.pool_to_input:
+            hidden_states_to_pool = hidden_cell_stacked[0].detach()
+            pooled = self.pool(hidden_states_to_pool, obs1, obs2)
+            input_emb = self.input_embedding(torch.cat([obs2 - obs1, pooled], dim=1))
+        else:
+            input_emb = self.input_embedding(obs2 - obs1)
+            hidden_states_to_pool = hidden_cell_stacked[0].detach()
+            hidden_cell_stacked[0] += self.pool(hidden_states_to_pool, obs1, obs2)
+
         # step
-        coordinate_emb = self.input_embedding(obs2 - obs1)
-        if self.pool is not None:
-            hidden_states_to_pool_in = hidden_cell_stacked[0]
-            if detach_hidden_pool:
-                hidden_states_to_pool_in = hidden_states_to_pool_in.detach()
-            hidden_cell_stacked[0] += self.pool(hidden_states_to_pool_in, obs1, obs2)
-        hidden_cell_stacked = lstm(coordinate_emb, hidden_cell_stacked)
+        hidden_cell_stacked = lstm(input_emb, hidden_cell_stacked)
         normal_masked = self.hidden2normal(hidden_cell_stacked[0])
 
         # unmask

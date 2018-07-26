@@ -102,7 +102,7 @@ def plots(log_files, output_prefix, labels=None):
                 y = np.array([row.get('data_time') / row.get('time') * 100.0
                               for row in data['train']])
                 stride = int(len(x) / (x[-1] - x[0]) / 3.0)  # 3 per epoch
-                if stride > 5:
+                if x[-1] - x[0] > 1.0 and stride > 5:
                     x_binned = np.array([x[i] for i in range(0, len(x), stride)][:-1])
                     y_binned = np.stack([y[i:i + stride] for i in range(0, len(x), stride)][:-1])
                     y_mean = np.mean(y_binned, axis=1)
@@ -126,7 +126,7 @@ def plots(log_files, output_prefix, labels=None):
                 y = np.array([row.get('loss')
                               for row in data['train']])
                 stride = int(len(x) / (x[-1] - x[0]) / 3.0)  # 3 per epoch
-                if stride > 5:
+                if x[-1] - x[0] > 1.0 and stride > 5:
                     x_binned = np.array([x[i] for i in range(0, len(x), stride)][:-1])
                     y_binned = np.stack([y[i:i + stride] for i in range(0, len(x), stride)][:-1])
                     y_mean = np.mean(y_binned, axis=1)
