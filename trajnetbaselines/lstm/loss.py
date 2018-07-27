@@ -49,8 +49,9 @@ class PredictionLoss(torch.nn.Module):
         inputs_bg[:, 4] = 0.0  # rho
 
         values = -torch.log(
+            0.01 +
             self.background_rate * self.gaussian_2d(inputs_bg, targets) +
-            (1.0 - self.background_rate) * self.gaussian_2d(inputs, targets)
+            (0.99 - self.background_rate) * self.gaussian_2d(inputs, targets)
         )
         if not self.reduce:
             return values

@@ -12,7 +12,7 @@ def one_cold(i, n):
 
 class Pooling(torch.nn.Module):
     def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
-                 type_='occupancy', pool_size=8, blur_size=7):
+                 type_='occupancy', pool_size=8, blur_size=0):
         super(Pooling, self).__init__()
         self.cell_side = cell_side
         self.n = n
@@ -108,6 +108,6 @@ class Pooling(torch.nn.Module):
             occ_blurred = occ_2d
 
         occ_summed = torch.nn.functional.lp_pool2d(occ_blurred, 1, self.pool_size)
-        # occ_summed = torch.nn.functional.avg_pool2d(occ_blurred, self.pool_size)  # faster
+        # occ_summed = torch.nn.functional.avg_pool2d(occ_blurred, self.pool_size)  # faster?
 
         return occ_summed.view(-1)
