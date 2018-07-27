@@ -1,5 +1,6 @@
 data/
 output/
+profile_trace*.json
 
 # Python
 venv*/

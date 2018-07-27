@@ -99,9 +99,15 @@ class Pooling(torch.nn.Module):
         occ[oi] = other_values
         occ = torch.transpose(occ, 0, 1)
         occ_2d = occ.view(1, -1, self.n * self.pool_size, self.n * self.pool_size)
-        # blurring (avg with stride 1) has similar effect to bilinear interpolation
-        occ_blurred = torch.nn.functional.avg_pool2d(
-            occ_2d, self.blur_size, 1, int(self.blur_size / 2), count_include_pad=True)
+
+        # optional, blurring (avg with stride 1) has similar effect to bilinear interpolation
+        if self.blur_size:
+            occ_blurred = torch.nn.functional.avg_pool2d(
+                occ_2d, self.blur_size, 1, int(self.blur_size / 2), count_include_pad=True)
+        else:
+            occ_blurred = occ_2d
+
         occ_summed = torch.nn.functional.lp_pool2d(occ_blurred, 1, self.pool_size)
+        # occ_summed = torch.nn.functional.avg_pool2d(occ_blurred, self.pool_size)  # faster
 
         return occ_summed.view(-1)
