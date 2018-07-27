@@ -1,10 +1,7 @@
 """Script to profile trianing.
 
 Run with:
-python tests/profile_train.py \
-   --train-input-files data/train/biwi_eth/0.txt \
-   --val-input-files data/val/biwi_eth/191.txt \
-   --type social
+python -m trajnetbaselines.lstm.profile_train
 """
 
 import torch
@@ -20,7 +17,7 @@ def main():
     pool = trajnetbaselines.lstm.Pooling(type_='social')
     model = trajnetbaselines.lstm.LSTM(pool=pool)
     trainer = trajnetbaselines.lstm.trainer.Trainer(model, device=device)
-    with torch.autograd.profiler.profile() as prof:
+    with torch.autograd.profiler.profile(use_cuda=torch.cuda.is_available()) as prof:
         trainer.train(scenes, epoch=0)
     prof.export_chrome_trace('profile_trace.json')
 
