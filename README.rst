@@ -1,4 +1,5 @@
-## Training LSTM
+Training LSTMs
+==============
 
 `python -m trajnetbaselines.lstm.trainer`
 
@@ -26,3 +27,14 @@
                crowds_zara01/* | 1.08 | 1.05
                crowds_zara02/* | 1.19 | 1.11
          crowds_uni_examples/* | 1.30 | 1.36
+
+
+Good Models
+===========
+
+```
+vanilla_lstm_20180728_202445.pkl
+occupancy_lstm_20180803_055811.pkl
+directional_lstm_20180729_082221.pkl
+social_lstm_20180727_122804.pkl
+```

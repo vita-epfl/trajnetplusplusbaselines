@@ -75,6 +75,10 @@ def eval(input_file):
     olstm_predictor = trajnetbaselines.lstm.LSTMPredictor.load('output/occupancy_lstm.pkl')
     evaluator.aggregate('olstm', olstm_predictor)
 
+    # DLSTM
+    dlstm_predictor = trajnetbaselines.lstm.LSTMPredictor.load('output/directional_lstm.pkl')
+    evaluator.aggregate('dlstm', dlstm_predictor)
+
     # Social LSTM
     slstm_predictor = trajnetbaselines.lstm.LSTMPredictor.load('output/social_lstm.pkl')
     evaluator.aggregate('slstm', slstm_predictor)
@@ -107,7 +111,7 @@ def main():
         pickle.dump(results, f)
 
     print('## Average L2 [m]')
-    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM | S-LSTM'.format(dataset=''))
+    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM | D-LSTM | S-LSTM'.format(dataset=''))
     for dataset, (r, _, _) in results.items():
         print(
             '{dataset:>30s}'
@@ -115,12 +119,13 @@ def main():
             ' | {r[kf]:.2f}'
             ' | {r[lstm]:.2f}'
             ' |  {r[olstm]:.2f} '
+            ' |  {r[dlstm]:.2f} '
             ' |  {r[slstm]:.2f}'.format(dataset=dataset, r=r)
         )
 
     print('')
     print('## Average L2 (non-linear sequences) [m]')
-    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM | S-LSTM'.format(dataset=''))
+    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM | D-LSTM | S-LSTM'.format(dataset=''))
     for dataset, (_, r, _) in results.items():
         print(
             '{dataset:>30s}'
@@ -128,12 +133,13 @@ def main():
             ' | {r[kf]:.2f}'
             ' | {r[lstm]:.2f}'
             ' |  {r[olstm]:.2f} '
+            ' |  {r[dlstm]:.2f} '
             ' |  {r[slstm]:.2f}'.format(dataset=dataset, r=r)
         )
 
     print('')
     print('## Final L2 [m]')
-    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM | S-LSTM'.format(dataset=''))
+    print('{dataset:>30s} |   N  |  Lin | LSTM | O-LSTM | D-LSTM | S-LSTM'.format(dataset=''))
     for dataset, (_, _, r) in results.items():
         print(
             '{dataset:>30s}'
@@ -141,6 +147,7 @@ def main():
             ' | {r[kf]:.2f}'
             ' | {r[lstm]:.2f}'
             ' |  {r[olstm]:.2f} '
+            ' |  {r[dlstm]:.2f} '
             ' |  {r[slstm]:.2f}'.format(dataset=dataset, r=r)
         )
 
