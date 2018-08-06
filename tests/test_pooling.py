@@ -22,6 +22,26 @@ def test_simple_grid():
     ]]
 
 
+def test_simple_grid_directional():
+    pool = trajnetbaselines.lstm.Pooling(n=2, pool_size=4, type_='directional')
+    obs1 = torch.Tensor([
+        [0.0, 0.0],
+        [-1.0, -1.0],
+    ])
+    obs2 = torch.Tensor([
+        [0.1, 0.1],
+        [-1.1, -1.1],
+    ])
+    occupancies = pool.directional(obs1, obs2).numpy().tolist()
+    assert occupancies == pytest.approx(np.array([[
+        -0.1, 0, 0, 0,
+        -0.1, 0, 0, 0,
+    ], [
+        0, 0, 0, 0.1,
+        0, 0, 0, 0.1,
+    ]]), abs=0.01)
+
+
 def test_simple_grid_midpoint():
     """Testing a midpoint between grid cells.
 
