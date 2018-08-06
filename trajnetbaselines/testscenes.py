@@ -40,7 +40,7 @@ def linear_random(scene_id, start_frame, perpendicular_distance=0.2, random_radi
 def opposing(scene_id, start_frame, perpendicular_distance=0.2):
     person0 = [TrackRow(start_frame + i * 10, 0, -5.0 + i * 0.5, 0.0)
                for i in range(21)]
-    person1 = [TrackRow(start_frame + i * 10, 1, 5.0 - i * 0.5, perpendicular_distance)
+    person1 = [TrackRow(start_frame + i * 10, 1, 10.0 - i * 0.5, perpendicular_distance)
                for i in range(21)]
 
     scene = SceneRow(scene_id, 0, start_frame, start_frame + 200)

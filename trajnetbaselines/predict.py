@@ -32,6 +32,14 @@ def predict(ground_truth, output_file):
                 color='green', label='O-LSTM', marker='o', markersize=2.5)
         ax.plot([olstmp[-1].x], [olstmp[-1].y], color='green', marker='o', linestyle='None')
 
+        # DLSTM prediction
+        dlstm_predictor = lstm.LSTMPredictor.load('output/directional_lstm.pkl')
+        dlstmp = dlstm_predictor(ground_truth)
+        ax.plot([ground_truth[0][8].x] + [r.x for r in dlstmp],
+                [ground_truth[0][8].y] + [r.y for r in dlstmp],
+                color='purple', label='D-LSTM', marker='o', markersize=2.5)
+        ax.plot([dlstmp[-1].x], [dlstmp[-1].y], color='purple', marker='o', linestyle='None')
+
         # SLSTM prediction
         slstm_predictor = lstm.LSTMPredictor.load('output/social_lstm.pkl')
         slstmp = slstm_predictor(ground_truth)
