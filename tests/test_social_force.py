@@ -134,15 +134,15 @@ def test_crossing_narrow():
 
 def test_opposite():
     initial_state = np.array([
-        [0.0, 0.0, 0.5, 0.0],
-        [0.3, 10.0, -0.5, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [-0.3, 10.0, -1.0, 0.0],
     ])
     destinations = np.array([
         [0.0, 10.0],
-        [0.3, 0.0],
+        [-0.3, 0.0],
     ])
     s = trajnetbaselines.socialforce.SocialForceSim(initial_state, destinations)
-    states = np.stack([s.step().state.copy() for _ in range(40)])
+    states = np.stack([s.step().state.copy() for _ in range(21)])
 
     # visualize
     print('')
