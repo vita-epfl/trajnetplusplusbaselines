@@ -1,7 +1,11 @@
 Training LSTMs
 ==============
 
-`python -m trajnetbaselines.lstm.trainer`
+The training script and its help menu:
+``python -m trajnetbaselines.lstm.trainer --help``
+
+Create the table below with:
+``python -m trajnetbaselines.eval``
 
 
 .. code-block::
