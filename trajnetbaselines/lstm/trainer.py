@@ -6,13 +6,14 @@ import logging
 import time
 import random
 
+import numpy as np
 import torch
 import trajnettools
 
 from .. import augmentation
 from .loss import PredictionLoss
 from .lstm import LSTM, LSTMPredictor, drop_distant
-from .pooling import Pooling
+from .pooling import Pooling, HiddenStateMLPPooling
 from .. import __version__ as VERSION
 
 
@@ -43,6 +44,35 @@ class Trainer(object):
         for param_group in self.optimizer.param_groups:
             return param_group['lr']
 
+    def is_nonlinear_for_final_point(self, scene, distance_threshold=1.0):
+        # check linear extrapolation is off enough to make this interesting
+        primary_path = scene[:, 0]
+        linear_prediction = primary_path[8] + 12.0 / 3.0 * (primary_path[8] - primary_path[5])
+        prediction_diff = primary_path[20] - linear_prediction
+        d2 = prediction_diff[0]**2 + prediction_diff[1]**2
+        # print(d, primary_path, linear_prediction)
+        return d2 > distance_threshold**2
+
+    def is_nonlinear(self, scene):
+        primary_path = scene[:, 0]
+        primary_velocities = primary_path[1:] - primary_path[:-1]
+        primary_accelerations = primary_velocities[1:] - primary_velocities[:-1]
+        primary_accelerations2 = np.sum(np.square(primary_accelerations), axis=1)
+        distances_2 = np.sum(np.square(scene[:, 1:] - scene[:, 0:1]), axis=2)
+        for acc2, d2 in zip(primary_accelerations2, distances_2):
+            if acc2 < 0.1**2:
+                continue
+
+            smallest_distance2 = np.nanmin(d2)
+            if smallest_distance2 != smallest_distance2:
+                continue
+            if smallest_distance2 > 2.0**2:
+                continue
+
+            return True
+
+        return False
+
     def train(self, scenes, epoch):
         start_time = time.time()
 
@@ -55,6 +85,12 @@ class Trainer(object):
         for scene_i, (_, scene) in enumerate(scenes):
             scene_start = time.time()
             scene = drop_distant(scene)
+
+            # if self.is_nonlinear(scene) and random.random() < 0.9:
+            #     # print('drop')
+            #     continue
+            # print('continue')
+
             scene = augmentation.random_rotation(scene)
             scene = torch.Tensor(scene).to(self.device)
             preprocess_time = time.time() - scene_start
@@ -146,7 +182,7 @@ def main(epochs=35):
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
     parser.add_argument('--type', default='vanilla',
-                        choices=('vanilla', 'occupancy', 'directional', 'social'),
+                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp'),
                         help='type of LSTM to train')
     parser.add_argument('--train-input-files', default='data/train/**/*.ndjson',
                         help='glob expression for train input files')
@@ -213,13 +249,15 @@ def main(epochs=35):
 
     # read in datasets
     train_scenes = list(trajnettools.load_all(args.train_input_files,
-                                              sample={'syi.ndjson': 0.05}))
+                                              sample={'syi.ndjson': 0.0}))
     val_scenes = list(trajnettools.load_all(args.val_input_files,
-                                            sample={'syi.ndjson': 0.05}))
+                                            sample={'syi.ndjson': 0.0}))
 
     # create model
     pool = None
-    if args.type != 'vanilla':
+    if args.type == 'hiddenstatemlp':
+        pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim)
+    elif args.type != 'vanilla':
         pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim)
     model = LSTM(pool=pool,
                  embedding_dim=args.coordinate_embedding_dim,

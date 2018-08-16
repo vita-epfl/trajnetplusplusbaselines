@@ -88,3 +88,29 @@ def test_embedding_shape():
     embedding = pool(None, None, obs)
     assert embedding.size(0) == 2
     assert embedding.size(1) == 128
+
+
+def test_hiddenstatemlp_rel_pos():
+    positions = torch.Tensor([
+        [0.0, 0.0],
+        [1.0, 1.0],
+    ])
+    rel = trajnetbaselines.lstm.pooling.HiddenStateMLPPooling.rel_obs(positions)
+    assert rel.numpy().tolist() == [[
+        [0.0, 0.0],
+        [1.0, 1.0],
+    ], [
+        [-1.0, -1.0],
+        [0.0, 0.0],
+    ]]
+
+
+def test_hiddenstatemlp():
+    positions = torch.Tensor([
+        [0.0, 0.0],
+        [1.0, 1.0],
+        [2.0, 2.0],
+    ])
+    hidden = torch.zeros(3, 128)
+    pool = trajnetbaselines.lstm.pooling.HiddenStateMLPPooling()
+    result = pool(hidden, None, positions)

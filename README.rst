@@ -33,7 +33,7 @@ Good Models
 ===========
 
 ```
-vanilla_lstm_20180728_202445.pkl
+vanilla_lstm_20180728_202445.pkl, vanilla_lstm_20180807_055813.pkl wo syi
 occupancy_lstm_20180803_055811.pkl
 directional_lstm_20180729_082221.pkl
 social_lstm_20180727_122804.pkl

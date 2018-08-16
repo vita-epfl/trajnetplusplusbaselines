@@ -48,6 +48,14 @@ def predict(ground_truth, output_file):
                 color='red', label='Social LSTM', marker='o', markersize=2.5)
         ax.plot([slstmp[-1].x], [slstmp[-1].y], color='red', marker='o', linestyle='None')
 
+        # Hidden MLP prediction
+        hmlp_predictor = lstm.LSTMPredictor.load('output/hiddenmlp_lstm.pkl')
+        hmlpp = hmlp_predictor(ground_truth)
+        ax.plot([ground_truth[0][8].x] + [r.x for r in hmlpp],
+                [ground_truth[0][8].y] + [r.y for r in hmlpp],
+                color='brown', label='HiddenMLP LSTM', marker='o', markersize=2.5)
+        ax.plot([hmlpp[-1].x], [hmlpp[-1].y], color='brown', marker='o', linestyle='None')
+
 
 def main():
     parser = argparse.ArgumentParser()

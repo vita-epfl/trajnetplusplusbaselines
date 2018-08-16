@@ -80,13 +80,12 @@ def plots(log_files, output_prefix, labels=None):
             if 'val-epoch' in data:
                 x = [row.get('epoch') for row in data['val-epoch']]
                 y = [row.get('loss') for row in data['val-epoch']]
-                val_line, = ax.plot(x, y, label=label + ' (val)')
+                val_line, = ax.plot(x, y, label=label)
                 val_color = val_line.get_color()
             if 'train-epoch' in data:
                 x = [row.get('epoch') for row in data['train-epoch']]
                 y = [row.get('loss') for row in data['train-epoch']]
-                ax.plot(x, y, label=label + ' (train)',
-                        color=val_color, linestyle='dotted')
+                ax.plot(x, y, color=val_color, linestyle='dotted')
 
         ax.set_xlabel('epoch')
         ax.set_ylabel('loss')
@@ -139,7 +138,7 @@ def plots(log_files, output_prefix, labels=None):
 
         ax.set_xlabel('epoch')
         ax.set_ylabel('training loss')
-        ax.set_ylim(-5, 2)
+        ax.set_ylim(-5, 6)
         if min(y_mean) > -0.1:
             ax.set_yscale('log', nonposy='clip')
         ax.legend()

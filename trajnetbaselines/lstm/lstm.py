@@ -12,6 +12,10 @@ NAN = float('nan')
 
 def drop_distant(xy, r=5.0):
     distance_2 = np.sum(np.square(xy - xy[:, 0:1]), axis=2)
+    if not all(any(e == e for e in column) for column in distance_2.T):
+        print(distance_2.tolist())
+        print(np.nanmin(distance_2, axis=0))
+        raise Exception
     mask = np.nanmin(distance_2, axis=0) < r**2
     return xy[:, mask]
 

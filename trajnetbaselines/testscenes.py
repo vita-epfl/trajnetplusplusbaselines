@@ -81,12 +81,15 @@ def main():
         linear_random(4, 4000, perpendicular_distance=1.0, random_radius=0.5) +
         opposing(5, 5000, perpendicular_distance=0.2) +
         opposing(6, 6000, perpendicular_distance=1.5) +
-        sf_opposing(7, 7000)
+        sf_opposing(7, 7000, perpendicular_distance=-0.3) +
+        sf_opposing(8, 8000, perpendicular_distance=0.3)
     ).map(trajnettools.writers.trajnet).saveAsTextFile('data/testscenes.ndjson')
 
     (sc
      .parallelize(range(1000))
-     .flatMap(lambda i: sf_opposing(i, i*1000))
+     .flatMap(lambda i:
+              sf_opposing(i, i*1000,
+                          perpendicular_distance=((i % 2) - 0.5) * 2.0 * 0.3))
      .map(trajnettools.writers.trajnet)
      .saveAsTextFile('data/socialforce_overtrain.ndjson'))
 
