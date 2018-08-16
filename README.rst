@@ -7,28 +7,31 @@ Training LSTMs
 .. code-block::
 
     ## Average L2 [m]
-                                   |  Lin | LSTM
-                        biwi_eth/* | 0.71 | 0.85
-                      biwi_hotel/* | 0.56 | 0.71
-                   crowds_zara01/* | 0.61 | 0.65
-                   crowds_zara02/* | 0.67 | 0.65
-             crowds_uni_examples/* | 0.73 | 0.81
+                                   |   N  |  Lin | LSTM | O-LSTM | D-LSTM | S-LSTM
+                    val/biwi_hotel |    6 | 1.15 | 0.86 |  0.83  |  0.87  |  0.78
+                 val/crowds_zara02 |  158 | 0.58 | 0.46 |  0.46  |  0.46  |  0.47
+                 val/crowds_zara03 |   35 | 0.58 | 0.42 |  0.39  |  0.41  |  0.39
+            val/crowds_students001 |  378 | 0.69 | 0.44 |  0.44  |  0.44  |  0.43
+            val/crowds_students003 |  217 | 0.79 | 0.51 |  0.50  |  0.51  |  0.50
+                      val/dukemtmc |  144 | 1.16 | 0.80 |  0.79  |  0.80  |  0.80
 
     ## Average L2 (non-linear sequences) [m]
-                                   |  Lin | LSTM
-                        biwi_eth/* | 1.19 | 1.00
-                      biwi_hotel/* | 0.98 | 0.96
-                   crowds_zara01/* | 1.13 | 0.86
-                   crowds_zara02/* | 1.26 | 0.94
-             crowds_uni_examples/* | 1.45 | 1.18
+                                   |   N  |  Lin | LSTM | O-LSTM | D-LSTM | S-LSTM
+                    val/biwi_hotel |    3 | 1.45 | 0.86 |  0.82  |  0.80  |  0.72
+                 val/crowds_zara02 |   62 | 1.11 | 0.74 |  0.73  |  0.75  |  0.76
+                 val/crowds_zara03 |   13 | 1.05 | 0.56 |  0.57  |  0.55  |  0.56
+            val/crowds_students001 |  151 | 1.13 | 0.60 |  0.60  |  0.60  |  0.59
+            val/crowds_students003 |   94 | 1.20 | 0.65 |  0.65  |  0.65  |  0.64
+                      val/dukemtmc |   58 | 2.05 | 1.16 |  1.15  |  1.17  |  1.15
 
     ## Final L2 [m]
-                                   |  Lin | LSTM
-                        biwi_eth/* | 1.28 | 1.29
-                      biwi_hotel/* | 0.97 | 1.09
-                   crowds_zara01/* | 1.08 | 1.05
-                   crowds_zara02/* | 1.19 | 1.11
-             crowds_uni_examples/* | 1.30 | 1.36
+                                   |   N  |  Lin | LSTM | O-LSTM | D-LSTM | S-LSTM
+                    val/biwi_hotel |    6 | 2.51 | 1.99 |  1.93  |  2.03  |  1.76
+                 val/crowds_zara02 |  158 | 1.11 | 0.99 |  0.99  |  0.99  |  1.03
+                 val/crowds_zara03 |   35 | 1.08 | 0.91 |  0.86  |  0.90  |  0.87
+            val/crowds_students001 |  378 | 1.31 | 0.97 |  0.97  |  0.96  |  0.95
+            val/crowds_students003 |  217 | 1.49 | 1.11 |  1.08  |  1.10  |  1.09
+                      val/dukemtmc |  144 | 2.16 | 1.71 |  1.70  |  1.71  |  1.69
 
 
 Good Models
