@@ -37,7 +37,14 @@ Create the table below with:
             val/crowds_students003 |  217 | 1.49 | 1.11 |  1.08  |  1.10  |  1.09
                       val/dukemtmc |  144 | 2.16 | 1.71 |  1.70  |  1.71  |  1.69
 
-
+    ## Collision [-]
+                                   |   N  |  Lin | LSTM | O-LSTM | D-LSTM | S-LSTM
+                    val/biwi_hotel |    6 |    0 |    0 |     0  |     0  |     0
+                 val/crowds_zara02 |  177 |    0 |    0 |     0  |     0  |     0
+                 val/crowds_zara03 |   33 |    0 |    0 |     0  |     0  |     0
+            val/crowds_students001 |  404 |    0 |    0 |     0  |     0  |     0
+            val/crowds_students003 |  224 |    0 |    0 |     0  |     0  |     0
+                      val/dukemtmc |  144 |    0 |    0 |     0  |     0  |     0
 Good Models
 ===========
 
