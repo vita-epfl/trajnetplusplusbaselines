@@ -154,9 +154,9 @@ class Trainer(object):
         # targets = targets[truncate_n:]
 
         self.optimizer.zero_grad()
-        outputs = self.model(observed, prediction_truth)
+        rel_outputs, outputs = self.model(observed, prediction_truth)
 
-        loss = self.criterion(outputs, targets)
+        loss = self.criterion(rel_pred_scene[:, 0], targets)
         loss.backward()
 
         self.optimizer.step()
@@ -167,10 +167,10 @@ class Trainer(object):
         prediction_truth = xy[9:-1].clone()  ## CLONE
 
         with torch.no_grad():
-            outputs = self.model(observed, prediction_truth)
+            rel_outputs, outputs = self.model(observed, prediction_truth)
 
             targets = xy[2:, 0] - xy[1:-1, 0]
-            loss = self.criterion(outputs, targets)
+            loss = self.criterion(rel_pred_scene[:, 0], targets)
 
         return loss.item()
 
@@ -277,12 +277,13 @@ def main(epochs=35):
         pretrained_params = set(pretrained_state_dict.keys())
         untrained_params = [p for n, p in model.named_parameters()
                             if n not in pretrained_params]
-        pre_optimizer = torch.optim.Adam(untrained_params, lr=args.pre_lr, weight_decay=1e-4)
-        pre_lr_scheduler = torch.optim.lr_scheduler.StepLR(pre_optimizer, args.pre_lr_div_schedule)
-        pre_trainer = Trainer(model, optimizer=pre_optimizer,
-                              lr_scheduler=pre_lr_scheduler, device=args.device)
-        for pre_epoch in range(-args.pre_epochs, 0):
-            pre_trainer.train(train_scenes, epoch=pre_epoch)
+        if untrained_params: ## IF condition New
+            pre_optimizer = torch.optim.Adam(untrained_params, lr=args.pre_lr, weight_decay=1e-4)
+            pre_lr_scheduler = torch.optim.lr_scheduler.StepLR(pre_optimizer, args.pre_lr_div_schedule)
+            pre_trainer = Trainer(model, optimizer=pre_optimizer,
+                                  lr_scheduler=pre_lr_scheduler, device=args.device)
+            for pre_epoch in range(-args.pre_epochs, 0):
+                pre_trainer.train(train_scenes, epoch=pre_epoch)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
     trainer = Trainer(model, optimizer=optimizer, device=args.device)
