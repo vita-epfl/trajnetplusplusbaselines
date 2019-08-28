@@ -142,6 +142,58 @@ class TrajnetEvaluator:
 
         return self
 
+    def kf_aggregate(self, name, disable_collision):
+
+        ## Overall Scores
+        average = 0.0
+        final = 0.0
+        glob_collision = 0
+        prediction_collision = 0
+
+        ## Aggregates ADE, FDE and Collision in GT & Pred for each category 
+        score = {1: [0.0, 0.0, 0, 0], 2: [0.0, 0.0, 0, 0], 3: [0.0, 0.0, 0, 0], 4: [0.0, 0.0, 0, 0]}
+
+        ## Iterate
+        for i in range(len(self.scenes_gt)):
+            ground_truth = self.scenes_gt[i]
+
+            ## Extract Prediction Frames
+            kalman_prediction = trajnetbaselines.kalman.predict(ground_truth)
+
+            average_l2 = trajnettools.metrics.average_l2(ground_truth[0], kalman_prediction)
+            final_l2 = trajnettools.metrics.final_l2(ground_truth[0], kalman_prediction)
+
+            # aggregate FDE and ADE
+            average += average_l2
+            final += final_l2
+            for key in list(score.keys()):
+                if self.scenes_id_gt[i] in self.indexes[key]:
+                    score[key][0] += average_l2
+                    score[key][1] += final_l2
+
+        #print(index_collision, len(index_collision))
+        ## Average ADE and FDE
+        average /= len(self.scenes_gt)
+        final /= len(self.scenes_gt)
+        for key in list(score.keys()):
+            if self.indexes[key]:
+                score[key][0] /= len(self.indexes[key])
+                score[key][1] /= len(self.indexes[key])
+
+        ##Adding value to dict
+        self.average_l2[name] = average
+        self.final_l2[name] = final
+        self.final_collision[name] = glob_collision
+        self.prediction_collision[name] = prediction_collision
+
+        self.static_scenes[name] = score[1]
+        self.linear_scenes[name] = score[2]
+        self.forced_non_linear_scenes[name] = score[3]
+        self.non_linear_scenes[name] = score[4]
+
+
+        return self
+
     def result(self):
         return self.average_l2, self.final_l2, self.static_scenes, self.linear_scenes, \
                self.forced_non_linear_scenes, self.non_linear_scenes, self.final_collision,\
@@ -216,23 +268,18 @@ def main():
             j -= 1
         names.append(model[j+1:].replace('.pkl', ''))
 
+    print("NAMES: ", names)
+
     overall = {}
     for name in names:
         list_sub = sorted([f for f in os.listdir(args.data + name)
                            if not f.startswith('.')])
-        list_true = sorted([f for f in os.listdir(args.data.replace('pred', 'private'))
-                            if not f.startswith('.')])
-
-        if not list_sub == list_true:
-#############################################################################################################
-        ## Models Predictions should be subset of True Predictions ????? Should be EQUAL
-#############################################################################################################
-            raise Exception('Names of the submitted file are not correct')
 
         submit_datasets = [args.data + name + '/' + f for f in list_sub]
         true_datasets = [args.data.replace('pred', 'private') + f for f in list_sub]
 
         print(name)
+        print("Submit Datasets:", submit_datasets)
         # print(submit_datasets[i].replace(args.data, '').replace('.ndjson', ''))
         ## Evaluate submitted datasets with True Datasets [The main eval function]
         results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
@@ -259,25 +306,6 @@ def main():
             overall[name]['4'] += np.array([f['N'], f['kf'][0] * f['N'], f['kf'][1] * f['N'],
                                             f['kf'][2], f['kf'][3]])
         print('')
-
-
-        # final_results = []
-        # final_results += [int(overall[name]['o_all'][0]),                               ## N
-        #                   overall[name]['o_all'][1] / overall[name]['o_all'][0],        ## ADE
-        #                   overall[name]['o_all'][2] / overall[name]['o_all'][0],        ## FDE
-        #                   int(overall[name]['o_all'][3]) / overall[name]['o_all'][0],   ## GT Col
-        #                   int(overall[name]['o_all'][4]) / overall[name]['o_all'][0]]   ## Pred Col
-
-        # for i in range(1, 5):
-        #     if overall[name][str(i)][0] == 0:
-        #         final_results += [0.0, 0.0, 0.0]
-        #     else:
-        #         final_results += [int(overall[name][str(i)][0]), overall[name][str(i)][1] / overall[name][str(i)][0],
-        #                           overall[name][str(i)][2] / overall[name][str(i)][0]]
-
-        # radar_chart(name, final_results, 'real', prediction_col)
-
-
 
     print('')
     ## Display Results
@@ -330,6 +358,21 @@ def main():
             '  | {final_results[24]:.1f} |'
             .format(dataset=name, global_grade=global_grade, final_results=final_results))
 
+        # final_results = []
+        # final_results += [int(overall[name]['o_all'][0]),                               ## N
+        #                   overall[name]['o_all'][1] / overall[name]['o_all'][0],        ## ADE
+        #                   overall[name]['o_all'][2] / overall[name]['o_all'][0],        ## FDE
+        #                   int(overall[name]['o_all'][3]) / overall[name]['o_all'][0],   ## GT Col
+        #                   int(overall[name]['o_all'][4]) / overall[name]['o_all'][0]]   ## Pred Col
+
+        # for i in range(1, 5):
+        #     if overall[name][str(i)][0] == 0:
+        #         final_results += [0.0, 0.0, 0.0]
+        #     else:
+        #         final_results += [int(overall[name][str(i)][0]), overall[name][str(i)][1] / overall[name][str(i)][0],
+        #                           overall[name][str(i)][2] / overall[name][str(i)][0]]
+
+        # radar_chart(name, final_results, 'real', prediction_col)
 # def radar_chart(name, final_results, type_, prediction_col):
 #     # Set data
 
