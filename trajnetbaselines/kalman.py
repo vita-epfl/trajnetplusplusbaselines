@@ -4,6 +4,7 @@ import trajnettools
 
 
 def predict(paths):
+    multimodal_outputs = {}
     neighbours_tracks = []
     for i, path in enumerate(paths):
         path = paths[i]
@@ -43,9 +44,10 @@ def predict(paths):
                 predictions += pred
         predictions /= 5.0
         if i == 0:
-            primary_track = [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id, x, y)
-            for i, (x, y) in enumerate(predictions[1:])]
+            primary_track = [trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
+            for j, (x, y) in enumerate(predictions[1:])]
         else:
-            neighbours_tracks.append([trajnettools.TrackRow(first_frame + i * frame_diff, ped_id, x, y)
-            for i, (x, y) in enumerate(predictions[1:])])
-    return primary_track, neighbours_tracks
+            neighbours_tracks.append([trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
+            for j, (x, y) in enumerate(predictions[1:])])
+    multimodal_outputs[0] = primary_track, neighbours_tracks
+    return multimodal_outputs

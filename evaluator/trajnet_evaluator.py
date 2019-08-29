@@ -5,12 +5,14 @@ import os
 import warnings
 import evaluator.write as write
 import argparse
+import socialforce as sf
 
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 import pandas as pd
 from collections import OrderedDict
 from trajnetbaselines import kalman
+from trajnetbaselines import socialforce
 
 class TrajnetEvaluator:
     def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes):
@@ -38,7 +40,7 @@ class TrajnetEvaluator:
         self.final_collision = {'N': len(scenes_gt)}
         self.prediction_collision = {'N': len(scenes_gt)}
 
-    def aggregate(self, name, disable_collision):
+    def aggregate(self, name, disable_collision, kf=False):
 
         ## Overall Scores
         average = 0.0
@@ -49,50 +51,42 @@ class TrajnetEvaluator:
         ## Aggregates ADE, FDE and Collision in GT & Pred for each category 
         score = {1: [0.0, 0.0, 0, 0], 2: [0.0, 0.0, 0, 0], 3: [0.0, 0.0, 0, 0], 4: [0.0, 0.0, 0, 0]}
 
-        if self.scenes_sub: 
-            ## Number of future trajectories proposed by the model #Multimodality
-            num_predictions = 0
-            tmp_prediction = {}
-            for track in self.scenes_sub[0][0]:
-                if track.prediction_number and track.prediction_number > num_predictions:
-                    num_predictions = scene.prediction_number
-            ## Max. 3 trajectories can only be outputted
-            if num_predictions > 2:
-                warnings.warn("3 predictions at most")
-                num_predictions = 2
+        ## Number of future trajectories proposed by the model #Multimodality
+        num_predictions = 0
+        tmp_prediction = {}
+        for track in self.scenes_sub[0][0]:
+            if track.prediction_number and track.prediction_number > num_predictions:
+                num_predictions = scene.prediction_number
+        ## Max. 3 trajectories can only be outputted
+        if num_predictions > 2:
+            warnings.warn("3 predictions at most")
+            num_predictions = 2
 
         ## Iterate
         for i in range(len(self.scenes_gt)):
             ground_truth = self.scenes_gt[i]
             
-            if self.scenes_sub: 
-                ## Extract Prediction Frames
-                primary_tracks = [t for t in self.scenes_sub[i][0] if t.scene_id == self.scenes_id_gt[i]]
-                neighbours_tracks = [[t for t in self.scenes_sub[i][j] if t.scene_id == self.scenes_id_gt[i]] for j in range(1, len(self.scenes_sub[i]))]
-                # print(primary_tracks)
-                # print(neighbours_tracks)
+            ## Extract Prediction Frames
+            primary_tracks = [t for t in self.scenes_sub[i][0] if t.scene_id == self.scenes_id_gt[i]]
+            neighbours_tracks = [[t for t in self.scenes_sub[i][j] if t.scene_id == self.scenes_id_gt[i]] for j in range(1, len(self.scenes_sub[i]))]
 
-                l2 = 1e10
-                for np in range(num_predictions + 1):
-                    primary_prediction = [t for t in primary_tracks if t.prediction_number == np]
-                    tmp_score = trajnettools.metrics.final_l2(ground_truth[0], primary_prediction)
-                    if tmp_score < l2:
-                        best_prediction_number = np
-                        l2 = tmp_score
 
-                primary_tracks = [t for t in primary_tracks if t.prediction_number == best_prediction_number]
-                neighbours_tracks = [[t for t in neighbours_tracks[j] if t.prediction_number == best_prediction_number] for j in range(len(neighbours_tracks))]
+            l2 = 1e10
+            for np in range(num_predictions + 1):
+                primary_prediction = [t for t in primary_tracks if t.prediction_number == np]
+                tmp_score = trajnettools.metrics.final_l2(ground_truth[0], primary_prediction)
+                if tmp_score < l2:
+                    best_prediction_number = np
+                    l2 = tmp_score
 
-                frame_gt = [t.frame for t in ground_truth[0]][-12:]
-                frame_pred = [t.frame for t in primary_tracks]
-                # print(ground_truth[0])
-                # print(primary_tracks)
-                ## To verify if talking about same scene
-                if frame_gt != frame_pred:
-                    raise Exception('frame numbers are not consistent')
-            else:
-                ## Extract Prediction Frames
-                primary_tracks, neighbours_tracks = kalman.predict(ground_truth)
+            primary_tracks = [t for t in primary_tracks if t.prediction_number == best_prediction_number]
+            neighbours_tracks = [[t for t in neighbours_tracks[j] if t.prediction_number == best_prediction_number] for j in range(len(neighbours_tracks))]
+
+            frame_gt = [t.frame for t in ground_truth[0]][-12:]
+            frame_pred = [t.frame for t in primary_tracks]
+            ## To verify if talking about same scene
+            if frame_gt != frame_pred:
+                raise Exception('frame numbers are not consistent')
 
             average_l2 = trajnettools.metrics.average_l2(ground_truth[0], primary_tracks)
             final_l2 = trajnettools.metrics.final_l2(ground_truth[0], primary_tracks)
@@ -124,7 +118,6 @@ class TrajnetEvaluator:
                     score[key][0] += average_l2
                     score[key][1] += final_l2
 
-        #print(index_collision, len(index_collision))
         ## Average ADE and FDE
         average /= len(self.scenes_gt)
         final /= len(self.scenes_gt)
@@ -143,7 +136,6 @@ class TrajnetEvaluator:
         self.linear_scenes[name] = score[2]
         self.forced_non_linear_scenes[name] = score[3]
         self.non_linear_scenes[name] = score[4]
-
 
         return self
 
@@ -165,22 +157,17 @@ def eval(gt, input_file, disable_collision, args):
     for i in range(1,5):
         indexes[i] = []
     for scene in reader_gt.scenes_by_id:
-        # print("Scene:", scene)
         for ii in range(1, 5):
-            # if reader_gt.scenes_by_id[scene].tag == ii:
             if ii in reader_gt.scenes_by_id[scene].tag:
                 indexes[ii].append(scene)
 
-    if input_file:
-        # Scene Predictions
-        reader_sub = trajnettools.Reader(input_file, scene_type='paths')
-        scenes_sub = [s for _, s in reader_sub.scenes()]
-    else:
-        scenes_sub = None
+    # Scene Predictions
+    reader_sub = trajnettools.Reader(input_file, scene_type='paths')
+    scenes_sub = [s for _, s in reader_sub.scenes()]
 
+    # Evaluate
     evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes)
-    evaluator.aggregate('kf', disable_collision)
-
+    evaluator.aggregate('kf', disable_collision, kalman)
     return evaluator.result()
 
 def main():
@@ -201,7 +188,7 @@ def main():
     ## Path to the data folder name to predict 
     args.data = 'DATA_BLOCK/' + args.data + '/'
 
-    ## Train_pred or Test_pred : Folders for saving model predictions
+    ## Test_pred : Folders for saving model predictions
     args.data = args.data + args.test_path + '_pred/'
 
     ## Writes to Test_pred
@@ -209,42 +196,27 @@ def main():
     if not args.disable_write:
         write.main(args)
 
-
     ## Evaluates test_pred with test_private
     names = []
     for model in args.output:
-        j = -1
-        while model[j] != '/':
-            j -= 1
-        names.append(model[j+1:].replace('.pkl', ''))
+        names.append(model.split('/')[-1].replace('.pkl', ''))
 
-    print("NAMES: ", names)
-    names.append('kalman')
-    
     overall = {}
     for name in names:
-        if name != 'kalman':
-            list_sub = sorted([f for f in os.listdir(args.data + name)
-                               if not f.startswith('.')])
+        list_sub = sorted([f for f in os.listdir(args.data + name)
+                           if not f.startswith('.')])
 
-            submit_datasets = [args.data + name + '/' + f for f in list_sub]
-            true_datasets = [args.data.replace('pred', 'private') + f for f in list_sub]
+        submit_datasets = [args.data + name + '/' + f for f in list_sub]
+        true_datasets = [args.data.replace('pred', 'private') + f for f in list_sub]
 
-            print(name)
-            print("Submit Datasets:", submit_datasets)
-            print("True Datasets:", true_datasets)
+        print(name)
 
-            # print(submit_datasets[i].replace(args.data, '').replace('.ndjson', ''))
-            ## Evaluate submitted datasets with True Datasets [The main eval function]
-            results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
-                       eval(true_datasets[i], submit_datasets[i], args.disable_collision, args)
-                       for i in range(len(true_datasets))}
-        else:
-            results = {'kalman': 
-                       eval(true_datasets[i], None, args.disable_collision, args)
-                       for i in range(len(true_datasets))}            
+        ## Evaluate submitted datasets with True Datasets [The main eval function]
+        results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
+                   eval(true_datasets[i], submit_datasets[i], args.disable_collision, args)
+                   for i in range(len(true_datasets))}
 
-        print("Results: ", results)
+        # print("Results: ", results)
         ## Give result stats to overall dict
         overall[name] = {}
         overall[name]['o_all'] = np.array([0, 0.0, 0.0, 0.0, 0.0])
@@ -443,6 +415,11 @@ def main():
 #     plt.savefig('radar_chart_' + name + type_ +'.png', bbox_inches='tight')
 #     plt.show()
 #     plt.close()
+
+        # j = -1
+        # while model[j] != '/':
+        #     j -= 1
+        # names.append(model[j+1:].replace('.pkl', ''))
 
 if __name__ == '__main__':
     main()
