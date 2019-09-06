@@ -5,13 +5,13 @@ import datetime
 import logging
 import time
 import random
-
+import os 
 import numpy as np
 import torch
 import trajnettools
 
 from .. import augmentation
-from .loss import PredictionLoss
+from .loss import PredictionLoss, L2Loss
 from .lstm import LSTM, LSTMPredictor, drop_distant
 from .pooling import Pooling, HiddenStateMLPPooling
 from .. import __version__ as VERSION
@@ -21,7 +21,8 @@ class Trainer(object):
     def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
                  device=None):
         self.model = model if model is not None else LSTM()
-        self.criterion = criterion if criterion is not None else PredictionLoss()
+        # self.criterion = criterion if criterion is not None else PredictionLoss()
+        self.criterion = criterion if criterion is not None else L2Loss()        
         self.optimizer = optimizer if optimizer is not None else torch.optim.SGD(
             self.model.parameters(), lr=1e-3, momentum=0.9, weight_decay=1e-4)
         self.lr_scheduler = (lr_scheduler
@@ -156,7 +157,7 @@ class Trainer(object):
         self.optimizer.zero_grad()
         rel_outputs, outputs = self.model(observed, prediction_truth)
 
-        loss = self.criterion(rel_pred_scene[:, 0], targets)
+        loss = self.criterion(rel_outputs[:, 0], targets) * 100
         loss.backward()
 
         self.optimizer.step()
@@ -170,12 +171,12 @@ class Trainer(object):
             rel_outputs, outputs = self.model(observed, prediction_truth)
 
             targets = xy[2:, 0] - xy[1:-1, 0]
-            loss = self.criterion(rel_pred_scene[:, 0], targets)
+            loss = self.criterion(rel_outputs[:, 0], targets)
 
         return loss.item()
 
 
-def main(epochs=35):
+def main(epochs=2):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
@@ -192,6 +193,8 @@ def main(epochs=35):
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
+    parser.add_argument('--path', default='data_ucy',
+                        help='glob expression for data files')
 
     pretrain = parser.add_argument_group('pretraining')
     pretrain.add_argument('--pre-epochs', default=5, type=int,
@@ -215,10 +218,16 @@ def main(epochs=35):
 
     args = parser.parse_args()
 
+    ## TODO
     # set model output file
-    timestamp = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-    if args.output is None:
-        args.output = 'output/{}_lstm_{}.pkl'.format(args.type, timestamp)
+    # timestamp = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    # if args.output is None:
+    #     args.output = 'output/{}_lstm_{}.pkl'.format(args.type, timestamp)
+
+    if not os.path.exists('OUTPUT_BLOCK/' + args.path):
+        os.makedirs('OUTPUT_BLOCK/' + args.path)
+    args.output = 'OUTPUT_BLOCK/' + args.path + '/' + args.type + '.pkl'
+    print("Output: ", args.output)
 
     # configure logging
     from pythonjsonlogger import jsonlogger
@@ -244,13 +253,16 @@ def main(epochs=35):
 
     # add args.device
     args.device = torch.device('cpu')
-    if not args.disable_cuda and torch.cuda.is_available():
-        args.device = torch.device('cuda')
+    # if not args.disable_cuda and torch.cuda.is_available():
+    #     args.device = torch.device('cuda')
 
     # read in datasets
-    train_scenes = list(trajnettools.load_all(args.train_input_files,
+    args.path = 'DATA_BLOCK/' + args.path
+    print('Data Path: ', args.path)
+
+    train_scenes = list(trajnettools.load_all(args.path + '/train/**/*.ndjson',
                                               sample={'syi.ndjson': 0.0}))
-    val_scenes = list(trajnettools.load_all(args.val_input_files,
+    val_scenes = list(trajnettools.load_all(args.path + '/val/**/*.ndjson',
                                             sample={'syi.ndjson': 0.0}))
 
     # create model

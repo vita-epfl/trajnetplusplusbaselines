@@ -58,3 +58,14 @@ class PredictionLoss(torch.nn.Module):
         if self.size_average:
             return torch.mean(values)
         return torch.sum(values)
+
+
+class L2Loss(torch.nn.Module):
+    """Pytorch L2 Loss between Mean of predicted gaussians and targets
+    """
+    def __init__(self, size_average=True, reduce=True):
+        super(L2Loss, self).__init__()
+        self.loss = torch.nn.MSELoss()
+
+    def forward(self, inputs, targets):
+        return self.loss(inputs[:, :2], targets)

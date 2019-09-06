@@ -41,7 +41,7 @@ class HiddenStateMLPPooling(torch.nn.Module):
 
 
 class Pooling(torch.nn.Module):
-    def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
+    def __init__(self, cell_side=2.0, n=6, hidden_dim=128, out_dim=None,
                  type_='occupancy', pool_size=8, blur_size=0):
         super(Pooling, self).__init__()
         self.cell_side = cell_side

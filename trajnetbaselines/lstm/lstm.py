@@ -9,8 +9,7 @@ from .modules import Hidden2Normal, InputEmbedding
 
 NAN = float('nan')
 
-
-def drop_distant(xy, r=5.0):
+def drop_distant(xy, r=10.0):
     distance_2 = np.sum(np.square(xy - xy[:, 0:1]), axis=2)
     if not all(any(e == e for e in column) for column in distance_2.T):
         print(distance_2.tolist())
@@ -28,13 +27,9 @@ class LSTM(torch.nn.Module):
         self.pool = pool
         self.pool_to_input = pool_to_input
 
-        # if self.pool is not None and self.pool_to_input:
-        #     self.input_embedding = InputEmbedding(2 + self.pool.out_dim, self.embedding_dim, 4.0)
-        # else:
-        #     self.input_embedding = InputEmbedding(2, self.embedding_dim, 4.0)
         self.input_embedding = InputEmbedding(2, self.embedding_dim, 4.0)
         if self.pool is not None and self.pool_to_input:
-            self.pooled_input_embedding = InputEmbedding(2 + self.pool.out_dim, self.embedding_dim, 4.0)
+            self.input_embedding = InputEmbedding(2 + self.pool.out_dim, self.embedding_dim, 4.0)
 
         self.encoder = torch.nn.LSTMCell(self.embedding_dim, self.hidden_dim)
         self.decoder = torch.nn.LSTMCell(self.embedding_dim, self.hidden_dim)
@@ -100,10 +95,10 @@ class LSTM(torch.nn.Module):
         observed shape is (seq, n_tracks, observables)
         """
         # without pooling, only look at the primary track
-        if self.pool is None:
-            observed = observed[:, 0:1]
-            if prediction_truth is not None:
-                prediction_truth = prediction_truth[:, 0:1]
+        # if self.pool is None:
+        #     observed = observed[:, 0:1]
+        #     if prediction_truth is not None:
+        #         prediction_truth = prediction_truth[:, 0:1]
 
         assert ((prediction_truth is None) + (n_predict is None)) == 1
         if n_predict is not None:
@@ -157,13 +152,12 @@ class LSTM(torch.nn.Module):
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
         # return torch.stack(normals if self.training else positions, dim=0)[:, 0]
-
-        rel_pred_scene = torch.stack(normals, dim=0)
-        pred_scene = torch.stack(positions, dim=0)
+        
         ##pred_scene is absolute positions -->  19 x n_person x 2
         ##rel_pred_scene is relative next step jump --> 19 x n_person x 5
-        # print(rel_pred_scene.shape)
-        # print(pred_scene.shape)
+        rel_pred_scene = torch.stack(normals, dim=0)
+        pred_scene = torch.stack(positions, dim=0)
+
         return rel_pred_scene, pred_scene
 
 class LSTMPredictor(object):
@@ -183,21 +177,6 @@ class LSTMPredictor(object):
         with open(filename, 'rb') as f:
             return torch.load(f)
 
-    # def __call__(self, paths, n_predict=12):
-    #     self.model.eval()
-
-    #     observed_path = paths[0]
-    #     ped_id = observed_path[0].pedestrian
-    #     with torch.no_grad():
-    #         xy = trajnettools.Reader.paths_to_xy(paths)
-    #         xy = drop_distant(xy)
-    #         xy = torch.Tensor(xy)  #.to(self.device)
-    #         outputs = self.model(xy[:9], n_predict=n_predict)[-n_predict:]
-    #         # outputs = self.model(xy[:9], xy[9:-1])[-n_predict:]
-
-    #     return [trajnettools.TrackRow(0, ped_id, x, y) for x, y in outputs]
-
-#########################################################################################################
     def __call__(self, paths, n_predict=12, modes=1):
         self.model.eval()
 
@@ -210,21 +189,18 @@ class LSTMPredictor(object):
         first_frame = observed_path[8].frame + frame_diff
         with torch.no_grad():
             xy = trajnettools.Reader.paths_to_xy(paths)
-            xy = drop_distant(xy)
+            xy = drop_distant(xy, r=10.0)
             xy = torch.Tensor(xy)  #.to(self.device)
             multimodal_outputs = {}
             for np in range(modes):
-                # _, output_scenes = self.model.generator(xy[:9], n_predict=n_predict)
                 _, output_scenes = self.model(xy[:9], n_predict=n_predict)
                 outputs = output_scenes[-n_predict:, 0]
-                outputs_scenes = output_scenes[-n_predict:]
-                # outputs = self.model(xy[:9], xy[9:-1])[-n_predict:]
+                output_scenes = output_scenes[-n_predict:]
                 output_primary = [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id, outputs[i, 0],
                                   outputs[i, 1], 0) for i in range(len(outputs))]
 
-                output_all = [[trajnettools.TrackRow(first_frame + i * frame_diff, ped_id_[j], outputs_scenes[i, j, 0],
-                                              outputs_scenes[i, j, 1], 0) for i in range(len(outputs))] for j in range(outputs_scenes.size(1))]
+                output_all = [[trajnettools.TrackRow(first_frame + i * frame_diff, ped_id_[j], output_scenes[i, j, 0],
+                                              output_scenes[i, j, 1], 0) for i in range(len(outputs))] for j in range(1, output_scenes.shape[1])]
 
                 multimodal_outputs[np] = [output_primary, output_all]
-        # return output_primary, output_all
         return multimodal_outputs
