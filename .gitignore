@@ -1,5 +1,8 @@
 data/
+DATA_BLOCK/
 output/
+OUTPUT_BLOCK/
+socialforce-master/
 profile_trace*.json
 
 # Python
