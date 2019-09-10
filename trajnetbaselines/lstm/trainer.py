@@ -220,13 +220,16 @@ def main(epochs=2):
 
     ## TODO
     # set model output file
-    # timestamp = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
     # if args.output is None:
     #     args.output = 'output/{}_lstm_{}.pkl'.format(args.type, timestamp)
+    if not os.path.exists('OUTPUT_BLOCK/{}'.format(args.path)):
+        os.makedirs('OUTPUT_BLOCK/{}'.format(args.path))
+    if args.output:
+        args.output = 'OUTPUT_BLOCK/{}/{}_{}.pkl'.format(args.path, args.type, args.output)  
+    else:
+        args.output = 'OUTPUT_BLOCK/{}/{}_{}.pkl'.format(args.path, args.type, timestamp) 
 
-    if not os.path.exists('OUTPUT_BLOCK/' + args.path):
-        os.makedirs('OUTPUT_BLOCK/' + args.path)
-    args.output = 'OUTPUT_BLOCK/' + args.path + '/' + args.type + '.pkl'
     print("Output: ", args.output)
 
     # configure logging
@@ -260,10 +263,8 @@ def main(epochs=2):
     args.path = 'DATA_BLOCK/' + args.path
     print('Data Path: ', args.path)
 
-    train_scenes = list(trajnettools.load_all(args.path + '/train/**/*.ndjson',
-                                              sample={'syi.ndjson': 0.0}))
-    val_scenes = list(trajnettools.load_all(args.path + '/val/**/*.ndjson',
-                                            sample={'syi.ndjson': 0.0}))
+    train_scenes = list(trajnettools.load_all(args.path + '/train/**/*.ndjson'))
+    val_scenes = list(trajnettools.load_all(args.path + '/val/**/*.ndjson'))
 
     # create model
     pool = None
