@@ -31,6 +31,12 @@ class TrajnetEvaluator:
         self.forced_non_linear_scenes = {'N': len(indexes[3])}
         self.non_linear_scenes = {'N': len(indexes[4])}
 
+        ## The 4 types of Interactions
+        # self.lf = {'N': len(sub_indexes[1])}
+        # self.ca = {'N': len(sub_indexes[2])}
+        # self.grp = {'N': len(sub_indexes[3])}
+        # self.others = {'N': len(sub_indexes[4])}
+
         ## The 4 metrics ADE, FDE, ColI, ColII
         self.average_l2 = {'N': len(scenes_gt)}
         self.final_l2 = {'N': len(scenes_gt)}
@@ -43,8 +49,9 @@ class TrajnetEvaluator:
         final = 0.0
         glob_collision = 0
 
-        ## Aggregates ADE, FDE and Collision in GT & Pred for each category 
+        ## Aggregates ADE, FDE and Collision in GT & Pred for each category & sub_category
         score = {1: [0.0, 0.0, 0, 0, 0], 2: [0.0, 0.0, 0, 0, 0], 3: [0.0, 0.0, 0, 0, 0], 4: [0.0, 0.0, 0, 0, 0]}
+        sub_score = {1: [0.0, 0.0, 0, 0, 0], 2: [0.0, 0.0, 0, 0, 0], 3: [0.0, 0.0, 0, 0, 0], 4: [0.0, 0.0, 0, 0, 0]}
 
         ## Number of future trajectories proposed by the model #Multimodality
         num_predictions = 0
@@ -61,6 +68,20 @@ class TrajnetEvaluator:
         ## Iterate
         for i in range(len(self.scenes_gt)):
             ground_truth = self.scenes_gt[i]
+            
+            ## Get Keys and Sub_keys
+            keys = []
+            sub_keys = []
+
+            ## Main
+            for key in list(score.keys()):
+                if self.scenes_id_gt[i] in self.indexes[key]:
+                    keys.append(key)
+            # ## Sub
+            # for sub_key in list(sub_score.keys()):
+            #     if self.scenes_id_gt[i] in self.sub_indexes[sub_key]:
+            #         sub_keys.append(sub_key)
+
 
             ## Extract Prediction Frames
             primary_tracks = [t for t in self.scenes_sub[i][0] if t.scene_id == self.scenes_id_gt[i]]
@@ -88,34 +109,48 @@ class TrajnetEvaluator:
             final_l2 = trajnettools.metrics.final_l2(ground_truth[0], primary_tracks)
             
             if not disable_collision:
+               
                 ## Collisions in GT
                 for j in range(1, len(ground_truth)):
                     if trajnettools.metrics.collision(primary_tracks, ground_truth[j]):
                         glob_collision += 1
-                        for key in list(score.keys()):
-                            if self.scenes_id_gt[i] in self.indexes[key]:
-                                score[key][2] += 1
+                        for key in keys:
+                            score[key][2] += 1
+                        # ## Sub
+                        # for sub_key in sub_keys:
+                        #     sub_score[sub_key][2] += 1
                         break
+
 
                 ## Collision in Predictions 
                 flat_neigh_list = [item for sublist in neighbours_tracks for item in sublist]
                 if len(flat_neigh_list): 
-                    for key in list(score.keys()):
-                        if self.scenes_id_gt[i] in self.indexes[key]:
-                            score[key][4] += 1
-                            for j in range(len(neighbours_tracks)):
-                                if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j]):
-                                    score[key][3] += 1
-                                    break
+                    for key in keys:
+                        score[key][4] += 1
+                        for j in range(len(neighbours_tracks)):
+                            if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j]):
+                                score[key][3] += 1
+                                break
+                    # ## Sub
+                    # for sub_key in sub_keys:
+                    #     sub_score[sub_key][4] += 1
+                    #     for j in range(len(neighbours_tracks)):
+                    #         if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j]):
+                    #             sub_score[sub_key][3] += 1
+                    #             break  
 
 
             # aggregate FDE and ADE
             average += average_l2
             final += final_l2
-            for key in list(score.keys()):
-                if self.scenes_id_gt[i] in self.indexes[key]:
-                    score[key][0] += average_l2
-                    score[key][1] += final_l2
+            for key in keys:
+                score[key][0] += average_l2
+                score[key][1] += final_l2     
+
+            # ## Sub
+            # for sub_key in sub_keys:
+            #     sub_score[sub_key][0] += average_l2
+            #     sub_score[sub_key][1] += final_l2  
 
         ## Average ADE and FDE
         average /= len(self.scenes_gt)
@@ -124,16 +159,28 @@ class TrajnetEvaluator:
             if self.indexes[key]:
                 score[key][0] /= len(self.indexes[key])
                 score[key][1] /= len(self.indexes[key])
+        # ## Sub
+        # for sub_key in list(sub_score.keys()):
+        #     if self.sub_indexes[sub_key]:
+        #         sub_score[sub_key][0] /= len(self.sub_indexes[sub_key])
+        #         sub_score[sub_key][1] /= len(self.sub_indexes[sub_key])
 
         ##Adding value to dict
         self.average_l2[name] = average
         self.final_l2[name] = final
         self.final_collision[name] = glob_collision
 
+        ## Main
         self.static_scenes[name] = score[1]
         self.linear_scenes[name] = score[2]
         self.forced_non_linear_scenes[name] = score[3]
         self.non_linear_scenes[name] = score[4]
+
+        # ## Sub
+        # self.lf[name] = sub_score[1]
+        # self.ca[name] = sub_score[2]
+        # self.grp[name] = sub_score[3]
+        # self.others[name] = sub_score[4]
 
         return self
 
