@@ -7,7 +7,7 @@ import argparse
 import pdb
 from trajnetbaselines import socialforce
 
-def main(args, kf=True, sf=True):
+def main(args, kf=False, sf=False):
     ## List of .json file inside the args.data (waiting to be predicted by the testing model)
     datasets = sorted([f for f in os.listdir(args.data.replace('_pred', '')) if not f.startswith('.') and f.endswith('.ndjson')])
 

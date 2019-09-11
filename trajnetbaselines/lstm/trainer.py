@@ -193,7 +193,7 @@ def main(epochs=2):
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
-    parser.add_argument('--path', default='data_ucy',
+    parser.add_argument('--path', default='syn_data',
                         help='glob expression for data files')
 
     pretrain = parser.add_argument_group('pretraining')
@@ -228,7 +228,7 @@ def main(epochs=2):
     if args.output:
         args.output = 'OUTPUT_BLOCK/{}/{}_{}.pkl'.format(args.path, args.type, args.output)  
     else:
-        args.output = 'OUTPUT_BLOCK/{}/{}_{}.pkl'.format(args.path, args.type, timestamp) 
+        args.output = 'OUTPUT_BLOCK/{}/{}.pkl'.format(args.path, args.type) 
 
     print("Output: ", args.output)
 

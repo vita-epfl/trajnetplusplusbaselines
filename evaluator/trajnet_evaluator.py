@@ -8,11 +8,9 @@ import argparse
 
 import evaluator.write as write
 from evaluator.design_table import Table
-from trajnetbaselines import kalman
-from trajnetbaselines import socialforce
 
 class TrajnetEvaluator:
-    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes):
+    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes):
         self.reader_gt = reader_gt
         
         ##Ground Truth
@@ -24,6 +22,7 @@ class TrajnetEvaluator:
 
         ## Dictionary of type of trajectories
         self.indexes = indexes
+        self.sub_indexes = sub_indexes
 
         ## The 4 types of Trajectories
         self.static_scenes = {'N': len(indexes[1])}
@@ -32,17 +31,17 @@ class TrajnetEvaluator:
         self.non_linear_scenes = {'N': len(indexes[4])}
 
         ## The 4 types of Interactions
-        # self.lf = {'N': len(sub_indexes[1])}
-        # self.ca = {'N': len(sub_indexes[2])}
-        # self.grp = {'N': len(sub_indexes[3])}
-        # self.others = {'N': len(sub_indexes[4])}
+        self.lf = {'N': len(sub_indexes[1])}
+        self.ca = {'N': len(sub_indexes[2])}
+        self.grp = {'N': len(sub_indexes[3])}
+        self.others = {'N': len(sub_indexes[4])}
 
         ## The 4 metrics ADE, FDE, ColI, ColII
         self.average_l2 = {'N': len(scenes_gt)}
         self.final_l2 = {'N': len(scenes_gt)}
         self.final_collision = {'N': len(scenes_gt)}
 
-    def aggregate(self, name, disable_collision, kf=False):
+    def aggregate(self, name, disable_collision):
 
         ## Overall Scores
         average = 0.0
@@ -78,9 +77,9 @@ class TrajnetEvaluator:
                 if self.scenes_id_gt[i] in self.indexes[key]:
                     keys.append(key)
             # ## Sub
-            # for sub_key in list(sub_score.keys()):
-            #     if self.scenes_id_gt[i] in self.sub_indexes[sub_key]:
-            #         sub_keys.append(sub_key)
+            for sub_key in list(sub_score.keys()):
+                if self.scenes_id_gt[i] in self.sub_indexes[sub_key]:
+                    sub_keys.append(sub_key)
 
 
             ## Extract Prediction Frames
@@ -116,9 +115,9 @@ class TrajnetEvaluator:
                         glob_collision += 1
                         for key in keys:
                             score[key][2] += 1
-                        # ## Sub
-                        # for sub_key in sub_keys:
-                        #     sub_score[sub_key][2] += 1
+                        ## Sub
+                        for sub_key in sub_keys:
+                            sub_score[sub_key][2] += 1
                         break
 
 
@@ -131,13 +130,13 @@ class TrajnetEvaluator:
                             if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j]):
                                 score[key][3] += 1
                                 break
-                    # ## Sub
-                    # for sub_key in sub_keys:
-                    #     sub_score[sub_key][4] += 1
-                    #     for j in range(len(neighbours_tracks)):
-                    #         if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j]):
-                    #             sub_score[sub_key][3] += 1
-                    #             break  
+                    ## Sub
+                    for sub_key in sub_keys:
+                        sub_score[sub_key][4] += 1
+                        for j in range(len(neighbours_tracks)):
+                            if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j]):
+                                sub_score[sub_key][3] += 1
+                                break  
 
 
             # aggregate FDE and ADE
@@ -147,10 +146,10 @@ class TrajnetEvaluator:
                 score[key][0] += average_l2
                 score[key][1] += final_l2     
 
-            # ## Sub
-            # for sub_key in sub_keys:
-            #     sub_score[sub_key][0] += average_l2
-            #     sub_score[sub_key][1] += final_l2  
+            ## Sub
+            for sub_key in sub_keys:
+                sub_score[sub_key][0] += average_l2
+                sub_score[sub_key][1] += final_l2  
 
         ## Average ADE and FDE
         average /= len(self.scenes_gt)
@@ -159,11 +158,11 @@ class TrajnetEvaluator:
             if self.indexes[key]:
                 score[key][0] /= len(self.indexes[key])
                 score[key][1] /= len(self.indexes[key])
-        # ## Sub
-        # for sub_key in list(sub_score.keys()):
-        #     if self.sub_indexes[sub_key]:
-        #         sub_score[sub_key][0] /= len(self.sub_indexes[sub_key])
-        #         sub_score[sub_key][1] /= len(self.sub_indexes[sub_key])
+        ## Sub
+        for sub_key in list(sub_score.keys()):
+            if self.sub_indexes[sub_key]:
+                sub_score[sub_key][0] /= len(self.sub_indexes[sub_key])
+                sub_score[sub_key][1] /= len(self.sub_indexes[sub_key])
 
         ##Adding value to dict
         self.average_l2[name] = average
@@ -176,21 +175,22 @@ class TrajnetEvaluator:
         self.forced_non_linear_scenes[name] = score[3]
         self.non_linear_scenes[name] = score[4]
 
-        # ## Sub
-        # self.lf[name] = sub_score[1]
-        # self.ca[name] = sub_score[2]
-        # self.grp[name] = sub_score[3]
-        # self.others[name] = sub_score[4]
+        ## Sub
+        self.lf[name] = sub_score[1]
+        self.ca[name] = sub_score[2]
+        self.grp[name] = sub_score[3]
+        self.others[name] = sub_score[4]
 
         return self
 
     def result(self):
-        return self.average_l2, self.final_l2, self.static_scenes, self.linear_scenes, \
-               self.forced_non_linear_scenes, self.non_linear_scenes, self.final_collision
+        return self.average_l2, self.final_l2, \
+               self.static_scenes, self.linear_scenes, self.forced_non_linear_scenes, self.non_linear_scenes, \
+               self.lf, self.ca, self.grp, self.others
 
 
 def eval(gt, input_file, disable_collision, args):
-    
+    print("GT: ", gt)
     # Ground Truth
     reader_gt = trajnettools.Reader(gt, scene_type='paths')
     scenes_gt = [s for _, s in reader_gt.scenes()]
@@ -204,21 +204,29 @@ def eval(gt, input_file, disable_collision, args):
     indexes = {}
     for i in range(1,5):
         indexes[i] = []
+    ## sub-indexes
+    sub_indexes = {}
+    for i in range(1,5):
+        sub_indexes[i] = []
     for scene in reader_gt.scenes_by_id:
+        tags = reader_gt.scenes_by_id[scene].tag
+        main_tag = tags[0:1]
+        sub_tags = tags[1]
         for ii in range(1, 5):
-            if ii in reader_gt.scenes_by_id[scene].tag:
+            if ii in main_tag:
                 indexes[ii].append(scene)
-
+            if ii in sub_tags:
+                sub_indexes[ii].append(scene)
 
     # Evaluate
-    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes)
-    evaluator.aggregate('kf', disable_collision, kalman)
+    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes)
+    evaluator.aggregate('kf', disable_collision)
     return evaluator.result()
 
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', default='syn_large_data', choices = ('data_ucy', 'syn_data', 'syn_large_data', 'syn_3_data', 'noisy_controlled', 'mix_synth'),
+    parser.add_argument('--data', default='syn_3_data', choices = ('data_ucy', 'syn_data', 'syn_large_data', 'syn_3_data', 'noisy_controlled', 'mix_synth'),
                         help='path of data')
     parser.add_argument('--output', required=True, nargs='+',
                         help='output folder')
@@ -260,7 +268,7 @@ def main():
 
         ## Evaluate submitted datasets with True Datasets [The main eval function]
         results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
-                   eval(true_datasets[i], submit_datasets[i], args.disable_collision, args)
+                    eval(true_datasets[i], submit_datasets[i], args.disable_collision, args)
                    for i in range(len(true_datasets))}
 
         ## Saves results in dict

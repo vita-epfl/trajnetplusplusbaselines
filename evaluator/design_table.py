@@ -9,6 +9,7 @@ class Table(object):
         super(Table, self).__init__()
 
         self.entries = {}
+        self.sub_entries = {}
         self.arg = arg
     
     def table_head(self):
@@ -37,19 +38,36 @@ class Table(object):
             overall['3'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
             overall['4'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
 
-            for dataset, (a, b, c, d, e, f, g) in results.items():
-                overall['1'] += np.array([c['N'], c['kf'][0] * c['N'], c['kf'][1] * c['N'],
-                                                c['kf'][2], c['kf'][3], c['kf'][4]])
-                overall['2'] += np.array([d['N'], d['kf'][0] * d['N'], d['kf'][1] * d['N'],
-                                                d['kf'][2], d['kf'][3], d['kf'][4]])
-                overall['3'] += np.array([e['N'], e['kf'][0] * e['N'], e['kf'][1] * e['N'],
-                                                e['kf'][2], e['kf'][3], e['kf'][4]])
-                overall['4'] += np.array([f['N'], f['kf'][0] * f['N'], f['kf'][1] * f['N'],
-                                                f['kf'][2], f['kf'][3], e['kf'][4]])
-                overall['o_all'] += np.array([a['N'], a['kf'] * a['N'], b['kf'] * a['N'], g['kf'],
-                                                    c['kf'][3] + d['kf'][3] + e['kf'][3] + f['kf'][3],
-                                                    c['kf'][4] + d['kf'][4] + e['kf'][4] + f['kf'][4]])
+            sub_final_results = []
+            sub_overall = {}
+            sub_overall['1'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+            sub_overall['2'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+            sub_overall['3'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+            sub_overall['4'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+
+            for dataset, (ade, fde, s, l, i, ni, lf, ca, grp, oth) in results.items():
+                overall['1'] += np.array([s['N'], s['kf'][0] * s['N'], s['kf'][1] * s['N'],
+                                                s['kf'][2], s['kf'][3], s['kf'][4]])
+                overall['2'] += np.array([l['N'], l['kf'][0] * l['N'], l['kf'][1] * l['N'],
+                                                l['kf'][2], l['kf'][3], l['kf'][4]])
+                overall['3'] += np.array([i['N'], i['kf'][0] * i['N'], i['kf'][1] * i['N'],
+                                                i['kf'][2], i['kf'][3], i['kf'][4]])
+                overall['4'] += np.array([ni['N'], ni['kf'][0] * ni['N'], ni['kf'][1] * ni['N'],
+                                                ni['kf'][2], ni['kf'][3], ni['kf'][4]])
+                overall['o_all'] += np.array([ade['N'], ade['kf'] * ade['N'], fde['kf'] * fde['N'],
+                                              s['kf'][2] + l['kf'][2] + i['kf'][2] + ni['kf'][2],
+                                              s['kf'][3] + l['kf'][3] + i['kf'][3] + ni['kf'][3],
+                                              s['kf'][4] + l['kf'][4] + i['kf'][4] + ni['kf'][4]])
+                sub_overall['1'] += np.array([lf['N'], lf['kf'][0] * lf['N'], lf['kf'][1] * lf['N'],
+                                                lf['kf'][2], lf['kf'][3], lf['kf'][4]])
+                sub_overall['2'] += np.array([ca['N'], ca['kf'][0] * ca['N'], ca['kf'][1] * ca['N'],
+                                                ca['kf'][2], ca['kf'][3], ca['kf'][4]])
+                sub_overall['3'] += np.array([grp['N'], grp['kf'][0] * grp['N'], grp['kf'][1] * grp['N'],
+                                                grp['kf'][2], grp['kf'][3], grp['kf'][4]])
+                sub_overall['4'] += np.array([oth['N'], oth['kf'][0] * oth['N'], oth['kf'][1] * oth['N'],
+                                                oth['kf'][2], oth['kf'][3], oth['kf'][4]])
             print('')
+
             for keys in list(overall.keys()):
                 if overall[keys][0] != 0:
                     overall[keys][1] /= overall[keys][0]
@@ -62,6 +80,19 @@ class Table(object):
                     final_results += [int(overall[keys][0]), overall[keys][1], overall[keys][2], overall[keys][3], overall[keys][4]]
                 else:
                     final_results += [0, 0.0, 0.0, 0.0, 0.0]
+
+            for keys in list(sub_overall.keys()):
+                if sub_overall[keys][0] != 0:
+                    sub_overall[keys][1] /= sub_overall[keys][0]
+                    sub_overall[keys][2] /= sub_overall[keys][0]
+                    sub_overall[keys][3] /= (sub_overall[keys][0]*0.01)
+                    if sub_overall[keys][5] != 0:
+                        sub_overall[keys][4] /= (sub_overall[keys][5]* 0.01)
+                    else:
+                        sub_overall[keys][4] = -1
+                    sub_final_results += [int(sub_overall[keys][0]), sub_overall[keys][1], sub_overall[keys][2], sub_overall[keys][3], sub_overall[keys][4]]
+                else:
+                    sub_final_results += [0, 0.0, 0.0, 0.0, 0.0]
 
             global_grade = final_results[2]
             print(
@@ -88,10 +119,34 @@ class Table(object):
                 ' | {final_results[23]:.1f}'
                 '  | {final_results[24]:.1f} |'
                 .format(dataset=name, global_grade=global_grade, final_results=final_results))
+
+            print(
+                '{dataset:>35s}'
+                ' | {sub_final_results[0]:>4}'
+                ' | {sub_final_results[1]:.2f}'
+                ' | {sub_final_results[2]:.2f}'
+                ' | {sub_final_results[3]:.1f}'
+                '  | {sub_final_results[4]: .1f}'
+                ' | {sub_final_results[5]:>4}'
+                ' | {sub_final_results[6]:.2f}'
+                ' | {sub_final_results[7]:.2f}'
+                ' | {sub_final_results[8]:.1f}'
+                '  | {sub_final_results[9]:.1f}'
+                ' | {sub_final_results[10]:>4}'
+                ' | {sub_final_results[11]:.2f}'
+                ' | {sub_final_results[12]:.2f}'
+                ' | {sub_final_results[13]:.1f}'
+                '  | {sub_final_results[14]:.1f}'
+                ' | {sub_final_results[15]:>4}'
+                ' | {sub_final_results[16]:.2f}'
+                ' | {sub_final_results[17]:.2f}'
+                ' | {sub_final_results[18]:.1f}'
+                '  | {sub_final_results[19]:.1f} |'
+                .format(dataset=name, sub_final_results=sub_final_results))
         return
 
     def add_entry(self, name, results):
-        self.entries[name] = results
+        self.entries[name] = Results
 
     def print_table(self):
         self.table_head()
