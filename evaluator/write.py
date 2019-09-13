@@ -1,11 +1,10 @@
 import trajnettools
 import trajnetbaselines.kalman as kalman
+from trajnetbaselines import socialforce
 import trajnetbaselines
 import shutil
 import os
 import argparse
-import pdb
-from trajnetbaselines import socialforce
 
 def main(args, kf=False, sf=False):
     ## List of .json file inside the args.data (waiting to be predicted by the testing model)

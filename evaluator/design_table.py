@@ -121,7 +121,13 @@ class Table(object):
                 .format(dataset=name, global_grade=global_grade, final_results=final_results))
 
             print(
+                '{name:>35s} |      |                   LF.             |'
+                '              CA                   |                 Grp               |                 Oth                |'
+                    .format(name=''))
+
+            print(
                 '{dataset:>35s}'
+                ' |     '
                 ' | {sub_final_results[0]:>4}'
                 ' | {sub_final_results[1]:.2f}'
                 ' | {sub_final_results[2]:.2f}'
@@ -146,7 +152,7 @@ class Table(object):
         return
 
     def add_entry(self, name, results):
-        self.entries[name] = Results
+        self.entries[name] = results
 
     def print_table(self):
         self.table_head()

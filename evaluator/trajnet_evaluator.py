@@ -190,7 +190,6 @@ class TrajnetEvaluator:
 
 
 def eval(gt, input_file, disable_collision, args):
-    print("GT: ", gt)
     # Ground Truth
     reader_gt = trajnettools.Reader(gt, scene_type='paths')
     scenes_gt = [s for _, s in reader_gt.scenes()]
@@ -245,7 +244,7 @@ def main():
     args.data = args.data + args.test_path + '_pred/'
 
     ## Writes to Test_pred
-    ########## Does this overwrite existing predictions? No. ####################
+    ### Does this overwrite existing predictions? No. ###
     if not args.disable_write:
         write.main(args)
 
