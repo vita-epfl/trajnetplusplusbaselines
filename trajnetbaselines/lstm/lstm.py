@@ -164,18 +164,22 @@ class LSTMPredictor(object):
     def __init__(self, model):
         self.model = model
 
-    def save(self, filename):
+    def save(self, state, filename):
         with open(filename, 'wb') as f:
             torch.save(self, f)
 
-        # during development, good for compatibility across API changes:
-        with open(filename + '.state_dict', 'wb') as f:
-            torch.save(self.model.state_dict(), f)
+        # # during development, good for compatibility across API changes:
+        # # Save state for optimizer to continue training in future
+        with open(filename + '.state', 'wb') as f:
+            torch.save(state, f)
+        # with open(filename + '.state_dict', 'wb') as f:
+        #     torch.save(self.model.state_dict(), f)
 
     @staticmethod
     def load(filename):
         with open(filename, 'rb') as f:
             return torch.load(f)
+
 
     def __call__(self, paths, n_predict=12, modes=1):
         self.model.eval()

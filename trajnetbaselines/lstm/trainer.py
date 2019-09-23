@@ -34,12 +34,21 @@ class Trainer(object):
         self.criterion = self.criterion.to(self.device)
         self.log = logging.getLogger(self.__class__.__name__)
 
-    def loop(self, train_scenes, val_scenes, out, epochs=35):
-        for epoch in range(epochs):
-            LSTMPredictor(self.model).save(out + '.epoch{}'.format(epoch))
+    def loop(self, train_scenes, val_scenes, out, epochs=35, start_epoch=0):
+        for epoch in range(start_epoch, start_epoch + epochs):
+            state = {'epoch': epoch, 'state_dict': self.model.state_dict(),
+                     'optimizer': self.optimizer.state_dict(),
+                     'scheduler': self.lr_scheduler.state_dict()}
+            LSTMPredictor(self.model).save(state, out + '.epoch{}'.format(epoch))
             self.train(train_scenes, epoch)
             self.val(val_scenes, epoch)
-        LSTMPredictor(self.model).save(out)
+
+
+        state = {'epoch': epoch + 1, 'state_dict': self.model.state_dict(),
+                 'optimizer': self.optimizer.state_dict(),
+                 'scheduler': self.lr_scheduler.state_dict()}
+        LSTMPredictor(self.model).save(state, out + '.epoch{}'.format(epoch))
+        LSTMPredictor(self.model).save(state, out)
 
     def lr(self):
         for param_group in self.optimizer.param_groups:
@@ -171,12 +180,12 @@ class Trainer(object):
             rel_outputs, outputs = self.model(observed, prediction_truth)
 
             targets = xy[2:, 0] - xy[1:-1, 0]
-            loss = self.criterion(rel_outputs[:, 0], targets)
+            loss = self.criterion(rel_outputs[:, 0], targets) * 100
 
         return loss.item()
 
 
-def main(epochs=2):
+def main(epochs=30):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
@@ -193,7 +202,7 @@ def main(epochs=2):
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
-    parser.add_argument('--path', default='syn_data',
+    parser.add_argument('--path', default='trajnew',  
                         help='glob expression for data files')
 
     pretrain = parser.add_argument_group('pretraining')
@@ -218,7 +227,6 @@ def main(epochs=2):
 
     args = parser.parse_args()
 
-    ## TODO
     # set model output file
     timestamp = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
     # if args.output is None:
@@ -229,14 +237,15 @@ def main(epochs=2):
         args.output = 'OUTPUT_BLOCK/{}/{}_{}.pkl'.format(args.path, args.type, args.output)  
     else:
         args.output = 'OUTPUT_BLOCK/{}/{}.pkl'.format(args.path, args.type) 
-
-    print("Output: ", args.output)
-
+        
     # configure logging
     from pythonjsonlogger import jsonlogger
     import socket
     import sys
-    file_handler = logging.FileHandler(args.output + '.log', mode='w')
+    if args.load_state:
+        file_handler = logging.FileHandler(args.output + '.log', mode='a')
+    else:
+        file_handler = logging.FileHandler(args.output + '.log', mode='w')        
     file_handler.setFormatter(jsonlogger.JsonFormatter('(message) (levelname) (name) (asctime)'))
     stdout_handler = logging.StreamHandler(sys.stdout)
     logging.basicConfig(level=logging.INFO, handlers=[stdout_handler, file_handler])
@@ -261,7 +270,6 @@ def main(epochs=2):
 
     # read in datasets
     args.path = 'DATA_BLOCK/' + args.path
-    print('Data Path: ', args.path)
 
     train_scenes = list(trajnettools.load_all(args.path + '/train/**/*.ndjson'))
     val_scenes = list(trajnettools.load_all(args.path + '/val/**/*.ndjson'))
@@ -279,28 +287,20 @@ def main(epochs=2):
     # train
     if args.load_state:
         with open(args.load_state, 'rb') as f:
-            pretrained_state_dict = torch.load(f)
-        if args.drop_input_embedding:
-            pretrained_state_dict = {name: value
-                                     for name, value in pretrained_state_dict.items()
-                                     if 'input_embedding' not in name}
+            checkpoint = torch.load(f)
+        pretrained_state_dict = checkpoint['state_dict']
         model.load_state_dict(pretrained_state_dict, strict=args.load_state_strict)
-
-        # pre-optimize all parameters that were not in the loaded state dict
-        pretrained_params = set(pretrained_state_dict.keys())
-        untrained_params = [p for n, p in model.named_parameters()
-                            if n not in pretrained_params]
-        if untrained_params: ## IF condition New
-            pre_optimizer = torch.optim.Adam(untrained_params, lr=args.pre_lr, weight_decay=1e-4)
-            pre_lr_scheduler = torch.optim.lr_scheduler.StepLR(pre_optimizer, args.pre_lr_div_schedule)
-            pre_trainer = Trainer(model, optimizer=pre_optimizer,
-                                  lr_scheduler=pre_lr_scheduler, device=args.device)
-            for pre_epoch in range(-args.pre_epochs, 0):
-                pre_trainer.train(train_scenes, epoch=pre_epoch)
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    trainer = Trainer(model, optimizer=optimizer, device=args.device)
-    trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
+        lr_scheduler.load_state_dict(checkpoint['scheduler'])
+        start_epoch = checkpoint['epoch'] 
+        trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device)
+        trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs, start_epoch=start_epoch)
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+        trainer = Trainer(model, optimizer=optimizer, device=args.device)
+        trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs)
 
 
 if __name__ == '__main__':

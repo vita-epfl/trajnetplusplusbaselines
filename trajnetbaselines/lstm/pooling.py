@@ -5,7 +5,7 @@ import torch
 
 def one_cold(i, n):
     """Inverse one-hot encoding."""
-    x = torch.ones(n, dtype=torch.uint8)
+    x = torch.ones(n, dtype=torch.bool)
     x[i] = 0
     return x
 

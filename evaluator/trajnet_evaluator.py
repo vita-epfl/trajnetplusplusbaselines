@@ -225,7 +225,7 @@ def eval(gt, input_file, disable_collision, args):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', default='syn_3_data', choices = ('data_ucy', 'syn_data', 'syn_large_data', 'syn_3_data', 'noisy_controlled', 'mix_synth'),
+    parser.add_argument('--data', default='trajtrain',
                         help='path of data')
     parser.add_argument('--output', required=True, nargs='+',
                         help='output folder')
