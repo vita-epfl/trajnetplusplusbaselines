@@ -8,6 +8,8 @@ import argparse
 
 import evaluator.write as write
 from evaluator.design_table import Table
+import matplotlib.pyplot as plt 
+from statistics import median 
 
 class TrajnetEvaluator:
     def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes):
@@ -39,14 +41,12 @@ class TrajnetEvaluator:
         ## The 4 metrics ADE, FDE, ColI, ColII
         self.average_l2 = {'N': len(scenes_gt)}
         self.final_l2 = {'N': len(scenes_gt)}
-        self.final_collision = {'N': len(scenes_gt)}
 
     def aggregate(self, name, disable_collision):
 
         ## Overall Scores
         average = 0.0
         final = 0.0
-        glob_collision = 0
 
         ## Aggregates ADE, FDE and Collision in GT & Pred for each category & sub_category
         score = {1: [0.0, 0.0, 0, 0, 0], 2: [0.0, 0.0, 0, 0, 0], 3: [0.0, 0.0, 0, 0, 0], 4: [0.0, 0.0, 0, 0, 0]}
@@ -106,13 +106,12 @@ class TrajnetEvaluator:
 
             average_l2 = trajnettools.metrics.average_l2(ground_truth[0], primary_tracks)
             final_l2 = trajnettools.metrics.final_l2(ground_truth[0], primary_tracks)
-            
+
             if not disable_collision:
                
                 ## Collisions in GT
                 for j in range(1, len(ground_truth)):
                     if trajnettools.metrics.collision(primary_tracks, ground_truth[j]):
-                        glob_collision += 1
                         for key in keys:
                             score[key][2] += 1
                         ## Sub
@@ -162,12 +161,11 @@ class TrajnetEvaluator:
         for sub_key in list(sub_score.keys()):
             if self.sub_indexes[sub_key]:
                 sub_score[sub_key][0] /= len(self.sub_indexes[sub_key])
-                sub_score[sub_key][1] /= len(self.sub_indexes[sub_key])
+                sub_score[sub_key][1] /= len(self.sub_indexes[sub_key]) 
 
         ##Adding value to dict
         self.average_l2[name] = average
         self.final_l2[name] = final
-        self.final_collision[name] = glob_collision
 
         ## Main
         self.static_scenes[name] = score[1]
@@ -175,7 +173,7 @@ class TrajnetEvaluator:
         self.forced_non_linear_scenes[name] = score[3]
         self.non_linear_scenes[name] = score[4]
 
-        ## Sub
+        ## Sub_keys
         self.lf[name] = sub_score[1]
         self.ca[name] = sub_score[2]
         self.grp[name] = sub_score[3]
@@ -225,8 +223,8 @@ def eval(gt, input_file, disable_collision, args):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', default='trajtrain',
-                        help='path of data')
+    parser.add_argument('--data', default='trajnew',
+                        help='path of data')    
     parser.add_argument('--output', required=True, nargs='+',
                         help='output folder')
     parser.add_argument('--disable-write', action='store_true',
@@ -256,7 +254,6 @@ def main():
     # Initiate Result Table
     table = Table()
     
-
     for name in names:
         list_sub = sorted([f for f in os.listdir(args.data + name)
                            if not f.startswith('.')])

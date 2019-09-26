@@ -47,7 +47,7 @@ class Trainer(object):
         state = {'epoch': epoch + 1, 'state_dict': self.model.state_dict(),
                  'optimizer': self.optimizer.state_dict(),
                  'scheduler': self.lr_scheduler.state_dict()}
-        LSTMPredictor(self.model).save(state, out + '.epoch{}'.format(epoch))
+        LSTMPredictor(self.model).save(state, out + '.epoch{}'.format(epoch + 1))
         LSTMPredictor(self.model).save(state, out)
 
     def lr(self):
@@ -185,7 +185,7 @@ class Trainer(object):
         return loss.item()
 
 
-def main(epochs=30):
+def main(epochs=50):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
@@ -194,30 +194,20 @@ def main(epochs=30):
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp'),
                         help='type of LSTM to train')
-    parser.add_argument('--train-input-files', default='data/train/**/*.ndjson',
-                        help='glob expression for train input files')
-    parser.add_argument('--val-input-files', default='data/val/**/*.ndjson',
-                        help='glob expression for validation input files')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
-    parser.add_argument('--path', default='trajnew',  
+    parser.add_argument('--path', default='new_honda',  
                         help='glob expression for data files')
 
     pretrain = parser.add_argument_group('pretraining')
-    pretrain.add_argument('--pre-epochs', default=5, type=int,
-                          help='number of epochs')
-    pretrain.add_argument('--pre-lr', default=1e-3, type=float,
-                          help='initial learning rate')
-    pretrain.add_argument('--pre-lr-div-schedule', default=3, type=int,
-                          help='pre-training learning rate division schedule')
     pretrain.add_argument('--load-state', default=None,
-                          help='load a pickled state dictionary before training')
+                          help='load a pickled model state dictionary before training')
+    pretrain.add_argument('--load-full-state', default=None,
+                          help='load a pickled full state dictionary before training')
     pretrain.add_argument('--nonstrict-load-state', default=None,
                           help='load a pickled state dictionary before training')
-    pretrain.add_argument('--drop-input-embedding', default=False, action='store_true',
-                          help='drop input embedding before loading state')
 
     hyperparameters = parser.add_argument_group('hyperparameters')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,
@@ -242,7 +232,7 @@ def main(epochs=30):
     from pythonjsonlogger import jsonlogger
     import socket
     import sys
-    if args.load_state:
+    if args.load_full_state:
         file_handler = logging.FileHandler(args.output + '.log', mode='a')
     else:
         file_handler = logging.FileHandler(args.output + '.log', mode='w')        
@@ -262,11 +252,13 @@ def main(epochs=30):
     if args.nonstrict_load_state:
         args.load_state = args.nonstrict_load_state
         args.load_state_strict = False
+    if args.load_full_state:
+        args.load_state = True
 
     # add args.device
     args.device = torch.device('cpu')
-    # if not args.disable_cuda and torch.cuda.is_available():
-    #     args.device = torch.device('cuda')
+    if not args.disable_cuda and torch.cuda.is_available():
+        args.device = torch.device('cuda')
 
     # read in datasets
     args.path = 'DATA_BLOCK/' + args.path
@@ -283,24 +275,32 @@ def main(epochs=30):
     model = LSTM(pool=pool,
                  embedding_dim=args.coordinate_embedding_dim,
                  hidden_dim=args.hidden_dim)
+    # Default Load
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    lr_scheduler = None
+    start_epoch = 0
 
     # train
     if args.load_state:
+        # load pretrained model.
+        # useful for tranfer learning
         with open(args.load_state, 'rb') as f:
             checkpoint = torch.load(f)
         pretrained_state_dict = checkpoint['state_dict']
         model.load_state_dict(pretrained_state_dict, strict=args.load_state_strict)
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
-        lr_scheduler.load_state_dict(checkpoint['scheduler'])
-        start_epoch = checkpoint['epoch'] 
-        trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device)
-        trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs, start_epoch=start_epoch)
-    else:
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
-        trainer = Trainer(model, optimizer=optimizer, device=args.device)
-        trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs)
+
+        if args.load_full_state:
+        # load optimizers from last training
+        # useful to continue training  
+            optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
+            lr_scheduler.load_state_dict(checkpoint['scheduler'])
+            start_epoch = checkpoint['epoch'] 
+    
+    #trainer       
+    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device)
+    trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 
 if __name__ == '__main__':
