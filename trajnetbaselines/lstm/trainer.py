@@ -198,7 +198,7 @@ def main(epochs=50):
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
-    parser.add_argument('--path', default='new_honda',  
+    parser.add_argument('--path', default='trajdata',  
                         help='glob expression for data files')
 
     pretrain = parser.add_argument_group('pretraining')
@@ -257,8 +257,8 @@ def main(epochs=50):
 
     # add args.device
     args.device = torch.device('cpu')
-    if not args.disable_cuda and torch.cuda.is_available():
-        args.device = torch.device('cuda')
+    # if not args.disable_cuda and torch.cuda.is_available():
+    #     args.device = torch.device('cuda')
 
     # read in datasets
     args.path = 'DATA_BLOCK/' + args.path

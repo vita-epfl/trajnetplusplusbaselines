@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
-import pandas as pd
 from collections import OrderedDict
 
 class Table(object):

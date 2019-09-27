@@ -69,3 +69,12 @@ class L2Loss(torch.nn.Module):
 
     def forward(self, inputs, targets):
         return self.loss(inputs[:, :2], targets)
+
+class ADELoss(torch.nn.Module):
+    """ADELoss between GT and Predicted Trajectory.
+    """
+    def __init__(self):
+        super(ADELoss, self).__init__()
+
+    def forward(self, inputs, targets):
+        return torch.mean(torch.norm((inputs[:, :2] - targets), dim=1))

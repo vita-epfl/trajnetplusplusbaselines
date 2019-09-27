@@ -5,6 +5,7 @@ import trajnetbaselines
 import shutil
 import os
 import argparse
+import torch
 
 def main(args, kf=False, sf=False):
     ## List of .json file inside the args.data (waiting to be predicted by the testing model)
@@ -49,7 +50,10 @@ def main(args, kf=False, sf=False):
                 predictor = trajnetbaselines.socialforce.predict
             else:
                 predictor = trajnetbaselines.lstm.LSTMPredictor.load(model)
-
+                # On CPU
+                device = torch.device('cpu')
+                predictor.model.to(device)
+            
             # Write the prediction
             with open(args.data + '{}/{}'.format(model_name, name), "a") as myfile:
                 for scene_id, paths in scenes:

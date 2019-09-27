@@ -223,7 +223,7 @@ def eval(gt, input_file, disable_collision, args):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', default='trajnew',
+    parser.add_argument('--data', default='trajdata',
                         help='path of data')    
     parser.add_argument('--output', required=True, nargs='+',
                         help='output folder')
