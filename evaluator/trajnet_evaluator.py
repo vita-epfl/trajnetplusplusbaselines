@@ -8,8 +8,6 @@ import argparse
 
 import evaluator.write as write
 from evaluator.design_table import Table
-import matplotlib.pyplot as plt 
-from statistics import median 
 
 class TrajnetEvaluator:
     def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes):
