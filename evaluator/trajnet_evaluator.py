@@ -110,6 +110,7 @@ class TrajnetEvaluator:
             if not disable_collision:
                
                 ## Collisions in GT
+                # person_radius=0.1
                 for j in range(1, len(ground_truth)):
                     if trajnettools.metrics.collision(primary_tracks, ground_truth[j]):
                         for key in keys:
@@ -253,7 +254,7 @@ def main():
 
     # Initiate Result Table
     table = Table()
-    
+
     for name in names:
         list_sub = sorted([f for f in os.listdir(args.data + name)
                            if not f.startswith('.')])

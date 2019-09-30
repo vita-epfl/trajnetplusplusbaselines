@@ -19,10 +19,13 @@ from .. import __version__ as VERSION
 
 class Trainer(object):
     def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
-                 device=None):
+                 device=None, loss='L2'):
         self.model = model if model is not None else LSTM()
-        # self.criterion = criterion if criterion is not None else PredictionLoss()
-        self.criterion = criterion if criterion is not None else L2Loss()        
+        # self.criterion = criterion if criterion is not None else L2Loss()        
+        if loss == 'L2':
+            self.criterion = L2Loss()        
+        else:
+            self.criterion = PredictionLoss()
         self.optimizer = optimizer if optimizer is not None else torch.optim.SGD(
             self.model.parameters(), lr=1e-3, momentum=0.9, weight_decay=1e-4)
         self.lr_scheduler = (lr_scheduler
@@ -200,6 +203,8 @@ def main(epochs=50):
                         help='disable CUDA')
     parser.add_argument('--path', default='trajdata',  
                         help='glob expression for data files')
+    parser.add_argument('--loss', default='L2',  
+                        help='loss function')
 
     pretrain = parser.add_argument_group('pretraining')
     pretrain.add_argument('--load-state', default=None,
@@ -214,7 +219,8 @@ def main(epochs=50):
                                  help='RNN hidden dimension')
     hyperparameters.add_argument('--coordinate-embedding-dim', type=int, default=64,
                                  help='coordinate embedding dimension')
-
+    hyperparameters.add_argument('--cell_side', type=float, default=2.0,
+                                 help='cell size of real world')
     args = parser.parse_args()
 
     # set model output file
@@ -253,7 +259,7 @@ def main(epochs=50):
         args.load_state = args.nonstrict_load_state
         args.load_state_strict = False
     if args.load_full_state:
-        args.load_state = True
+        args.load_state = args.load_full_state
 
     # add args.device
     args.device = torch.device('cpu')
@@ -271,7 +277,7 @@ def main(epochs=50):
     if args.type == 'hiddenstatemlp':
         pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim)
     elif args.type != 'vanilla':
-        pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim)
+        pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim, cell_side=args.cell_side)
     model = LSTM(pool=pool,
                  embedding_dim=args.coordinate_embedding_dim,
                  hidden_dim=args.hidden_dim)
@@ -299,7 +305,7 @@ def main(epochs=50):
             start_epoch = checkpoint['epoch'] 
     
     #trainer       
-    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device)
+    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device, loss=args.loss)
     trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 

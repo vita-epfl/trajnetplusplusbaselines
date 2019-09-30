@@ -15,20 +15,13 @@ Data Setup
 
 For data conversion, refer to Trajnetdataset. 
 
-DATA_BLOCK contains different training sets: ``mkdir DATA_BLOCK`` 
-
 Move the converted dataset for training to DATA_BLOCK:
-``mkdir DATA_BLOCK\trajdata``
 
-``cp -r <converted_dataset> DATA_BLOCK\trajdata``
+``mkdir -p DATA_BLOCK/trajdata``
 
+``cp -r <converted_dataset>/ DATA_BLOCK/trajdata``
 
 The corresponding outputs after training are stored in OUTPUT_BLOCK: ``mkdir OUTPUT_BLOCK``
-
-Requirements
-============
-
-Social Force: ``pip install 'socialforce[test,plot]'`` 
 
 Training LSTMs
 ==============

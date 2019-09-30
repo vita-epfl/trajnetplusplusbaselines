@@ -1,6 +1,6 @@
 import trajnettools
 import trajnetbaselines.kalman as kalman
-from trajnetbaselines import socialforce
+# from trajnetbaselines import socialforce
 import trajnetbaselines
 import shutil
 import os
