@@ -7,7 +7,8 @@ from collections import OrderedDict
 import argparse
 
 import evaluator.write as write
-from evaluator.design_table import Table
+# from evaluator.design_table import Table
+from evaluator.aicrowd_table import Table
 
 class TrajnetEvaluator:
     def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes):
