@@ -55,7 +55,7 @@ class TrajnetEvaluator:
         tmp_prediction = {}
         for track in self.scenes_sub[0][0]:
             if track.prediction_number and track.prediction_number > num_predictions:
-                num_predictions = scene.prediction_number
+                num_predictions = track.prediction_number
 
         ## Max. 3 trajectories can only be outputted
         if num_predictions > 2:
