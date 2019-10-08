@@ -21,7 +21,6 @@ class Trainer(object):
     def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
                  device=None, loss='L2'):
         self.model = model if model is not None else LSTM()
-        # self.criterion = criterion if criterion is not None else L2Loss()        
         if loss == 'L2':
             self.criterion = L2Loss()        
         else:
@@ -57,35 +56,6 @@ class Trainer(object):
         for param_group in self.optimizer.param_groups:
             return param_group['lr']
 
-    def is_nonlinear_for_final_point(self, scene, distance_threshold=1.0):
-        # check linear extrapolation is off enough to make this interesting
-        primary_path = scene[:, 0]
-        linear_prediction = primary_path[8] + 12.0 / 3.0 * (primary_path[8] - primary_path[5])
-        prediction_diff = primary_path[20] - linear_prediction
-        d2 = prediction_diff[0]**2 + prediction_diff[1]**2
-        # print(d, primary_path, linear_prediction)
-        return d2 > distance_threshold**2
-
-    def is_nonlinear(self, scene):
-        primary_path = scene[:, 0]
-        primary_velocities = primary_path[1:] - primary_path[:-1]
-        primary_accelerations = primary_velocities[1:] - primary_velocities[:-1]
-        primary_accelerations2 = np.sum(np.square(primary_accelerations), axis=1)
-        distances_2 = np.sum(np.square(scene[:, 1:] - scene[:, 0:1]), axis=2)
-        for acc2, d2 in zip(primary_accelerations2, distances_2):
-            if acc2 < 0.1**2:
-                continue
-
-            smallest_distance2 = np.nanmin(d2)
-            if smallest_distance2 != smallest_distance2:
-                continue
-            if smallest_distance2 > 2.0**2:
-                continue
-
-            return True
-
-        return False
-
     def train(self, scenes, epoch):
         start_time = time.time()
 
@@ -98,11 +68,6 @@ class Trainer(object):
         for scene_i, (_, scene) in enumerate(scenes):
             scene_start = time.time()
             scene = drop_distant(scene)
-
-            # if self.is_nonlinear(scene) and random.random() < 0.9:
-            #     # print('drop')
-            #     continue
-            # print('continue')
 
             scene = augmentation.random_rotation(scene)
             scene = torch.Tensor(scene).to(self.device)
@@ -147,29 +112,15 @@ class Trainer(object):
         })
 
     def train_batch(self, xy):
-        # augmentation: random coordinate shifts
-        # noise = (torch.rand_like(xy) - 0.5) * 2.0 * 0.03
-        # xy += noise
-
-        # augmentation: random stretching
-        # x_scale = 0.9 + 0.2 * random.random()
-        # y_scale = 0.9 + 0.2 * random.random()
-        # xy[:, :, 0] *= x_scale
-        # xy[:, :, 1] *= y_scale
-
         observed = xy[:9]
         prediction_truth = xy[9:-1].clone()  ## CLONE
-        targets = xy[2:, 0] - xy[1:-1, 0]
-
-        # augmentation: vary the length of the observed data a bit
-        # truncate_n = int(random.random() * 4.0)
-        # observed = observed[truncate_n:]
-        # targets = targets[truncate_n:]
+        targets = xy[9:, 0] - xy[8:-1, 0]
 
         self.optimizer.zero_grad()
         rel_outputs, outputs = self.model(observed, prediction_truth)
 
-        loss = self.criterion(rel_outputs[:, 0], targets) * 100
+        ## Loss wrt primary only
+        loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
         loss.backward()
 
         self.optimizer.step()
@@ -182,8 +133,8 @@ class Trainer(object):
         with torch.no_grad():
             rel_outputs, outputs = self.model(observed, prediction_truth)
 
-            targets = xy[2:, 0] - xy[1:-1, 0]
-            loss = self.criterion(rel_outputs[:, 0], targets) * 100
+            targets = xy[9:, 0] - xy[8:-1, 0]
+            loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
 
         return loss.item()
 
