@@ -223,22 +223,20 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', default='trajdata',
-                        help='path of data')    
+                        help='directory of data to test')    
     parser.add_argument('--output', required=True, nargs='+',
-                        help='output folder')
+                        help='relative path to saved model')
     parser.add_argument('--disable-write', action='store_true',
                         help='disable writing new files')
     parser.add_argument('--disable-collision', action='store_true',
-                        help='disable collision metric')
-    parser.add_argument('--test', default = True)
-    parser.add_argument('--test-path', default = 'test')
+                        help='disable collision metrics')
     args = parser.parse_args()
 
     ## Path to the data folder name to predict 
     args.data = 'DATA_BLOCK/' + args.data + '/'
 
     ## Test_pred : Folders for saving model predictions
-    args.data = args.data + args.test_path + '_pred/'
+    args.data = args.data + 'test_pred/'
 
     ## Writes to Test_pred
     ### Does this overwrite existing predictions? No. ###

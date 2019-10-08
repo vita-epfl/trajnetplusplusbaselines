@@ -40,7 +40,8 @@ class LSTM(torch.nn.Module):
 
     def step(self, lstm, hidden_cell_state, obs1, obs2):
         """Do one step: two inputs to one normal prediction."""
-        # mask
+        # mask for pedestrians absent from scene (partial trajectories)
+        # consider only the hidden states of pedestrains present in scene
         track_mask = (torch.isnan(obs1[:, 0]) + torch.isnan(obs2[:, 0])) == 0
         obs1, obs2 = obs1[track_mask], obs2[track_mask]
         hidden_cell_stacked = [
@@ -94,12 +95,6 @@ class LSTM(torch.nn.Module):
 
         observed shape is (seq, n_tracks, observables)
         """
-        # without pooling, only look at the primary track
-        # if self.pool is None:
-        #     observed = observed[:, 0:1]
-        #     if prediction_truth is not None:
-        #         prediction_truth = prediction_truth[:, 0:1]
-
         assert ((prediction_truth is None) + (n_predict is None)) == 1
         if n_predict is not None:
             # -1 because one prediction is done by the encoder already
@@ -115,15 +110,20 @@ class LSTM(torch.nn.Module):
             [torch.zeros(self.hidden_dim, device=observed.device) for _ in range(n_tracks)],
         )
 
-        # encoder
+        # list of predictions
         normals = []  # predicted normal parameters for both phases
         positions = []  # true (during obs phase) and predicted positions
+
+        #tag the start of encoding (optional)
         start_enc_tag = self.input_embedding.start_enc(observed[0])
         hidden_cell_state = self.tag_step(self.encoder, hidden_cell_state, start_enc_tag)
+
+        # encoder
         for obs1, obs2 in zip(observed[:-1], observed[1:]):
+            ##LSTM Step
             hidden_cell_state, normal = self.step(self.encoder, hidden_cell_state, obs1, obs2)
 
-            # save outputs
+            # concat predictions
             normals.append(normal)
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
@@ -136,25 +136,16 @@ class LSTM(torch.nn.Module):
         start_dec_tag = self.input_embedding.start_dec(observed[0])
         hidden_cell_state = self.tag_step(self.decoder, hidden_cell_state, start_dec_tag)
         for obs1, obs2 in zip(prediction_truth[:-1], prediction_truth[1:]):
-            if obs1 is None:
-                obs1 = positions[-2].detach()  # DETACH!!!
-            else:
-                obs1[0] = positions[-2][0].detach()  # DETACH!!!
-            if obs2 is None:
-                obs2 = positions[-1].detach()
-            else:
-                obs2[0] = positions[-1][0].detach()
-
+            obs1 = positions[-2].detach()  # DETACH!!!
+            obs2 = positions[-1].detach()  # DETACH!!!
             hidden_cell_state, normal = self.step(self.decoder, hidden_cell_state, obs1, obs2)
 
-            # save outputs
+            # concat predictions
             normals.append(normal)
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
-
-        # return torch.stack(normals if self.training else positions, dim=0)[:, 0]
         
-        ##pred_scene is absolute positions -->  19 x n_person x 2
-        ##rel_pred_scene is relative next step jump --> 19 x n_person x 5
+        ##Pred_scene: Absolute positions -->  19 x n_person x 2
+        ##Rel_pred_scene: Next step wrt current step --> 19 x n_person x 5
         rel_pred_scene = torch.stack(normals, dim=0)
         pred_scene = torch.stack(positions, dim=0)
 
@@ -172,8 +163,6 @@ class LSTMPredictor(object):
         # # Save state for optimizer to continue training in future
         with open(filename + '.state', 'wb') as f:
             torch.save(state, f)
-        # with open(filename + '.state_dict', 'wb') as f:
-        #     torch.save(self.model.state_dict(), f)
 
     @staticmethod
     def load(filename):
