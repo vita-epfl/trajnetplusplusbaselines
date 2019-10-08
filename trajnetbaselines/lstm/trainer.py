@@ -1,12 +1,12 @@
 """Command line tool to train an LSTM model."""
 
 import argparse
-import datetime
 import logging
+import socket
+import sys
 import time
 import random
-import os 
-import numpy as np
+import os
 import torch
 import trajnettools
 
@@ -18,11 +18,11 @@ from .. import __version__ as VERSION
 
 
 class Trainer(object):
-    def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
-                 device=None, loss='L2'):
+    def __init__(self, model=None, criterion='L2', optimizer=None, lr_scheduler=None,
+                 device=None):
         self.model = model if model is not None else LSTM()
-        if loss == 'L2':
-            self.criterion = L2Loss()        
+        if criterion == 'L2':
+            self.criterion = L2Loss()
         else:
             self.criterion = PredictionLoss()
         self.optimizer = optimizer if optimizer is not None else torch.optim.SGD(
@@ -52,7 +52,7 @@ class Trainer(object):
         LSTMPredictor(self.model).save(state, out + '.epoch{}'.format(epoch + 1))
         LSTMPredictor(self.model).save(state, out)
 
-    def lr(self):
+    def get_lr(self):
         for param_group in self.optimizer.param_groups:
             return param_group['lr']
 
@@ -83,7 +83,7 @@ class Trainer(object):
                     'epoch': epoch, 'batch': scene_i, 'n_batches': len(scenes),
                     'time': round(total_time, 3),
                     'data_time': round(preprocess_time, 3),
-                    'lr': self.lr(),
+                    'lr': self.get_lr(),
                     'loss': round(loss, 3),
                 })
 
@@ -117,7 +117,7 @@ class Trainer(object):
         targets = xy[9:, 0] - xy[8:-1, 0]
 
         self.optimizer.zero_grad()
-        rel_outputs, outputs = self.model(observed, prediction_truth)
+        rel_outputs, _ = self.model(observed, prediction_truth)
 
         ## Loss wrt primary only
         loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
@@ -131,7 +131,7 @@ class Trainer(object):
         prediction_truth = xy[9:-1].clone()  ## CLONE
 
         with torch.no_grad():
-            rel_outputs, outputs = self.model(observed, prediction_truth)
+            rel_outputs, _ = self.model(observed, prediction_truth)
 
             targets = xy[9:, 0] - xy[8:-1, 0]
             loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
@@ -152,9 +152,9 @@ def main(epochs=50):
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
-    parser.add_argument('--path', default='trajdata',  
+    parser.add_argument('--path', default='trajdata',
                         help='glob expression for data files')
-    parser.add_argument('--loss', default='L2',  
+    parser.add_argument('--loss', default='L2',
                         help='loss function')
 
     pretrain = parser.add_argument_group('pretraining')
@@ -177,25 +177,19 @@ def main(epochs=50):
 
     args = parser.parse_args()
 
-    # set model output file
-    timestamp = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')
-    # if args.output is None:
-    #     args.output = 'output/{}_lstm_{}.pkl'.format(args.type, timestamp)
     if not os.path.exists('OUTPUT_BLOCK/{}'.format(args.path)):
         os.makedirs('OUTPUT_BLOCK/{}'.format(args.path))
     if args.output:
-        args.output = 'OUTPUT_BLOCK/{}/{}_{}.pkl'.format(args.path, args.type, args.output)  
+        args.output = 'OUTPUT_BLOCK/{}/{}_{}.pkl'.format(args.path, args.type, args.output)
     else:
-        args.output = 'OUTPUT_BLOCK/{}/{}.pkl'.format(args.path, args.type) 
-        
+        args.output = 'OUTPUT_BLOCK/{}/{}.pkl'.format(args.path, args.type)
+
     # configure logging
     from pythonjsonlogger import jsonlogger
-    import socket
-    import sys
     if args.load_full_state:
         file_handler = logging.FileHandler(args.output + '.log', mode='a')
     else:
-        file_handler = logging.FileHandler(args.output + '.log', mode='w')        
+        file_handler = logging.FileHandler(args.output + '.log', mode='w')
     file_handler.setFormatter(jsonlogger.JsonFormatter('(message) (levelname) (name) (asctime)'))
     stdout_handler = logging.StreamHandler(sys.stdout)
     logging.basicConfig(level=logging.INFO, handlers=[stdout_handler, file_handler])
@@ -251,15 +245,15 @@ def main(epochs=50):
 
         if args.load_full_state:
         # load optimizers from last training
-        # useful to continue training  
+        # useful to continue training
             optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
             optimizer.load_state_dict(checkpoint['optimizer'])
             lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
             lr_scheduler.load_state_dict(checkpoint['scheduler'])
-            start_epoch = checkpoint['epoch'] 
-    
-    #trainer       
-    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device, loss=args.loss)
+            start_epoch = checkpoint['epoch']
+
+    #trainer
+    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device, criterion=args.loss)
     trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 

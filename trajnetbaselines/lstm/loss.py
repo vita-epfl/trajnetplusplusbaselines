@@ -63,7 +63,7 @@ class PredictionLoss(torch.nn.Module):
 class L2Loss(torch.nn.Module):
     """Pytorch L2 Loss between Mean of predicted gaussians and targets
     """
-    def __init__(self, size_average=True, reduce=True):
+    def __init__(self):
         super(L2Loss, self).__init__()
         self.loss = torch.nn.MSELoss()
 
