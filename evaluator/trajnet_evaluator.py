@@ -1,11 +1,14 @@
-import numpy as np
-import trajnettools
 import shutil
 import os
 import warnings
 from collections import OrderedDict
 import argparse
 
+import pickle 
+from joblib import Parallel, delayed
+import numpy as np
+
+import trajnettools
 import evaluator.write as write
 from evaluator.design_table import Table
 
@@ -186,7 +189,7 @@ class TrajnetEvaluator:
                self.lf, self.ca, self.grp, self.others
 
 
-def eval(gt, input_file, disable_collision, args):
+def eval(gt, input_file, args):
     # Ground Truth
     reader_gt = trajnettools.Reader(gt, scene_type='paths')
     scenes_gt = [s for _, s in reader_gt.scenes()]
@@ -216,7 +219,7 @@ def eval(gt, input_file, disable_collision, args):
 
     # Evaluate
     evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes)
-    evaluator.aggregate('kf', disable_collision)
+    evaluator.aggregate('kf', args.disable_collision)
     return evaluator.result()
 
 def main():
@@ -252,20 +255,42 @@ def main():
     table = Table()
 
     for name in names:
-        list_sub = sorted([f for f in os.listdir(args.data + name)
-                           if not f.startswith('.')])
-
-        submit_datasets = [args.data + name + '/' + f for f in list_sub]
-        true_datasets = [args.data.replace('pred', 'private') + f for f in list_sub]
         print(name)
 
-        ## Evaluate submitted datasets with True Datasets [The main eval function]
-        results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
-                    eval(true_datasets[i], submit_datasets[i], args.disable_collision, args)
-                   for i in range(len(true_datasets))}
+        result_file = args.data.replace('pred', 'results') + name
 
-        ## Saves results in dict
-        table.add_entry(name, results)
+        ## If result was pre-calculated and saved, Load
+        if os.path.exists(result_file + '/results.pkl'):
+            print("Loading Saved Results")
+            with open(result_file + '/results.pkl', 'rb') as handle:
+                [final_result, sub_final_result] = pickle.load(handle)
+            table.add_result(name, final_result, sub_final_result)
+
+        ## Else, Calculate results and save
+        else:
+            list_sub = sorted([f for f in os.listdir(args.data + name)
+                               if not f.startswith('.')])
+
+            submit_datasets = [args.data + name + '/' + f for f in list_sub]
+            true_datasets = [args.data.replace('pred', 'private') + f for f in list_sub]
+
+            ## Evaluate submitted datasets with True Datasets [The main eval function]
+            # results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
+            #             eval(true_datasets[i], submit_datasets[i], args)
+            #            for i in range(len(true_datasets))}
+
+            results_list = Parallel(n_jobs=4)(delayed(eval)(true_datasets[i], submit_datasets[i], args) 
+                                                            for i in range(len(true_datasets)))
+            results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
+                       results_list[i] for i in range(len(true_datasets))}
+
+            ## Generate results 
+            final_result, sub_final_result = table.add_entry(name, results)
+
+            ## Save results as pkl (to avoid computation again) 
+            os.makedirs(result_file)
+            with open(result_file + '/results.pkl', 'wb') as handle:
+                pickle.dump([final_result, sub_final_result], handle, protocol=pickle.HIGHEST_PROTOCOL) 
 
     ## Make Result Table 
     table.print_table()

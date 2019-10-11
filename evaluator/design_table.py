@@ -14,85 +14,81 @@ class Table(object):
         self.results = {}
         self.sub_results = {}
 
-    def table_body(self):
-        ## Display Table Body
-        overall = {}
-        for name, results in self.entries.items():
-            final_results = []
-            overall = {}
-            overall['1'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
-            overall['2'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
-            overall['3'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
-            overall['4'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
-            overall['o_all'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
-            
-            sub_final_results = []
-            sub_overall = {}
-            sub_overall['1'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
-            sub_overall['2'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
-            sub_overall['3'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
-            sub_overall['4'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
-
-            for dataset, (ade, fde, s, l, i, ni, lf, ca, grp, oth) in results.items():
-                overall['1'] += np.array([s['N'], s['kf'][0] * s['N'], s['kf'][1] * s['N'],
-                                                s['kf'][2], s['kf'][3], s['kf'][4]])
-                overall['2'] += np.array([l['N'], l['kf'][0] * l['N'], l['kf'][1] * l['N'],
-                                                l['kf'][2], l['kf'][3], l['kf'][4]])
-                overall['3'] += np.array([i['N'], i['kf'][0] * i['N'], i['kf'][1] * i['N'],
-                                                i['kf'][2], i['kf'][3], i['kf'][4]])
-                overall['4'] += np.array([ni['N'], ni['kf'][0] * ni['N'], ni['kf'][1] * ni['N'],
-                                                ni['kf'][2], ni['kf'][3], ni['kf'][4]])
-                overall['o_all'] += np.array([ade['N'], ade['kf'] * ade['N'], fde['kf'] * fde['N'],
-                                              s['kf'][2] + l['kf'][2] + i['kf'][2] + ni['kf'][2],
-                                              s['kf'][3] + l['kf'][3] + i['kf'][3] + ni['kf'][3],
-                                              s['kf'][4] + l['kf'][4] + i['kf'][4] + ni['kf'][4]])
-                sub_overall['1'] += np.array([lf['N'], lf['kf'][0] * lf['N'], lf['kf'][1] * lf['N'],
-                                                lf['kf'][2], lf['kf'][3], lf['kf'][4]])
-                sub_overall['2'] += np.array([ca['N'], ca['kf'][0] * ca['N'], ca['kf'][1] * ca['N'],
-                                                ca['kf'][2], ca['kf'][3], ca['kf'][4]])
-                sub_overall['3'] += np.array([grp['N'], grp['kf'][0] * grp['N'], grp['kf'][1] * grp['N'],
-                                                grp['kf'][2], grp['kf'][3], grp['kf'][4]])
-                sub_overall['4'] += np.array([oth['N'], oth['kf'][0] * oth['N'], oth['kf'][1] * oth['N'],
-                                                oth['kf'][2], oth['kf'][3], oth['kf'][4]])
-            print('')
-
-            for keys in list(overall.keys()):
-                if overall[keys][0] != 0:
-                    overall[keys][1] /= overall[keys][0]
-                    overall[keys][2] /= overall[keys][0]
-                    overall[keys][3] /= (overall[keys][0]*0.01)
-                    if overall[keys][5] != 0:
-                        overall[keys][4] /= (overall[keys][5]* 0.01)
-                    else:
-                        overall[keys][4] = -1
-                    final_results += [int(overall[keys][0]), overall[keys][1], overall[keys][2], overall[keys][3], overall[keys][4]]
-                else:
-                    final_results += [0, 0.0, 0.0, 0.0, 0.0]
-
-            for keys in list(sub_overall.keys()):
-                if sub_overall[keys][0] != 0:
-                    sub_overall[keys][1] /= sub_overall[keys][0]
-                    sub_overall[keys][2] /= sub_overall[keys][0]
-                    sub_overall[keys][3] /= (sub_overall[keys][0]*0.01)
-                    if sub_overall[keys][5] != 0:
-                        sub_overall[keys][4] /= (sub_overall[keys][5]* 0.01)
-                    else:
-                        sub_overall[keys][4] = -1
-                    sub_final_results += [int(sub_overall[keys][0]), sub_overall[keys][1], sub_overall[keys][2], sub_overall[keys][3], sub_overall[keys][4]]
-                else:
-                    sub_final_results += [0, 0.0, 0.0, 0.0, 0.0]
-
-            self.results[name] = final_results
-            self.sub_results[name] = sub_final_results
-
-        self.all_chart()
-        return
-
     def add_entry(self, name, results):
-        self.entries[name] = results
+        final_results = []
+        overall = {}
+        overall['1'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+        overall['2'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+        overall['3'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+        overall['4'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+        overall['o_all'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+        
+        sub_final_results = []
+        sub_overall = {}
+        sub_overall['1'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+        sub_overall['2'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+        sub_overall['3'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+        sub_overall['4'] = np.array([0, 0.0, 0.0, 0.0, 0.0, 0])
+
+        for dataset, (ade, fde, s, l, i, ni, lf, ca, grp, oth) in results.items():
+            overall['1'] += np.array([s['N'], s['kf'][0] * s['N'], s['kf'][1] * s['N'],
+                                            s['kf'][2], s['kf'][3], s['kf'][4]])
+            overall['2'] += np.array([l['N'], l['kf'][0] * l['N'], l['kf'][1] * l['N'],
+                                            l['kf'][2], l['kf'][3], l['kf'][4]])
+            overall['3'] += np.array([i['N'], i['kf'][0] * i['N'], i['kf'][1] * i['N'],
+                                            i['kf'][2], i['kf'][3], i['kf'][4]])
+            overall['4'] += np.array([ni['N'], ni['kf'][0] * ni['N'], ni['kf'][1] * ni['N'],
+                                            ni['kf'][2], ni['kf'][3], ni['kf'][4]])
+            overall['o_all'] += np.array([ade['N'], ade['kf'] * ade['N'], fde['kf'] * fde['N'],
+                                          s['kf'][2] + l['kf'][2] + i['kf'][2] + ni['kf'][2],
+                                          s['kf'][3] + l['kf'][3] + i['kf'][3] + ni['kf'][3],
+                                          s['kf'][4] + l['kf'][4] + i['kf'][4] + ni['kf'][4]])
+            sub_overall['1'] += np.array([lf['N'], lf['kf'][0] * lf['N'], lf['kf'][1] * lf['N'],
+                                            lf['kf'][2], lf['kf'][3], lf['kf'][4]])
+            sub_overall['2'] += np.array([ca['N'], ca['kf'][0] * ca['N'], ca['kf'][1] * ca['N'],
+                                            ca['kf'][2], ca['kf'][3], ca['kf'][4]])
+            sub_overall['3'] += np.array([grp['N'], grp['kf'][0] * grp['N'], grp['kf'][1] * grp['N'],
+                                            grp['kf'][2], grp['kf'][3], grp['kf'][4]])
+            sub_overall['4'] += np.array([oth['N'], oth['kf'][0] * oth['N'], oth['kf'][1] * oth['N'],
+                                            oth['kf'][2], oth['kf'][3], oth['kf'][4]])
+        print('')
+
+        for keys in list(overall.keys()):
+            if overall[keys][0] != 0:
+                overall[keys][1] /= overall[keys][0]
+                overall[keys][2] /= overall[keys][0]
+                overall[keys][3] /= (overall[keys][0]*0.01)
+                if overall[keys][5] != 0:
+                    overall[keys][4] /= (overall[keys][5]* 0.01)
+                else:
+                    overall[keys][4] = -1
+                final_results += [int(overall[keys][0]), overall[keys][1], overall[keys][2], overall[keys][3], overall[keys][4]]
+            else:
+                final_results += [0, 0.0, 0.0, 0.0, 0.0]
+
+        for keys in list(sub_overall.keys()):
+            if sub_overall[keys][0] != 0:
+                sub_overall[keys][1] /= sub_overall[keys][0]
+                sub_overall[keys][2] /= sub_overall[keys][0]
+                sub_overall[keys][3] /= (sub_overall[keys][0]*0.01)
+                if sub_overall[keys][5] != 0:
+                    sub_overall[keys][4] /= (sub_overall[keys][5]* 0.01)
+                else:
+                    sub_overall[keys][4] = -1
+                sub_final_results += [int(sub_overall[keys][0]), sub_overall[keys][1], sub_overall[keys][2], sub_overall[keys][3], sub_overall[keys][4]]
+            else:
+                sub_final_results += [0, 0.0, 0.0, 0.0, 0.0]
+
+        self.results[name] = final_results
+        self.sub_results[name] = sub_final_results
+        return final_results, sub_final_results
+
+    def add_result(self, name, final_results, sub_final_results):
+        self.results[name] = final_results
+        self.sub_results[name] = sub_final_results
 
     def print_table(self):
-        self.table_body()
+        self.all_chart()
 
     def all_chart(self):
         fig = plt.figure(figsize=(20, 20))
