@@ -44,6 +44,11 @@ class Pooling(torch.nn.Module):
     ## Default S-LSTM Parameters
     def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
                  type_='occupancy', pool_size=8, blur_size=0):
+        """
+        cell_side: size of each cell in real world
+        n: number of cells along one dimension
+        Pools in a square of side (n*cell_side) centred at the ped location
+        """
         super(Pooling, self).__init__()
         self.cell_side = cell_side
         self.n = n

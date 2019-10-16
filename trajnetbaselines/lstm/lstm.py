@@ -9,7 +9,10 @@ from .modules import Hidden2Normal, InputEmbedding
 
 NAN = float('nan')
 
-def drop_distant(xy, r=10.0):
+def drop_distant(xy, r=25.0):
+    """
+    Drops pedestrians more than r meters away from primary ped
+    """
     distance_2 = np.sum(np.square(xy - xy[:, 0:1]), axis=2)
     # if not all(any(e == e for e in column) for column in distance_2.T):
     #     print(distance_2.tolist())
@@ -182,7 +185,7 @@ class LSTMPredictor(object):
         first_frame = observed_path[8].frame + frame_diff
         with torch.no_grad():
             xy = trajnettools.Reader.paths_to_xy(paths)
-            xy = drop_distant(xy, r=10.0)
+            xy = drop_distant(xy)
             xy = torch.Tensor(xy)  #.to(self.device)
             multimodal_outputs = {}
             for num_p in range(modes):

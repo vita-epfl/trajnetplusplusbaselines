@@ -170,8 +170,11 @@ def main(epochs=50):
                                  help='RNN hidden dimension')
     hyperparameters.add_argument('--coordinate-embedding-dim', type=int, default=64,
                                  help='coordinate embedding dimension')
-    hyperparameters.add_argument('--cell_side', type=float, default=2.0,
+    hyperparameters.add_argument('--cell_side', type=float, default=1.0,
                                  help='cell size of real world')
+    hyperparameters.add_argument('--n', type=int, default=10,
+                                  help='number of cells per side')
+
     args = parser.parse_args()
 
     if not os.path.exists('OUTPUT_BLOCK/{}'.format(args.path)):
@@ -222,7 +225,8 @@ def main(epochs=50):
     if args.type == 'hiddenstatemlp':
         pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim)
     elif args.type != 'vanilla':
-        pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim, cell_side=args.cell_side)
+        pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim,
+                       cell_side=args.cell_side, n=args.n)
     model = LSTM(pool=pool,
                  embedding_dim=args.coordinate_embedding_dim,
                  hidden_dim=args.hidden_dim)
