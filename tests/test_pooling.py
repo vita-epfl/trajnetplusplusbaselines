@@ -21,6 +21,26 @@ def test_simple_grid():
         0, 1,
     ]]
 
+def test_front_grid():
+    pool = trajnetbaselines.lstm.Pooling(n=2, pool_size=4, blur_size=0, front=True)
+    obs2 = torch.Tensor([
+        [0.0, 0.0],
+        [-1, 1],
+    ])
+
+    obs1 = torch.Tensor([
+        [-1.0, 0.0],
+        [-1, 1],
+    ])
+
+    occupancies = pool.front_occupancies(obs2, obs1).numpy().tolist()
+    assert occupancies == [[
+        0, 0,
+        0, 0,
+    ], [
+        0, 0,
+        1, 0,
+    ]]
 
 def test_simple_grid_directional():
     pool = trajnetbaselines.lstm.Pooling(n=2, pool_size=4, type_='directional')
@@ -114,3 +134,5 @@ def test_hiddenstatemlp():
     hidden = torch.zeros(3, 128)
     pool = trajnetbaselines.lstm.pooling.HiddenStateMLPPooling()
     result = pool(hidden, None, positions)
+
+test_front_grid()

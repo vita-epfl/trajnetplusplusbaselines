@@ -1,7 +1,8 @@
 from collections import defaultdict
 
 import torch
-
+import math
+import numpy as np
 
 def one_cold(i, n):
     """Inverse one-hot encoding."""
@@ -43,7 +44,7 @@ class HiddenStateMLPPooling(torch.nn.Module):
 class Pooling(torch.nn.Module):
     ## Default S-LSTM Parameters
     def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
-                 type_='occupancy', pool_size=8, blur_size=0):
+                 type_='occupancy', pool_size=8, blur_size=0, front=False):
         """
         cell_side: size of each cell in real world
         n: number of cells along one dimension
@@ -61,6 +62,7 @@ class Pooling(torch.nn.Module):
             self.pooling_dim = 2
         if self.type_ == 'social':
             self.pooling_dim = hidden_dim
+        self.front = front 
 
         if out_dim is None:
             out_dim = hidden_dim
@@ -72,12 +74,20 @@ class Pooling(torch.nn.Module):
         )
 
     def forward(self, hidden_state, obs1, obs2):
-        if self.type_ == 'occupancy':
-            grid = self.occupancies(obs2)
-        elif self.type_ == 'directional':
-            grid = self.directional(obs1, obs2)
-        elif self.type_ == 'social':
-            grid = self.social(hidden_state, obs2)
+        if not self.front:
+            if self.type_ == 'occupancy':
+                grid = self.occupancies(obs2)
+            elif self.type_ == 'directional':
+                grid = self.directional(obs1, obs2)
+            elif self.type_ == 'social':
+                grid = self.social(hidden_state, obs2)
+        else:
+            if self.type_ == 'occupancy':
+                grid = self.front_occupancies(obs2, obs1)
+            elif self.type_ == 'directional':
+                grid = self.front_directional(obs1, obs2)
+            elif self.type_ == 'social':
+                grid = self.front_social(hidden_state, obs2, obs1)
         return self.embedding(grid)
 
     def occupancies(self, obs):
@@ -108,7 +118,38 @@ class Pooling(torch.nn.Module):
             for i in range(n)
         ], dim=0)
 
-    def occupancy(self, xy, other_xy, other_values=None):
+    ## Front 
+    def front_occupancies(self, obs, obs1):
+        n = obs.size(0)
+        return torch.stack([
+            self.occupancy(obs[i], obs[one_cold(i, n)], past_xy=obs1[i])
+            for i in range(n)
+        ], dim=0)
+
+    def front_directional(self, obs1, obs2):
+        n = obs2.size(0)
+        if n == 1:
+            return self.occupancy(obs2[0], None).unsqueeze(0)
+
+        return torch.stack([
+            self.occupancy(
+                obs2[i],
+                obs2[one_cold(i, n)],
+                (obs2 - obs1)[one_cold(i, n)] - (obs2 - obs1)[i],
+                obs1[i]
+            )
+            for i in range(n)
+        ], dim=0)
+
+    def front_social(self, hidden_state, obs, obs1):
+        n = obs.size(0)
+        return torch.stack([
+            self.occupancy(obs[i], obs[one_cold(i, n)], hidden_state[one_cold(i, n)], obs1[i])
+            for i in range(n)
+        ], dim=0)
+
+
+    def occupancy(self, xy, other_xy, other_values=None, past_xy=None):
         """Returns the occupancy."""
         if other_xy is None or \
            xy[0] != xy[0] or \
@@ -124,7 +165,24 @@ class Pooling(torch.nn.Module):
         if not oxy.size(0):
             return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
 
-        oij = ((oxy - xy) / (self.cell_side / self.pool_size) + self.n * self.pool_size / 2)
+        if not self.front:
+            ## Distance
+            oij = ((oxy - xy) / (self.cell_side / self.pool_size) + self.n * self.pool_size / 2)
+        else:
+            relative_pos = oxy - xy
+            ##Rotate (N x 2)
+            ## obs2[y] - obs1[y], obs2[x] - obs1[x]
+            diff = [xy[1] - past_xy[1],  xy[0] - past_xy[0]] 
+            velocity = np.arctan2(diff[0].item(), diff[1].item()) * 180 / np.pi
+            # print(velocity)
+            theta = 90 - velocity
+            ct = math.cos(theta)
+            st = math.sin(theta)
+            r = torch.Tensor([[ct, st], [-st, ct]])
+            relative_pos = torch.einsum('tc,ci->ti', relative_pos, r)
+            ## Distance
+            oij = (relative_pos / (self.cell_side / self.pool_size) + torch.Tensor([self.n * self.pool_size / 2, 0]))
+
         range_violations = torch.sum((oij < 0) + (oij >= self.n * self.pool_size), dim=1)
         range_mask = range_violations == 0
         oij = oij[range_mask].long()
@@ -132,7 +190,8 @@ class Pooling(torch.nn.Module):
         if oij.size(0) == 0:
             return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
         oi = oij[:, 0] * self.n * self.pool_size + oij[:, 1]
-
+        # print("Oij", oij)
+        # print("Oi", oi)
         # slow implementation of occupancy
         # occ = torch.zeros(self.n * self.n, self.pooling_dim, device=xy.device)
         # for oii, v in zip(oi, other_values):
