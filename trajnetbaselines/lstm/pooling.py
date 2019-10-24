@@ -4,6 +4,8 @@ import torch
 import math
 import numpy as np
 
+import matplotlib.pyplot as plt
+
 def one_cold(i, n):
     """Inverse one-hot encoding."""
     x = torch.ones(n, dtype=torch.bool)
@@ -172,10 +174,9 @@ class Pooling(torch.nn.Module):
             relative_pos = oxy - xy
             ##Rotate (N x 2)
             ## obs2[y] - obs1[y], obs2[x] - obs1[x]
-            diff = [xy[1] - past_xy[1],  xy[0] - past_xy[0]] 
-            velocity = np.arctan2(diff[0].item(), diff[1].item()) * 180 / np.pi
-            # print(velocity)
-            theta = 90 - velocity
+            diff = [xy[1] - past_xy[1],  xy[0] - past_xy[0]]
+            velocity = np.arctan2(diff[0].item(), diff[1].item())
+            theta = (np.pi / 2) - velocity
             ct = math.cos(theta)
             st = math.sin(theta)
             r = torch.Tensor([[ct, st], [-st, ct]])
@@ -214,3 +215,78 @@ class Pooling(torch.nn.Module):
         # occ_summed = torch.nn.functional.avg_pool2d(occ_blurred, self.pool_size)  # faster?
 
         return occ_summed.view(-1)
+
+    # def forward(self, hidden_state, obs1, obs2):
+    #     if self.type_ == 'occupancy':
+    #         grid = self.front_occupancies(obs2, obs1)
+    #     elif self.type_ == 'directional':
+    #         grid = self.front_directional(obs1, obs2)
+    #     elif self.type_ == 'social':
+    #         grid = self.front_social(hidden_state, obs2, obs1)
+    #     return self.embedding(grid)
+
+    # def occupancy(self, xy, other_xy, other_values=None, past_xy=None):
+    #     """Returns the occupancy."""
+    #     if other_xy is None or \
+    #        xy[0] != xy[0] or \
+    #        other_xy.size(0) == 0:
+    #         return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
+
+    #     if other_values is None:
+    #         other_values = torch.ones(other_xy.size(0), 1, device=xy.device)
+
+    #     mask = torch.isnan(other_xy[:, 0]) == 0
+    #     oxy = other_xy[mask]
+    #     other_values = other_values[mask]
+    #     if not oxy.size(0):
+    #         return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
+
+    #     # if not self.front:
+    #         ## Distance
+    #     oij = ((oxy - xy) / (self.cell_side / self.pool_size) + self.n * self.pool_size / 2)
+    #     # else:
+    #     #     relative_pos = oxy - xy
+    #     #     ##Rotate (N x 2)
+    #     #     ## obs2[y] - obs1[y], obs2[x] - obs1[x]
+    #     #     diff = [xy[1] - past_xy[1],  xy[0] - past_xy[0]]
+    #     #     velocity = np.arctan2(diff[0].item(), diff[1].item()) * 180 / np.pi
+    #     #     # print(velocity)
+    #     #     theta = 90 - velocity
+    #     #     ct = math.cos(theta)
+    #     #     st = math.sin(theta)
+    #     #     r = torch.Tensor([[ct, st], [-st, ct]])
+    #     #     relative_pos = torch.einsum('tc,ci->ti', relative_pos, r)
+    #     #     ## Distance
+    #     #     oij = (relative_pos / (self.cell_side / self.pool_size) + torch.Tensor([self.n * self.pool_size / 2, 0]))
+
+    #     range_violations = torch.sum((oij < 0) + (oij >= self.n * self.pool_size), dim=1)
+    #     range_mask = range_violations == 0
+    #     oij = oij[range_mask].long()
+    #     other_values = other_values[range_mask]
+    #     if oij.size(0) == 0:
+    #         return torch.zeros(self.n * self.n * self.pooling_dim, device=xy.device)
+    #     oi = oij[:, 0] * self.n * self.pool_size + oij[:, 1]
+    #     # print("Oij", oij)
+    #     # print("Oi", oi)
+    #     # slow implementation of occupancy
+    #     # occ = torch.zeros(self.n * self.n, self.pooling_dim, device=xy.device)
+    #     # for oii, v in zip(oi, other_values):
+    #     #     occ[oii, :] += v
+
+    #     # faster occupancy
+    #     occ = torch.zeros(self.n**2 * self.pool_size**2, self.pooling_dim, device=xy.device)
+    #     occ[oi] = other_values
+    #     occ = torch.transpose(occ, 0, 1)
+    #     occ_2d = occ.view(1, -1, self.n * self.pool_size, self.n * self.pool_size)
+
+    #     # optional, blurring (avg with stride 1) has similar effect to bilinear interpolation
+    #     if self.blur_size:
+    #         occ_blurred = torch.nn.functional.avg_pool2d(
+    #             occ_2d, self.blur_size, 1, int(self.blur_size / 2), count_include_pad=True)
+    #     else:
+    #         occ_blurred = occ_2d
+
+    #     occ_summed = torch.nn.functional.lp_pool2d(occ_blurred, 1, self.pool_size)
+    #     # occ_summed = torch.nn.functional.avg_pool2d(occ_blurred, self.pool_size)  # faster?
+
+    #     return occ_summed.view(-1)

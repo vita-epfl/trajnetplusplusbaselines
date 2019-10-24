@@ -152,6 +152,8 @@ def main(epochs=50):
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
+    parser.add_argument('--front', action='store_true',
+                        help='Front pooling')
     parser.add_argument('--path', default='trajdata',
                         help='glob expression for data files')
     parser.add_argument('--loss', default='L2',
@@ -213,7 +215,7 @@ def main(epochs=50):
     args.device = torch.device('cpu')
     # if not args.disable_cuda and torch.cuda.is_available():
     #     args.device = torch.device('cuda')
-
+    
     # read in datasets
     args.path = 'DATA_BLOCK/' + args.path
 
@@ -221,12 +223,12 @@ def main(epochs=50):
     val_scenes = list(trajnettools.load_all(args.path + '/val/**/*.ndjson'))
 
     # create model
-    pool = None
+    pool = None    
     if args.type == 'hiddenstatemlp':
         pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim)
     elif args.type != 'vanilla':
         pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim,
-                       cell_side=args.cell_side, n=args.n)
+                       cell_side=args.cell_side, n=args.n, front=args.front)
     model = LSTM(pool=pool,
                  embedding_dim=args.coordinate_embedding_dim,
                  hidden_dim=args.hidden_dim)
