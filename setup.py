@@ -27,6 +27,7 @@ setup(
         'scipy',
         'torch',
         'trajnettools',
+        'pysparkling',
     ],
     extras_require={
         'test': [

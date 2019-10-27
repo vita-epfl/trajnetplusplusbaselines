@@ -1,15 +1,3 @@
-Venv Setup (Temporary: For VITA)
-================================
-
-Create a common virtual environment.
-
-Go to Trajnettools.
-
-``python3 setup.py sdist bdist_wheel``
-
-``pip install .``
-
-
 Data Setup
 ==========
 
