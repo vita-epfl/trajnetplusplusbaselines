@@ -4,7 +4,9 @@ Data Setup
 Data Conversion
 ---------------
 
-For data conversion, refer to `Trajnetplusplusdataset<https://github.com/vita-epfl/trajnetplusplusdataset>`_.
+For data conversion, refer to Trajnetplusplusdataset_
+
+.. _Trajnetplusplusdataset: https://github.com/vita-epfl/trajnetplusplusdataset
 
 Data Directory Setup
 --------------------
