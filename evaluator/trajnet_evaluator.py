@@ -6,14 +6,15 @@ import argparse
 
 import pickle 
 from joblib import Parallel, delayed
-import numpy as np
+import numpy
 
 import trajnettools
 import evaluator.write as write
 from evaluator.design_table import Table
+from scipy.stats import gaussian_kde
 
 class TrajnetEvaluator:
-    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes):
+    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, scenes_sub100):
         self.reader_gt = reader_gt
         
         ##Ground Truth
@@ -42,6 +43,11 @@ class TrajnetEvaluator:
         ## The 4 metrics ADE, FDE, ColI, ColII
         self.average_l2 = {'N': len(scenes_gt)}
         self.final_l2 = {'N': len(scenes_gt)}
+
+        ## Multimodal Prediction
+        if scenes_sub100 is not None:
+            self.scenes_sub100 = scenes_sub100
+            self.overall_nll = {'N': len(scenes_gt)}
 
     def aggregate(self, name, disable_collision):
 
@@ -81,7 +87,6 @@ class TrajnetEvaluator:
             for sub_key in list(sub_score.keys()):
                 if self.scenes_id_gt[i] in self.sub_indexes[sub_key]:
                     sub_keys.append(sub_key)
-
 
             ## Extract Prediction Frames
             primary_tracks = [t for t in self.scenes_sub[i][0] if t.scene_id == self.scenes_id_gt[i]]
@@ -183,13 +188,106 @@ class TrajnetEvaluator:
 
         return self
 
+    def aggregate_multi(self, name):
+
+        ## Aggregates NLL for each category & sub_category
+        score = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+        sub_score = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.00}
+
+        # Check number of predictions is 100
+        # ## Check Frame Consistency
+
+        ## Iterate
+        for i in range(len(self.scenes_gt)):
+            ground_truth = self.scenes_gt[i]
+
+            ## Get Keys and Sub_keys
+            keys = []
+            sub_keys = []
+
+            ## Main
+            for key in list(score.keys()):
+                if self.scenes_id_gt[i] in self.indexes[key]:
+                    keys.append(key)
+            # ## Sub
+            for sub_key in list(sub_score.keys()):
+                if self.scenes_id_gt[i] in self.sub_indexes[sub_key]:
+                    sub_keys.append(sub_key)
+
+            ## Extract Prediction Frames
+            primary_tracks = [t for t in self.scenes_sub100[i][0] if t.scene_id == self.scenes_id_gt[i]]
+            # print("Primary: ", primary_tracks)
+            ## Future
+            # nll = trajnettools.metrics.average_l2(ground_truth[0], primary_tracks)
+            nll = self.nll(primary_tracks, ground_truth[0])
+
+            average_nll += nll
+            ##Key
+            for key in keys:
+                score[key] += nll
+            ## SubKey
+            for sub_key in sub_keys:
+                sub_score[sub_key] += nll
+
+        ## Average ADE and FDE
+        average_nll /= len(self.scenes_gt)
+        for key in list(score.keys()):
+            if self.indexes[key]:
+                score[key] /= len(self.indexes[key])
+
+        ## Sub
+        for sub_key in list(sub_score.keys()):
+            if self.sub_indexes[sub_key]:
+                sub_score[sub_key] /= len(self.sub_indexes[sub_key])
+
+        ##APPEND to overall keys
+        self.overall_nll[name] = average_nll
+
+        ## Main
+        self.static_scenes[name].append(score[1])
+        self.linear_scenes[name].append(score[2])
+        self.forced_non_linear_scenes[name].append(score[3])
+        self.non_linear_scenes[name].append(score[4])
+
+        ## Sub_keys
+        self.lf[name].append(sub_score[1])
+        self.ca[name].append(sub_score[2])
+        self.grp[name].append(sub_score[3])
+        self.others[name].append(sub_score[4])
+
+        return self
+
+    def nll(self, primary_tracks, ground_truth, log_pdf_lower_bound=-20):
+        ## Inspired from Boris.
+        # print("GT: ", ground_truth)
+        # print("Primary: ", primary_tracks)
+        gt = numpy.array([[t.x, t.y] for t in ground_truth][-12:])
+        frame_gt = [t.frame for t in ground_truth][-12:]
+        preds = numpy.array([[[t.x, t.y] for t in primary_tracks if t.frame == frame] for frame in frame_gt])
+        ## preds: Pred_len x Num_preds x 2
+        # print("Done Once")
+        pred_len = len(frame_gt)
+
+        ll = 0.0
+        for timestep in range(pred_len):
+            curr_gt = gt[timestep]
+            scipy_kde = gaussian_kde(preds[timestep].T)
+
+            # We need [0] because it's a (1,)-shaped numpy array.
+            log_pdf = numpy.clip(scipy_kde.logpdf(curr_gt.T), a_min=log_pdf_lower_bound, a_max=None)[0]
+            ll += log_pdf/pred_len
+
+        print(ll)
+
+
     def result(self):
         return self.average_l2, self.final_l2, \
                self.static_scenes, self.linear_scenes, self.forced_non_linear_scenes, self.non_linear_scenes, \
                self.lf, self.ca, self.grp, self.others
 
 
-def eval(gt, input_file, args):
+
+def eval(gt, input_file, args, input_file2=None):
     # Ground Truth
     reader_gt = trajnettools.Reader(gt, scene_type='paths')
     scenes_gt = [s for _, s in reader_gt.scenes()]
@@ -198,6 +296,12 @@ def eval(gt, input_file, args):
     # Scene Predictions
     reader_sub = trajnettools.Reader(input_file, scene_type='paths')
     scenes_sub = [s for _, s in reader_sub.scenes()]
+
+    scenes_sub100 = None
+    if input_file2 is not None: 
+        # Scene Predictions (MultiModal)
+        reader_sub100 = trajnettools.Reader(input_file2, scene_type='paths')
+        scenes_sub100 = [s for _, s in reader_sub100.scenes()]
 
     ## indexes is dictionary deciding which scenes are in which type
     indexes = {}
@@ -218,8 +322,12 @@ def eval(gt, input_file, args):
                 sub_indexes[ii].append(scene)
 
     # Evaluate
-    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes)
+    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, scenes_sub100)
     evaluator.aggregate('kf', args.disable_collision)
+
+    if scenes_sub100 is not None:
+        evaluator.aggregate_multi('kf')
+
     return evaluator.result()
 
 def main():
@@ -279,7 +387,7 @@ def main():
             #             eval(true_datasets[i], submit_datasets[i], args)
             #            for i in range(len(true_datasets))}
 
-            results_list = Parallel(n_jobs=4)(delayed(eval)(true_datasets[i], submit_datasets[i], args) 
+            results_list = Parallel(n_jobs=4)(delayed(eval)(true_datasets[i], submit_datasets[i], args, submit_datasets[i])
                                                             for i in range(len(true_datasets)))
             results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
                        results_list[i] for i in range(len(true_datasets))}
