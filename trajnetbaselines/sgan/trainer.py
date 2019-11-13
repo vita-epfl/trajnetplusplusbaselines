@@ -38,7 +38,7 @@ parser.add_argument('--pred_len', default=12, type=int)
 parser.add_argument('--skip', default=1, type=int)
 
 # Optimization
-parser.add_argument('--batch_size', default=1, type=int)
+parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--num_iterations', default=6318, type=int)
 parser.add_argument('--num_epochs', default=200, type=int)
 
@@ -79,11 +79,12 @@ parser.add_argument('--clipping_threshold_d', default=0, type=float)
 
 # Loss Options
 parser.add_argument('--l2_loss_weight', default=1.0, type=float)
-parser.add_argument('--best_k', default=1, type=int)
+parser.add_argument('--adaptive', default=0.2, type=float)
+parser.add_argument('--best_k', default=5, type=int)
 
 # Output
 parser.add_argument('--output_dir', default=os.getcwd())
-parser.add_argument('--print_every', default=200, type=int)
+parser.add_argument('--print_every', default=20, type=int)
 parser.add_argument('--checkpoint_every', default=10000, type=int)
 parser.add_argument('--checkpoint_name', default='checkpoint')
 parser.add_argument('--checkpoint_start_from', default=None)
@@ -421,6 +422,7 @@ def generator_step(
     losses = {}
     loss = torch.zeros(1).to(pred_traj_gt)
     g_l2_loss_rel = []
+    g_adp_loss_rel = []
 
     loss_mask = loss_mask[:, args.obs_len:]
 
@@ -436,19 +438,42 @@ def generator_step(
                 pred_traj_gt_rel,
                 loss_mask,
                 mode='raw'))
+            g_adp_loss_rel.append(torch.sum(torch.sum(torch.abs(pred_traj_fake_rel), dim=0), dim=1))
 
     g_l2_loss_sum_rel = torch.zeros(1).to(pred_traj_gt)
+    g_adp_loss_sum_rel = torch.zeros(1).to(pred_traj_gt)
+
     if args.l2_loss_weight > 0:
+        # print("Before Stack Each element: ", g_l2_loss_rel[0].shape)
+        # print("Before Stack Each element: ", g_adp_loss_rel[0].shape)
         g_l2_loss_rel = torch.stack(g_l2_loss_rel, dim=1)
+        g_adp_loss_rel = torch.stack(g_adp_loss_rel, dim=1)
+
+        # print("After Stack: ", g_l2_loss_rel.shape)
+        # print("After Stack: ", g_adp_loss_rel.shape)
+
         for start, end in seq_start_end.data:
             _g_l2_loss_rel = g_l2_loss_rel[start:end]
+            _g_adp_loss_rel = g_adp_loss_rel[start:end]
             _g_l2_loss_rel = torch.sum(_g_l2_loss_rel, dim=0)
+            _g_adp_loss_rel = torch.sum(_g_adp_loss_rel, dim=0)
+            # print("Should be 5: ", _g_adp_loss_rel.shape)
+            if args.adaptive:
+                m = torch.argmin(_g_l2_loss_rel)
+                # print("M: ", m)
+                for i, _ in enumerate(_g_l2_loss_rel):
+                    if i != m:
+                        # print("i: ", i)
+                        g_adp_loss_sum_rel += _g_adp_loss_rel[i] 
             _g_l2_loss_rel = torch.min(_g_l2_loss_rel) / torch.sum(
                 loss_mask[start:end])
             g_l2_loss_sum_rel += _g_l2_loss_rel
+            # import pdb
+            # pdb.set_trace()
         losses['G_l2_loss_rel'] = g_l2_loss_sum_rel.item()
         loss += g_l2_loss_sum_rel
-
+        if args.adaptive:
+            loss += args.adaptive * g_l2_loss_sum_rel
     traj_fake = torch.cat([obs_traj, pred_traj_fake], dim=0)
     traj_fake_rel = torch.cat([obs_traj_rel, pred_traj_fake_rel], dim=0)
 
