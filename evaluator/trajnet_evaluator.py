@@ -196,7 +196,7 @@ class TrajnetEvaluator:
 
         # Check number of predictions is 100
         # ## Check Frame Consistency
-
+        average_nll = 0
         ## Iterate
         for i in range(len(self.scenes_gt)):
             ground_truth = self.scenes_gt[i]
@@ -259,25 +259,34 @@ class TrajnetEvaluator:
 
     def nll(self, primary_tracks, ground_truth, log_pdf_lower_bound=-20):
         ## Inspired from Boris.
-        # print("GT: ", ground_truth)
-        # print("Primary: ", primary_tracks)
         gt = numpy.array([[t.x, t.y] for t in ground_truth][-12:])
         frame_gt = [t.frame for t in ground_truth][-12:]
         preds = numpy.array([[[t.x, t.y] for t in primary_tracks if t.frame == frame] for frame in frame_gt])
         ## preds: Pred_len x Num_preds x 2
-        # print("Done Once")
+
+        ## To verify if 100 predictions
+        if preds.shape[1] != 20:
+            raise Exception('Need 100 predictions')
+
         pred_len = len(frame_gt)
 
         ll = 0.0
+        same_pred = 0
         for timestep in range(pred_len):
             curr_gt = gt[timestep]
-            scipy_kde = gaussian_kde(preds[timestep].T)
+            try:
+                scipy_kde = gaussian_kde(preds[timestep].T)
+                # We need [0] because it's a (1,)-shaped numpy array.
+                log_pdf = numpy.clip(scipy_kde.logpdf(curr_gt.T), a_min=log_pdf_lower_bound, a_max=None)[0]
+                ll += log_pdf
+            except:
+                same_pred += 1
 
-            # We need [0] because it's a (1,)-shaped numpy array.
-            log_pdf = numpy.clip(scipy_kde.logpdf(curr_gt.T), a_min=log_pdf_lower_bound, a_max=None)[0]
-            ll += log_pdf/pred_len
+        if same_pred == pred_len:
+            raise Exception('All 100 Predictions are Identical')
 
-        print(ll)
+        ll = ll / (pred_len - same_pred)
+        return ll
 
 
     def result(self):
@@ -392,13 +401,14 @@ def main():
             results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
                        results_list[i] for i in range(len(true_datasets))}
 
+            print(results)
             ## Generate results 
             final_result, sub_final_result = table.add_entry(name, results)
 
             ## Save results as pkl (to avoid computation again) 
             os.makedirs(result_file)
             with open(result_file + '/results.pkl', 'wb') as handle:
-                pickle.dump([final_result, sub_final_result], handle, protocol=pickle.HIGHEST_PROTOCOL) 
+                pickle.dump([final_result, sub_final_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     ## Make Result Table 
     table.print_table()
