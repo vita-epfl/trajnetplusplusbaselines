@@ -45,82 +45,72 @@ def get_generator(checkpoint):
     generator.train()
     return generator
 
-def evaluate(args, generator, num_samples, data):
+def evaluate(args, generator, num_samples, data, model_name):
     datasets = sorted([f for f in os.listdir(data.replace('_pred', '')) if not f.startswith('.') and f.endswith('.ndjson')])
 
-    ## Model names are passed as arguments
-    for model in ['blah/sgan.pkl']:
-        model_name = model.split('/')[-1].replace('.pkl', '')
+    if not os.path.exists(data + model_name):
+        os.makedirs(data + model_name)
 
-        ## Make a directory in DATA_BLOCK which will contain the model outputs
-        ## If model is already written, you skip writing
-        if not os.path.exists(data):
-            os.makedirs(data)
-        if not os.path.exists(data + model_name):
-            os.makedirs(data + model_name)
-        else:
-            continue
+    ## Start writing in dataset/test_pred
+    for dataset in datasets:
+        # Model's name
+        name = dataset.replace(data.replace('_pred', '') + 'test/', '')
 
-        ## Start writing in dataset/test_pred
-        for dataset in datasets:
-            # Model's name
-            name = dataset.replace(data.replace('_pred', '') + 'test/', '')
+        # Copy file from test into test/train_pred folder
+        shutil.copyfile(data.replace('_pred', '') + name, data + '{}/{}'.format(model_name, name))
+        print('processing ' + name)
 
-            # Copy file from test into test/train_pred folder
-            shutil.copyfile(data.replace('_pred', '') + name, data + '{}/{}'.format(model_name, name))
-            print('processing ' + name)
+        # Read file from 'test'
+        reader = trajnettools.Reader(data.replace('_pred', '') + dataset, scene_type='paths')
+        scenes = [s for s in reader.scenes()]
 
-            # Read file from 'test'
-            reader = trajnettools.Reader(data.replace('_pred', '') + dataset, scene_type='paths')
-            scenes = [s for s in reader.scenes()]
+        print("Model Name: ", model_name)
 
-            print("Model Name: ", model_name)
+        # Write the prediction
+        with open(data + '{}/{}'.format(model_name, name), "a") as myfile:
+            for scene_id, paths in scenes:
+                # print("ID: ", scene_id)
+                observed_path = paths[0]
+                ped_id = observed_path[0].pedestrian
+                frame_diff = observed_path[1].frame - observed_path[0].frame
+                first_frame = observed_path[8].frame + frame_diff
+                with torch.no_grad():
+                    xy = trajnettools.Reader.paths_to_xy(paths)
+                    # print(xy.shape)
+                    xy = xy.transpose(1, 0, 2)[~np.isnan(xy.transpose(1, 0, 2)).any(axis=1).any(axis=1)]
+                    # import pdb
+                    # pdb.set_trace()
 
-            # Write the prediction
-            with open(data + '{}/{}'.format(model_name, name), "a") as myfile:
-                for scene_id, paths in scenes:
-                    # print("ID: ", scene_id)
-                    observed_path = paths[0]
-                    ped_id = observed_path[0].pedestrian
-                    frame_diff = observed_path[1].frame - observed_path[0].frame
-                    first_frame = observed_path[8].frame + frame_diff
-                    with torch.no_grad():
-                        xy = trajnettools.Reader.paths_to_xy(paths)
-                        # print(xy.shape)
-                        xy = xy.transpose(1, 0, 2)[~np.isnan(xy.transpose(1, 0, 2)).any(axis=1).any(axis=1)]
+                    # xy = drop_distant(xy)
+                    xy = torch.Tensor(xy.transpose(1, 0, 2)).type(torch.float)  #.to(self.device)
+                    # print(xy.shape)
+                    # import pdb
+                    # pdb.set_trace()
+
+                    ## Go from xy to Obs
+                    traj_gt = xy
+                    obs_traj = traj_gt
+                    obs_traj_rel = torch.zeros(obs_traj.shape).type(torch.float)
+                    obs_traj_rel[1:] = obs_traj[1:] - obs_traj[:-1]
+
+                    seq_start_end = torch.LongTensor([[0, obs_traj.shape[1]]])
+                    ## Multimodal
+                    for num_s in range(num_samples):
+                        pred_traj_fake_rel = generator(
+                            obs_traj.cuda(), obs_traj_rel.cuda(), seq_start_end.cuda()
+                        )
+                        pred_traj_fake = relative_to_abs(
+                            pred_traj_fake_rel.cuda(), obs_traj[-1].cuda()
+                        )
+                        ## Get OUTPUT Primary
+                        outputs = pred_traj_fake[:, 0].cpu().numpy().astype(float)
                         # import pdb
                         # pdb.set_trace()
-
-                        # xy = drop_distant(xy)
-                        xy = torch.Tensor(xy.transpose(1, 0, 2)).type(torch.float)  #.to(self.device)
-                        # print(xy.shape)
-                        # import pdb
-                        # pdb.set_trace()
-
-                        ## Go from xy to Obs
-                        traj_gt = xy
-                        obs_traj = traj_gt
-                        obs_traj_rel = torch.zeros(obs_traj.shape).type(torch.float)
-                        obs_traj_rel[1:] = obs_traj[1:] - obs_traj[:-1]
-
-                        seq_start_end = torch.LongTensor([[0, obs_traj.shape[1]]])
-                        ## Multimodal
-                        for num_s in range(num_samples):
-                            pred_traj_fake_rel = generator(
-                                obs_traj.cuda(), obs_traj_rel.cuda(), seq_start_end.cuda()
-                            )
-                            pred_traj_fake = relative_to_abs(
-                                pred_traj_fake_rel.cuda(), obs_traj[-1].cuda()
-                            )
-                            ## Get OUTPUT Primary
-                            outputs = pred_traj_fake[:, 0].cpu().numpy().astype(float)
-                            # import pdb
-                            # pdb.set_trace()
-                            for i in range(len(outputs)):
-                                track = trajnettools.TrackRow(first_frame + i * frame_diff, ped_id,
-                                                              outputs[i, 0], outputs[i, 1], num_s, scene_id)
-                                myfile.write(trajnettools.writers.trajnet(track))
-                                myfile.write('\n')
+                        for i in range(len(outputs)):
+                            track = trajnettools.TrackRow(first_frame + i * frame_diff, ped_id,
+                                                          outputs[i, 0], outputs[i, 1], num_s, scene_id)
+                            myfile.write(trajnettools.writers.trajnet(track))
+                            myfile.write('\n')
     return
 
     #                 predictions = []
@@ -222,6 +212,20 @@ def evaluate(args, generator, num_samples, data):
 #         yield (obs_traj, pred_traj_gt, obs_traj_rel, pred_traj_gt_rel,
 #                non_linear_ped, loss_mask, seq_start_end)
 
+    ## Model names are passed as arguments
+    # for model in ['blah/sgan.pkl']:
+    #     model_name = model.split('/')[-1].replace('.pkl', '')
+
+
+        # ## Make a directory in DATA_BLOCK which will contain the model outputs
+        # ## If model is already written, you skip writing
+        # if not os.path.exists(data):
+        #     os.makedirs(data)
+        # if not os.path.exists(data + model_name):
+        #     os.makedirs(data + model_name)
+        # else:
+        #     continue
+
 def main(args):
     if os.path.isdir(args.model_path):
         filenames = os.listdir(args.model_path)
@@ -233,12 +237,17 @@ def main(args):
         paths = [args.model_path]
 
     for path in paths:
+        if 'no_model' in path:
+            continue
+        print(path)
+        model_name = path.split('/')[-1].replace('_with_model.pt', '')
+        print(model_name)
         checkpoint = torch.load(path)
         generator = get_generator(checkpoint)
         _args = AttrDict(checkpoint['args'])
         # path = get_dset_path(_args.dataset_name, args.dset_type)
         # _, loader = data_loader(_args, path)
-        evaluate(_args, generator, args.num_samples, args.data)
+        evaluate(_args, generator, args.num_samples, args.data, model_name)
         print('Done')
 
 
