@@ -40,7 +40,7 @@ parser.add_argument('--skip', default=1, type=int)
 # Optimization
 parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--num_iterations', default=6318, type=int)
-parser.add_argument('--num_epochs', default=200, type=int)
+parser.add_argument('--num_epochs', default=50, type=int)
 
 # Model Options
 parser.add_argument('--embedding_dim', default=16, type=int)
@@ -79,16 +79,16 @@ parser.add_argument('--clipping_threshold_d', default=0, type=float)
 
 # Loss Options
 parser.add_argument('--l2_loss_weight', default=1.0, type=float)
-parser.add_argument('--adaptive', default=0.2, type=float)
+parser.add_argument('--adaptive', default=0.0, type=float)
 parser.add_argument('--best_k', default=5, type=int)
 
 # Output
 parser.add_argument('--output_dir', default=os.getcwd())
-parser.add_argument('--print_every', default=20, type=int)
-parser.add_argument('--checkpoint_every', default=10000, type=int)
+parser.add_argument('--print_every', default=1000, type=int)
+parser.add_argument('--checkpoint_every', default=3000, type=int)
 parser.add_argument('--checkpoint_name', default='checkpoint')
 parser.add_argument('--checkpoint_start_from', default=None)
-parser.add_argument('--restore_from_checkpoint', default=1, type=int)
+parser.add_argument('--restore_from_checkpoint', default=0, type=int)
 parser.add_argument('--num_samples_check', default=5000, type=int)
 
 # Misc
