@@ -10,7 +10,7 @@ import numpy
 
 import trajnettools
 import evaluator.write as write
-from evaluator.design_table import Table
+from evaluator.design_mult_table import Table
 from scipy.stats import gaussian_kde
 
 class TrajnetEvaluator:
@@ -48,6 +48,8 @@ class TrajnetEvaluator:
         if scenes_sub100 is not None:
             self.scenes_sub100 = scenes_sub100
             self.overall_nll = {'N': len(scenes_gt)}
+            self.topk_ade = {'N': len(scenes_gt)}
+            self.topk_fde = {'N': len(scenes_gt)}
 
     def aggregate(self, name, disable_collision):
 
@@ -67,9 +69,9 @@ class TrajnetEvaluator:
                 num_predictions = track.prediction_number
 
         ## Max. 3 trajectories can only be outputted
-        if num_predictions > 2:
+        if num_predictions > 0:
             warnings.warn("3 predictions at most")
-            num_predictions = 2
+            num_predictions = 0
 
         ## Iterate
         for i in range(len(self.scenes_gt)):
@@ -170,7 +172,7 @@ class TrajnetEvaluator:
                 sub_score[sub_key][0] /= len(self.sub_indexes[sub_key])
                 sub_score[sub_key][1] /= len(self.sub_indexes[sub_key]) 
 
-        ##Adding value to dict
+        # ##Adding value to dict
         self.average_l2[name] = average
         self.final_l2[name] = final
 
@@ -191,12 +193,15 @@ class TrajnetEvaluator:
     def aggregate_multi(self, name):
 
         ## Aggregates NLL for each category & sub_category
-        score = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
-        sub_score = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.00}
+        score = {1: [0.0, 0.0, 0.0], 2: [0.0, 0.0, 0.0], 3: [0.0, 0.0, 0.0], 4: [0.0, 0.0, 0.0]}
+        sub_score = {1: [0.0, 0.0, 0.0], 2: [0.0, 0.0, 0.0], 3: [0.0, 0.0, 0.0], 4: [0.0, 0.0, 0.0]}
 
         # Check number of predictions is 100
         # ## Check Frame Consistency
+        average_topk_ade = 0
+        average_topk_fde = 0
         average_nll = 0
+
         ## Iterate
         for i in range(len(self.scenes_gt)):
             ground_truth = self.scenes_gt[i]
@@ -219,43 +224,85 @@ class TrajnetEvaluator:
             # print("Primary: ", primary_tracks)
             ## Future
             # nll = trajnettools.metrics.average_l2(ground_truth[0], primary_tracks)
+            topk_ade, topk_fde = self.topk(primary_tracks, ground_truth[0])
             nll = self.nll(primary_tracks, ground_truth[0])
+
+            average_topk_ade += topk_ade
+            ##Key
+            for key in keys:
+                score[key][0] += topk_ade
+            ## SubKey
+            for sub_key in sub_keys:
+                sub_score[sub_key][0] += topk_ade
+
+            average_topk_fde += topk_fde
+            ##Key
+            for key in keys:
+                score[key][1] += topk_fde
+            ## SubKey
+            for sub_key in sub_keys:
+                sub_score[sub_key][1] += topk_fde
 
             average_nll += nll
             ##Key
             for key in keys:
-                score[key] += nll
+                score[key][2] += nll
             ## SubKey
             for sub_key in sub_keys:
-                sub_score[sub_key] += nll
+                sub_score[sub_key][2] += nll
 
         ## Average ADE and FDE
+        average_topk_ade /= len(self.scenes_gt)
+        average_topk_fde /= len(self.scenes_gt)
         average_nll /= len(self.scenes_gt)
+
+        ## Key
         for key in list(score.keys()):
             if self.indexes[key]:
-                score[key] /= len(self.indexes[key])
+                score[key][0] /= len(self.indexes[key])
+                score[key][1] /= len(self.indexes[key])
+                score[key][2] /= len(self.indexes[key])
 
         ## Sub
         for sub_key in list(sub_score.keys()):
             if self.sub_indexes[sub_key]:
-                sub_score[sub_key] /= len(self.sub_indexes[sub_key])
+                sub_score[sub_key][0] /= len(self.sub_indexes[sub_key])
+                sub_score[sub_key][1] /= len(self.sub_indexes[sub_key])
+                sub_score[sub_key][2] /= len(self.sub_indexes[sub_key])
 
         ##APPEND to overall keys
         self.overall_nll[name] = average_nll
+        self.topk_ade[name] = average_topk_ade
+        self.topk_fde[name] = average_topk_fde
 
         ## Main
-        self.static_scenes[name].append(score[1])
-        self.linear_scenes[name].append(score[2])
-        self.forced_non_linear_scenes[name].append(score[3])
-        self.non_linear_scenes[name].append(score[4])
+        self.static_scenes[name] += score[1]
+        self.linear_scenes[name] += score[2]
+        self.forced_non_linear_scenes[name] += score[3]
+        self.non_linear_scenes[name] += score[4]
 
         ## Sub_keys
-        self.lf[name].append(sub_score[1])
-        self.ca[name].append(sub_score[2])
-        self.grp[name].append(sub_score[3])
-        self.others[name].append(sub_score[4])
+        self.lf[name] += sub_score[1]
+        self.ca[name] += sub_score[2]
+        self.grp[name] += sub_score[3]
+        self.others[name] += sub_score[4]
 
         return self
+
+    def topk(self, primary_tracks, ground_truth, topk=20):
+        ## TopK multimodal 
+
+        l2 = 1e10
+        ## preds: Pred_len x Num_preds x 2
+        for pred_num in range(topk):
+            primary_prediction = [t for t in primary_tracks if t.prediction_number == pred_num]
+            tmp_score = trajnettools.metrics.final_l2(ground_truth, primary_prediction)
+            if tmp_score < l2:      
+                l2 = tmp_score 
+                topk_fde = tmp_score
+                topk_ade = trajnettools.metrics.average_l2(ground_truth, primary_prediction)
+
+        return topk_ade, topk_fde
 
     def nll(self, primary_tracks, ground_truth, log_pdf_lower_bound=-20):
         ## Inspired from Boris.
@@ -292,7 +339,8 @@ class TrajnetEvaluator:
     def result(self):
         return self.average_l2, self.final_l2, \
                self.static_scenes, self.linear_scenes, self.forced_non_linear_scenes, self.non_linear_scenes, \
-               self.lf, self.ca, self.grp, self.others
+               self.lf, self.ca, self.grp, self.others, \
+               self.topk_ade, self.topk_fde, self.overall_nll
 
 
 
@@ -401,14 +449,14 @@ def main():
             results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
                        results_list[i] for i in range(len(true_datasets))}
 
-            print(results)
+            # print(results)
             ## Generate results 
             final_result, sub_final_result = table.add_entry(name, results)
 
             ## Save results as pkl (to avoid computation again) 
-            os.makedirs(result_file)
-            with open(result_file + '/results.pkl', 'wb') as handle:
-                pickle.dump([final_result, sub_final_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
+            # os.makedirs(result_file)
+            # with open(result_file + '/results.pkl', 'wb') as handle:
+            #     pickle.dump([final_result, sub_final_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     ## Make Result Table 
     table.print_table()
