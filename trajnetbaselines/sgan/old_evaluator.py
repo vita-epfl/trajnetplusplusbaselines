@@ -102,6 +102,9 @@ def main(args):
         paths = [args.model_path]
 
     for path in paths:
+        if 'no_model' in path:
+            continue
+        print(path)
         checkpoint = torch.load(path)
         generator = get_generator(checkpoint)
         _args = AttrDict(checkpoint['args'])

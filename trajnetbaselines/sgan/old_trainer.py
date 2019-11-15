@@ -79,7 +79,8 @@ parser.add_argument('--clipping_threshold_d', default=0, type=float)
 
 # Loss Options
 parser.add_argument('--l2_loss_weight', default=1.0, type=float)
-parser.add_argument('--adaptive', default=0.0, type=float)
+parser.add_argument('--adaptive', default=0.2, type=float)
+parser.add_argument('--thresh', default=0.05, type=float)
 parser.add_argument('--best_k', default=20, type=int)
 
 # Output
@@ -448,12 +449,19 @@ def generator_step(
             _g_adp_loss_rel = torch.sum(_g_adp_loss_rel, dim=0)
             # print("Should be 5: ", _g_adp_loss_rel.shape)
             if args.adaptive:
-                # print("Adaptive")
                 m = torch.argmin(_g_l2_loss_rel)
-                # print("M: ", m)
+                min_value = torch.min(_g_l2_loss_rel) / torch.sum(
+                            loss_mask[start:end])
+                print("Min value: ", min_value)
+                # print("G Loss: ", _g_l2_loss_rel / torch.sum(
+                                     # loss_mask[start:end]))
+                _g_l2_loss_norm = _g_l2_loss_rel / torch.sum(
+                                     loss_mask[start:end])
+                thres_ind = [_g_l2_loss_norm > min_value + args.thresh][0]
+                # print("thres_ind: ", thres_ind)
                 for i, _ in enumerate(_g_l2_loss_rel):
-                    if i != m:
-                        # print("i: ", i)
+                    if thres_ind[i]:
+                        print("i: ", i)
                         g_adp_loss_sum_rel += _g_adp_loss_rel[i] 
             _g_l2_loss_rel = torch.min(_g_l2_loss_rel) / torch.sum(
                 loss_mask[start:end])
