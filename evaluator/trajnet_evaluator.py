@@ -14,7 +14,7 @@ from evaluator.design_pd import Table
 from scipy.stats import gaussian_kde
 
 class TrajnetEvaluator:
-    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, scenes_sub100):
+    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, scenes_sub100=None):
         self.reader_gt = reader_gt
         
         ##Ground Truth
@@ -45,11 +45,11 @@ class TrajnetEvaluator:
         self.final_l2 = {'N': len(scenes_gt)}
 
         ## Multimodal Prediction
+        self.overall_nll = {'N': len(scenes_gt)}
+        self.topk_ade = {'N': len(scenes_gt)}
+        self.topk_fde = {'N': len(scenes_gt)}
         if scenes_sub100 is not None:
             self.scenes_sub100 = scenes_sub100
-            self.overall_nll = {'N': len(scenes_gt)}
-            self.topk_ade = {'N': len(scenes_gt)}
-            self.topk_fde = {'N': len(scenes_gt)}
 
     def aggregate(self, name, disable_collision):
 
@@ -289,6 +289,37 @@ class TrajnetEvaluator:
 
         return self
 
+    def aggregate_no_multi(self, name):
+
+        ## Aggregates NLL for each category & sub_category
+        score = {1: [0.0, 0.0, 0.0], 2: [0.0, 0.0, 0.0], 3: [0.0, 0.0, 0.0], 4: [0.0, 0.0, 0.0]}
+        sub_score = {1: [0.0, 0.0, 0.0], 2: [0.0, 0.0, 0.0], 3: [0.0, 0.0, 0.0], 4: [0.0, 0.0, 0.0]}
+
+        # Check number of predictions is 100
+        # ## Check Frame Consistency
+        average_topk_ade = 0
+        average_topk_fde = 0
+        average_nll = 0
+
+        ##APPEND to overall keys
+        self.overall_nll[name] = average_nll
+        self.topk_ade[name] = average_topk_ade
+        self.topk_fde[name] = average_topk_fde
+
+        ## Main
+        self.static_scenes[name] += score[1]
+        self.linear_scenes[name] += score[2]
+        self.forced_non_linear_scenes[name] += score[3]
+        self.non_linear_scenes[name] += score[4]
+
+        ## Sub_keys
+        self.lf[name] += sub_score[1]
+        self.ca[name] += sub_score[2]
+        self.grp[name] += sub_score[3]
+        self.others[name] += sub_score[4]
+
+        return self
+
     def topk(self, primary_tracks, ground_truth, topk=20):
         ## TopK multimodal 
 
@@ -379,11 +410,13 @@ def eval(gt, input_file, args, input_file2=None):
                 sub_indexes[ii].append(scene)
 
     # Evaluate
-    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, scenes_sub100)
+    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes)
     evaluator.aggregate('kf', args.disable_collision)
 
     if scenes_sub100 is not None:
         evaluator.aggregate_multi('kf')
+    else:
+        evaluator.aggregate_no_multi('kf')
 
     return evaluator.result()
 
@@ -444,7 +477,7 @@ def main():
             #             eval(true_datasets[i], submit_datasets[i], args)
             #            for i in range(len(true_datasets))}
 
-            results_list = Parallel(n_jobs=4)(delayed(eval)(true_datasets[i], submit_datasets[i], args, submit_datasets[i])
+            results_list = Parallel(n_jobs=4)(delayed(eval)(true_datasets[i], submit_datasets[i], args)
                                                             for i in range(len(true_datasets)))
             results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
                        results_list[i] for i in range(len(true_datasets))}
