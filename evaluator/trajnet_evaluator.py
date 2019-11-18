@@ -10,7 +10,7 @@ import numpy
 
 import trajnettools
 import evaluator.write as write
-from evaluator.design_mult_table import Table
+from evaluator.design_pd import Table
 from scipy.stats import gaussian_kde
 
 class TrajnetEvaluator:
