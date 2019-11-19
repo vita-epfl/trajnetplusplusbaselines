@@ -410,7 +410,7 @@ def eval(gt, input_file, args, input_file2=None):
                 sub_indexes[ii].append(scene)
 
     # Evaluate
-    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes)
+    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, scenes_sub100)
     evaluator.aggregate('kf', args.disable_collision)
 
     if scenes_sub100 is not None:
@@ -464,7 +464,7 @@ def main():
                 [final_result, sub_final_result] = pickle.load(handle)
             table.add_result(name, final_result, sub_final_result)
 
-        ## Else, Calculate results and save
+        # ## Else, Calculate results and save
         else:
             list_sub = sorted([f for f in os.listdir(args.data + name)
                                if not f.startswith('.')])
@@ -487,9 +487,9 @@ def main():
             final_result, sub_final_result = table.add_entry(name, results)
 
             ## Save results as pkl (to avoid computation again) 
-            # os.makedirs(result_file)
-            # with open(result_file + '/results.pkl', 'wb') as handle:
-            #     pickle.dump([final_result, sub_final_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
+            os.makedirs(result_file)
+            with open(result_file + '/results.pkl', 'wb') as handle:
+                pickle.dump([final_result, sub_final_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     ## Make Result Table 
     table.print_table()

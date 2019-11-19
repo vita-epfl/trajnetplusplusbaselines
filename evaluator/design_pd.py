@@ -140,10 +140,13 @@ class Table(object):
         ax1.axis('tight')
         ax1.axis('off')
 
-        df = pd.DataFrame(columns=['', 'No.', 'ADE', 'FDE', 'Col I', 'Col II', 'Top3 ADE', 'Top3 FDE', 'NLL'])
-        for key in self.results: 
-            df.loc[0] = ['Overall'] + [self.results[key][index].__format__('.2f') for index in range(32, 40)] 
-        ax1 = self.render_mpl_table(df, header_columns=0, col_width=2.0, bbox=[0, 0, 1, 0.33], ax=ax1)
+        df = pd.DataFrame(columns=['', 'Model', 'No.', 'ADE', 'FDE', 'Col I', 'Col II', 'Top3 ADE', 'Top3 FDE', 'NLL'])
+        it = 0
+        len_name = 10
+        for key in self.results:
+            df.loc[it] = ['Overall'] + [key[:len_name]] + [self.results[key][index].__format__('.2f') for index in range(32, 40)] 
+            it += 1
+        ax1 = self.render_mpl_table(df, header_columns=0, col_width=2.0, bbox=[0, 1, 1, 0.2*len(self.results)], ax=ax1)
 
 
 
@@ -151,46 +154,67 @@ class Table(object):
         ax2.axis('tight')
         ax2.axis('off')
         # Overall Table #
-        df = pd.DataFrame(columns=['Type', 'Sub-Type', 'No.', 'ADE', 'FDE', 'Col I', 'Col II', 'Top3 ADE', 'Top3 FDE', 'NLL'])
+        df = pd.DataFrame(columns=['Type', 'Sub-Type', 'Model', 'No.', 'ADE', 'FDE', 'Col I', 'Col II', 'Top3 ADE', 'Top3 FDE', 'NLL'])
 
         type_list = [['I', ''], ['II', ''], ['III', ''], ['III', 'LF'], ['III', 'CA'], ['III', 'Grp'], ['III', 'Oth'], ['IV', '']]
-        for key in self.results: 
-            print(self.sub_results[key])    
-            print(self.results[key])    
-            df.loc[0] = type_list[0] + [self.results[key][index].__format__('.2f') for index in range(8)]
-            df.loc[1] = type_list[1] + [self.results[key][index].__format__('.2f') for index in range(8, 16)] 
-            df.loc[2] = type_list[2] + [self.results[key][index].__format__('.2f') for index in range(16, 24)] 
-            df.loc[3] = type_list[3] + [self.sub_results[key][index].__format__('.2f') for index in range(8)] 
-            df.loc[4] = type_list[4] + [self.sub_results[key][index].__format__('.2f') for index in range(8, 16)] 
-            df.loc[5] = type_list[5] + [self.sub_results[key][index].__format__('.2f') for index in range(16, 24)] 
-            df.loc[6] = type_list[6] + [self.sub_results[key][index].__format__('.2f') for index in range(24, 32)] 
-            df.loc[7] = type_list[7] + [self.results[key][index].__format__('.2f') for index in range(24, 32)] 
+        it = 0
+        for key in self.results:    
+            df.loc[it] = type_list[0] + [key[:len_name]] + [self.results[key][index].__format__('.2f') for index in range(8)]
+            it += 1        
+        
+        for key in self.results:  
+            df.loc[it] = type_list[1] + [key[:len_name]] + [self.results[key][index].__format__('.2f') for index in range(8, 16)] 
+            it += 1        
+        for key in self.results:  
+            df.loc[it] = type_list[2] + [key[:len_name]] + [self.results[key][index].__format__('.2f') for index in range(16, 24)] 
+            it += 1
+
+        for key in self.results:  
+            df.loc[it] = type_list[3] + [key[:len_name]] + [self.sub_results[key][index].__format__('.2f') for index in range(8)] 
+            it += 1
+
+        for key in self.results:  
+            df.loc[it] = type_list[4] + [key[:len_name]] + [self.sub_results[key][index].__format__('.2f') for index in range(8, 16)] 
+            it += 1
+
+        for key in self.results:  
+            df.loc[it] = type_list[5] + [key[:len_name]] + [self.sub_results[key][index].__format__('.2f') for index in range(16, 24)] 
+            it += 1
+
+        for key in self.results:  
+            df.loc[it] = type_list[6] + [key[:len_name]] + [self.sub_results[key][index].__format__('.2f') for index in range(24, 32)] 
+            it += 1
+
+        for key in self.results:  
+            df.loc[it] = type_list[7] + [key[:len_name]] + [self.results[key][index].__format__('.2f') for index in range(24, 32)] 
+            it += 1
 
 
-        ax2 = self.render_mpl_table(df, header_columns=0, col_width=2.0, ax=ax2)
+        ax2 = self.render_mpl_table(df, header_columns=0, col_width=2.0, bbox=[0, 0, 1, 0.8*len(self.results)], ax=ax2)
+
+        ## SYNTH
+        # ax3 = fig.add_subplot(313)
+        # ax3.axis('tight')
+        # ax3.axis('off')
+        # # Overall Table #
+        # df = pd.DataFrame(columns=['Type', 'Sub-Type', 'No.', 'ADE', 'FDE', 'Col I', 'Col II', 'Top3 ADE', 'Top3 FDE', 'NLL'])
+
+        # type_list = [['I', ''], ['II', ''], ['III', ''], ['III', 'LF'], ['III', 'CA'], ['III', 'Grp'], ['III', 'Oth'], ['IV', '']]
+        # for key in self.results: 
+        #     print(self.sub_results[key])    
+        #     print(self.results[key])    
+        #     df.loc[0] = type_list[0] + [self.results[key][index].__format__('.2f') for index in range(8)]
+        #     df.loc[1] = type_list[1] + [self.results[key][index].__format__('.2f') for index in range(8, 16)] 
+        #     df.loc[2] = type_list[2] + [self.results[key][index].__format__('.2f') for index in range(16, 24)] 
+        #     df.loc[3] = type_list[3] + [self.sub_results[key][index].__format__('.2f') for index in range(8)] 
+        #     df.loc[4] = type_list[4] + [self.sub_results[key][index].__format__('.2f') for index in range(8, 16)] 
+        #     df.loc[5] = type_list[5] + [self.sub_results[key][index].__format__('.2f') for index in range(16, 24)] 
+        #     df.loc[6] = type_list[6] + [self.sub_results[key][index].__format__('.2f') for index in range(24, 32)] 
+        #     df.loc[7] = type_list[7] + [self.results[key][index].__format__('.2f') for index in range(24, 32)] 
 
 
-        ax3 = fig.add_subplot(313)
-        ax3.axis('tight')
-        ax3.axis('off')
-        # Overall Table #
-        df = pd.DataFrame(columns=['Type', 'Sub-Type', 'No.', 'ADE', 'FDE', 'Col I', 'Col II', 'Top3 ADE', 'Top3 FDE', 'NLL'])
+        # ax3 = self.render_mpl_table(df, header_columns=0, col_width=2.0, ax=ax3)
 
-        type_list = [['I', ''], ['II', ''], ['III', ''], ['III', 'LF'], ['III', 'CA'], ['III', 'Grp'], ['III', 'Oth'], ['IV', '']]
-        for key in self.results: 
-            print(self.sub_results[key])    
-            print(self.results[key])    
-            df.loc[0] = type_list[0] + [self.results[key][index].__format__('.2f') for index in range(8)]
-            df.loc[1] = type_list[1] + [self.results[key][index].__format__('.2f') for index in range(8, 16)] 
-            df.loc[2] = type_list[2] + [self.results[key][index].__format__('.2f') for index in range(16, 24)] 
-            df.loc[3] = type_list[3] + [self.sub_results[key][index].__format__('.2f') for index in range(8)] 
-            df.loc[4] = type_list[4] + [self.sub_results[key][index].__format__('.2f') for index in range(8, 16)] 
-            df.loc[5] = type_list[5] + [self.sub_results[key][index].__format__('.2f') for index in range(16, 24)] 
-            df.loc[6] = type_list[6] + [self.sub_results[key][index].__format__('.2f') for index in range(24, 32)] 
-            df.loc[7] = type_list[7] + [self.results[key][index].__format__('.2f') for index in range(24, 32)] 
-
-
-        ax3 = self.render_mpl_table(df, header_columns=0, col_width=2.0, ax=ax3)
         # fig = ax.get_figure()
         fig.savefig('asdf.png')
     
