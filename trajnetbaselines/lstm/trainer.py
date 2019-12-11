@@ -26,7 +26,7 @@ class Trainer(object):
         else:
             self.criterion = PredictionLoss()
         self.optimizer = optimizer if optimizer is not None else torch.optim.SGD(
-            self.model.parameters(), lr=1e-3, momentum=0.9, weight_decay=1e-4)
+            self.model.parameters(), lr=3e-4, momentum=0.9) # , weight_decay=1e-4
         self.lr_scheduler = (lr_scheduler
                              if lr_scheduler is not None
                              else torch.optim.lr_scheduler.StepLR(self.optimizer, 15))
@@ -143,7 +143,7 @@ def main(epochs=50):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
-    parser.add_argument('--lr', default=1e-3, type=float,
+    parser.add_argument('--lr', default=3e-4, type=float,
                         help='initial learning rate')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp'),
@@ -233,7 +233,7 @@ def main(epochs=50):
                  embedding_dim=args.coordinate_embedding_dim,
                  hidden_dim=args.hidden_dim)
     # Default Load
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4) # , weight_decay=1e-4
     lr_scheduler = None
     start_epoch = 0
 
@@ -249,7 +249,7 @@ def main(epochs=50):
         if args.load_full_state:
         # load optimizers from last training
         # useful to continue training
-            optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+            optimizer = torch.optim.Adam(model.parameters(), lr=args.lr) # , weight_decay=1e-4
             optimizer.load_state_dict(checkpoint['optimizer'])
             lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
             lr_scheduler.load_state_dict(checkpoint['scheduler'])
