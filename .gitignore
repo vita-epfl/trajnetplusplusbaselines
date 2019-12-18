@@ -1,4 +1,5 @@
 data/
+dest/
 DATA_BLOCK/
 output/
 OUTPUT_BLOCK/
@@ -17,3 +18,19 @@ dist/
 
 # OS
 .DS_Store
+
+
+*.txt
+*.png
+*.sh
+*.run
+
+Makefile
+Makefile_backup
+
+## Car
+highway_vid/
+video/
+
+##WTA
+wta_expts/
