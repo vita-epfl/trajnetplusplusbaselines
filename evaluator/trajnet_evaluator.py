@@ -431,6 +431,8 @@ def main():
                         help='disable writing new files')
     parser.add_argument('--disable-collision', action='store_true',
                         help='disable collision metrics')
+    parser.add_argument('--labels', required=False, nargs='+',
+                        help='labels of models')
     args = parser.parse_args()
 
     ## Path to the data folder name to predict 
@@ -438,6 +440,7 @@ def main():
 
     ## Test_pred : Folders for saving model predictions
     args.data = args.data + 'test_pred/'
+
 
     ## Writes to Test_pred
     ### Does this overwrite existing predictions? No. ###
@@ -449,10 +452,16 @@ def main():
     for model in args.output:
         names.append(model.split('/')[-1].replace('.pkl', ''))
 
+    ## labels
+    if args.labels:
+        labels = args.labels
+    else:
+        labels = names
+
     # Initiate Result Table
     table = Table()
 
-    for name in names:
+    for num, name in enumerate(names):
         print(name)
 
         result_file = args.data.replace('pred', 'results') + name
@@ -462,7 +471,7 @@ def main():
             print("Loading Saved Results")
             with open(result_file + '/results.pkl', 'rb') as handle:
                 [final_result, sub_final_result] = pickle.load(handle)
-            table.add_result(name, final_result, sub_final_result)
+            table.add_result(labels[num], final_result, sub_final_result)
 
         # ## Else, Calculate results and save
         else:
@@ -484,7 +493,7 @@ def main():
 
             # print(results)
             ## Generate results 
-            final_result, sub_final_result = table.add_entry(name, results)
+            final_result, sub_final_result = table.add_entry(labels[num], results)
 
             ## Save results as pkl (to avoid computation again) 
             os.makedirs(result_file)

@@ -1,6 +1,5 @@
 import trajnettools
 import trajnetbaselines.kalman as kalman
-# from trajnetbaselines import socialforce
 import trajnetbaselines
 import shutil
 import os
@@ -15,7 +14,8 @@ def main(args, kf=False, sf=False):
         args.output.append('/kf.pkl')
     if sf:
         args.output.append('/sf.pkl')
-    
+        args.output.append('/sf_new.pkl')
+
     ## Model names are passed as arguments
     for model in args.output:
         model_name = model.split('/')[-1].replace('.pkl', '')
@@ -46,18 +46,21 @@ def main(args, kf=False, sf=False):
             # Load the model
             if model_name == 'kf':
                 predictor = trajnetbaselines.kalman.predict
-            elif model_name == 'sf':
+            elif model_name == 'sf' or model_name == 'sf_new':
                 predictor = trajnetbaselines.socialforce.predict
             else:
                 predictor = trajnetbaselines.lstm.LSTMPredictor.load(model)
                 # On CPU
                 device = torch.device('cpu')
                 predictor.model.to(device)
-            
+
             # Write the prediction
             with open(args.data + '{}/{}'.format(model_name, name), "a") as myfile:
                 for scene_id, paths in scenes:
-                    predictions = predictor(paths)
+                    if model_name == 'sf_new':
+                        predictions = predictor(paths, sf_params=[0.5, 1.0, 0.1]) ## optimal sf_params
+                    else:
+                        predictions = predictor(paths)
                     for m in range(len(predictions)):
                         prediction, neigh_predictions = predictions[m]
                         
