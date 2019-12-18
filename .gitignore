@@ -1,9 +1,16 @@
 data/
+dest/
 DATA_BLOCK/
 output/
 OUTPUT_BLOCK/
 socialforce-master/
 profile_trace*.json
+
+*.txt
+*.png
+*.sh
+*.run
+
 
 # Python
 venv*/
