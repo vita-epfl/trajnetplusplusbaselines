@@ -24,3 +24,13 @@ dist/
 
 # OS
 .DS_Store
+
+Makefile
+Makefile_backup
+
+## Car
+highway_vid/
+video/
+
+##WTA
+wta_expts/
