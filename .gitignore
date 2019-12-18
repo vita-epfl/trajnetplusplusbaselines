@@ -1,4 +1,5 @@
 data/
+dest/
 DATA_BLOCK/
 output/
 OUTPUT_BLOCK/
@@ -17,3 +18,21 @@ dist/
 
 # OS
 .DS_Store
+
+
+*.png
+*.txt
+*.run
+*.sh
+Makefile
+Makefile_backup
+
+## car
+video/
+wta_expts/
+highway_vid/
+
+##Style
+trajnetbaselines/style_lstm/
+trajnetbaselines/lstm/style_encoder.py
+tests/test_style.py
