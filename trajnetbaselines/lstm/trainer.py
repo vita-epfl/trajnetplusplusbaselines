@@ -13,7 +13,7 @@ import trajnettools
 from .. import augmentation
 from .loss import PredictionLoss, L2Loss
 from .lstm import LSTM, LSTMPredictor, drop_distant
-from .pooling import Pooling, HiddenStateMLPPooling
+from .pooling import Pooling, HiddenStateMLPPooling, DirectionalMLPPooling, FastPooling
 from .. import __version__ as VERSION
 
 
@@ -143,10 +143,11 @@ def main(epochs=50):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
-    parser.add_argument('--lr', default=3e-4, type=float,
+    parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
     parser.add_argument('--type', default='vanilla',
-                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp'),
+                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp',
+                                 'directionalmlp'),
                         help='type of LSTM to train')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
@@ -154,6 +155,8 @@ def main(epochs=50):
                         help='disable CUDA')
     parser.add_argument('--front', action='store_true',
                         help='Front pooling')
+    parser.add_argument('--fast', action='store_true',
+                        help='Fast pooling (Under devpt)')
     parser.add_argument('--path', default='trajdata',
                         help='glob expression for data files')
     parser.add_argument('--loss', default='L2',
@@ -226,9 +229,15 @@ def main(epochs=50):
     pool = None    
     if args.type == 'hiddenstatemlp':
         pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim)
+    if args.type == 'directionalmlp':
+        pool = DirectionalMLPPooling(hidden_dim=args.hidden_dim)
     elif args.type != 'vanilla':
-        pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim,
-                       cell_side=args.cell_side, n=args.n, front=args.front)
+        if args.fast:
+            pool = FastPooling(type_=args.type, hidden_dim=args.hidden_dim,
+                               cell_side=args.cell_side, n=args.n, front=args.front)
+        else:
+            pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim,
+                           cell_side=args.cell_side, n=args.n, front=args.front)
     model = LSTM(pool=pool,
                  embedding_dim=args.coordinate_embedding_dim,
                  hidden_dim=args.hidden_dim)

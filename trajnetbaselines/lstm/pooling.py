@@ -43,6 +43,172 @@ class HiddenStateMLPPooling(torch.nn.Module):
         return self.out_projection(pooled)
 
 
+class DirectionalMLPPooling(torch.nn.Module):
+    def __init__(self, hidden_dim=128, mlp_dim=32, mlp_dim_spatial=16, out_dim=None):
+        super(DirectionalMLPPooling, self).__init__()
+        self.out_dim = out_dim or hidden_dim
+        self.spatial_embedding = torch.nn.Sequential(
+            torch.nn.Linear(2, mlp_dim_spatial),
+            torch.nn.ReLU(),
+        )
+        self.directional_embedding = torch.nn.Sequential(
+            torch.nn.Linear(2, mlp_dim - mlp_dim_spatial),
+            torch.nn.ReLU(),
+        )
+        self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
+
+    @staticmethod
+    def rel_obs(obs):
+        unfolded = obs.unsqueeze(0).repeat(obs.size(0), 1, 1)
+        relative = unfolded - obs.unsqueeze(1)
+        return relative
+
+    @staticmethod
+    def rel_directional(obs1, obs2):
+        vel = obs2 - obs1
+        unfolded = vel.unsqueeze(0).repeat(vel.size(0), 1, 1)
+        relative = unfolded - vel.unsqueeze(1)
+        return relative
+
+    def forward(self, hidden_states, obs1, obs2):
+        rel_obs = self.rel_obs(obs2)
+        spatial = self.spatial_embedding(rel_obs)
+
+        print("obs2: ", obs2)
+        print("rel_obs: ", rel_obs)
+        import pdb
+        pdb.set_trace()
+
+        rel_vel = self.rel_directional(obs1, obs2)
+        directional = self.directional_embedding(rel_vel)
+
+        embedded = torch.cat([spatial, directional], dim=2)
+        pooled, _ = torch.max(embedded, dim=1)
+        return self.out_projection(pooled)
+
+class FastPooling(torch.nn.Module):
+    ## Default S-LSTM Parameters
+    def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
+                 type_='occupancy', pool_size=8, blur_size=0, front=False):
+        """
+        cell_side: size of each cell in real world
+        n: number of cells along one dimension
+        Pools in a square of side (n*cell_side) centred at the ped location
+        """
+        super(FastPooling, self).__init__()
+        self.cell_side = cell_side
+        self.n = n
+        self.type_ = type_
+        self.pool_size = pool_size
+        self.blur_size = blur_size
+
+        self.pooling_dim = 1
+        if self.type_ == 'directional':
+            self.pooling_dim = 2
+        if self.type_ == 'social':
+            self.pooling_dim = hidden_dim
+        self.front = front 
+    
+        if out_dim is None:
+            out_dim = hidden_dim
+        self.out_dim = out_dim
+
+        self.embedding = torch.nn.Sequential(
+            torch.nn.Linear(n * n * self.pooling_dim, out_dim),
+            torch.nn.ReLU(),
+        )
+
+    def forward(self, hidden_state, obs1, obs2):
+        if self.type_ == 'occupancy':
+            grid = self.occupancies(obs2)
+        elif self.type_ == 'directional':
+            grid = self.directional(obs1, obs2)
+        elif self.type_ == 'social':
+            grid = self.social(hidden_state, obs2)
+
+        return self.embedding(grid)
+
+    def occupancies(self, obs):
+        ## Occupancy Grid
+        return self.occupancy(obs)
+
+
+    def directional(self, obs1, obs2):
+        n = obs2.size(0)
+
+        if n == 1:
+            return self.occupancy(obs2, None)
+        
+        ## Relative Directional Grid
+        vel = obs2 - obs1
+        unfolded = vel.unsqueeze(0).repeat(vel.size(0), 1, 1)
+        relative = unfolded - vel.unsqueeze(1)
+        ## Deleting Diagonal (Ped wrt itself)
+        relative = relative[~torch.eye(n).bool()].reshape(n, n-1, 2)
+
+        ## Occupancy Grid
+        return self.occupancy(obs2, relative)
+
+    def social(self, hidden_state, obs):
+        n = obs.size(0)
+
+        if n == 1:
+            return self.occupancy(obs, None)
+
+        ## Hiddenstate Grid
+        hidden_state_grid = hidden_state.repeat(n, 1).view(n, n, -1)
+        hidden_state_grid = hidden_state_grid[~torch.eye(n).bool()].reshape(n, n-1, -1)
+
+        ## Occupancy Grid
+        return self.occupancy(obs, hidden_state_grid)
+
+
+    def occupancy(self, obs, other_values=None):
+        """Returns the occupancy."""
+        n = obs.size(0)
+
+        if n == 1:
+            return torch.zeros(1, self.n * self.n * self.pooling_dim, device=obs.device)
+
+        unfolded = obs.unsqueeze(0).repeat(obs.size(0), 1, 1)
+        relative = unfolded - obs.unsqueeze(1)
+
+        ## Deleting Diagonal (Ped wrt itself)
+        relative = relative[~torch.eye(n).bool()].reshape(n, n-1, 2)
+
+        if other_values is None:
+            other_values = torch.ones(n, n-1, self.pooling_dim, device=obs.device)
+
+        oij = (relative / (self.cell_side / self.pool_size) + self.n * self.pool_size / 2)
+
+        range_violations = torch.sum((oij < 0) + (oij >= self.n * self.pool_size), dim=2)
+        range_mask = range_violations == 0
+
+        # oij = oij[range_mask].long()
+        oij[~range_mask] = 0 ## TODO
+        other_values[~range_mask] = 0
+        oij = oij.long()
+
+        oi = oij[:, :, 0] * self.n * self.pool_size + oij[:, :, 1]
+
+        # faster occupancy
+        occ = torch.zeros(n, self.n**2 * self.pool_size**2, self.pooling_dim, device=obs.device)
+
+        occ[torch.arange(occ.size(0)).unsqueeze(1), oi] = other_values
+        # occ[oi] = other_values
+        occ = torch.transpose(occ, 1, 2)
+        occ_2d = occ.view(n, -1, self.n * self.pool_size, self.n * self.pool_size)
+
+        occ_blurred = occ_2d
+
+        occ_summed = torch.nn.functional.lp_pool2d(occ_blurred, 1, self.pool_size)
+        # occ_summed = torch.nn.functional.avg_pool2d(occ_blurred, self.pool_size)  # faster?
+
+        # import pdb
+        # pdb.set_trace()
+
+        return occ_summed.view(n, -1)
+
 class Pooling(torch.nn.Module):
     ## Default S-LSTM Parameters
     def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
