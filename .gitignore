@@ -5,12 +5,13 @@ output/
 OUTPUT_BLOCK/
 socialforce-master/
 profile_trace*.json
+checkpoints
 
 *.txt
 *.png
 *.sh
 *.run
-
+*.pt
 
 # Python
 venv*/
@@ -34,3 +35,4 @@ video/
 
 ##WTA
 wta_expts/
+trajnetbaselines/wta_lstm_backup/
