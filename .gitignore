@@ -1,10 +1,13 @@
 data/
 dest/
+dest_new/
 DATA_BLOCK/
 output/
 OUTPUT_BLOCK/
 socialforce-master/
 profile_trace*.json
+Python-RVO2-master/
+evaluator/old_table/
 
 # Python
 venv*/

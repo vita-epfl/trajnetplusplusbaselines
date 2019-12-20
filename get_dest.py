@@ -41,33 +41,33 @@ def get_dest(rows):
 def generate_dest(sc, input_file): 
     rows = get_trackrows(sc, input_file)
     dict_dest = get_dest(rows)
-    # dataset = input_file.replace('./DATA_BLOCK/data/train/real_data/', '').replace('.ndjson', '')
-    dataset = input_file.replace('./DATA_BLOCK/data/groundtruth/real_data/', '').replace('.ndjson', '')
+    dataset = input_file.replace('./DATA_BLOCK/data/train/real_data/', '').replace('.ndjson', '')
+    # dataset = input_file.replace('./DATA_BLOCK/data/groundtruth/real_data/', '').replace('.ndjson', '')
     print(dataset)
     print(dict_dest)
-    with open('dest/' + dataset + '.pkl', 'wb') as f:
+    with open('dest_new/' + dataset + '.pkl', 'wb') as f:
         pickle.dump(dict_dest, f)
 
 
 
 sc = pysparkling.Context()
-# input_file = './DATA_BLOCK/data/train/real_data/biwi_hotel.ndjson'
-# generate_dest(sc, input_file)
-# input_file = './DATA_BLOCK/data/train/real_data/crowds_zara01.ndjson'
-# generate_dest(sc, input_file)
-# input_file = './DATA_BLOCK/data/train/real_data/crowds_zara03.ndjson'
-# generate_dest(sc, input_file)
-# input_file = './DATA_BLOCK/data/train/real_data/crowds_students001.ndjson'
-# generate_dest(sc, input_file)
-# input_file = './DATA_BLOCK/data/train/real_data/crowds_students003.ndjson'
-# generate_dest(sc, input_file)
-# input_file = './DATA_BLOCK/data/train/real_data/lcas.ndjson'
-# generate_dest(sc, input_file)
-# input_file = './DATA_BLOCK/data/train/real_data/wildtrack.ndjson'
-# generate_dest(sc, input_file)
-
-input_file = './DATA_BLOCK/data/groundtruth/real_data/biwi_eth.ndjson'
+input_file = './DATA_BLOCK/data/train/real_data/biwi_hotel.ndjson'
 generate_dest(sc, input_file)
+input_file = './DATA_BLOCK/data/train/real_data/crowds_zara01.ndjson'
+generate_dest(sc, input_file)
+input_file = './DATA_BLOCK/data/train/real_data/crowds_zara03.ndjson'
+generate_dest(sc, input_file)
+input_file = './DATA_BLOCK/data/train/real_data/crowds_students001.ndjson'
+generate_dest(sc, input_file)
+input_file = './DATA_BLOCK/data/train/real_data/crowds_students003.ndjson'
+generate_dest(sc, input_file)
+input_file = './DATA_BLOCK/data/train/real_data/lcas.ndjson'
+generate_dest(sc, input_file)
+input_file = './DATA_BLOCK/data/train/real_data/wildtrack.ndjson'
+generate_dest(sc, input_file)
+
+# input_file = './DATA_BLOCK/data/groundtruth/real_data/biwi_eth.ndjson'
+# generate_dest(sc, input_file)
 # input_file = './DATA_BLOCK/data/groundtruth/real_data/crowds_uni_examples.ndjson'
 # generate_dest(sc, input_file)
 # input_file = './DATA_BLOCK/data/groundtruth/real_data/crowds_zara02.ndjson'
