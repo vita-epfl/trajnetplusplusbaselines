@@ -6,7 +6,10 @@ OUTPUT_BLOCK/
 socialforce-master/
 profile_trace*.json
 checkpoints
-
+Python-RVO2-master/
+dest_new/
+evaluator/old_table/
+	
 *.txt
 *.png
 *.sh

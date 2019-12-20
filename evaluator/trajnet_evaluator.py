@@ -14,7 +14,7 @@ from evaluator.design_pd import Table
 from scipy.stats import gaussian_kde
 
 class TrajnetEvaluator:
-    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, scenes_sub100=None):
+    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes):
         self.reader_gt = reader_gt
         
         ##Ground Truth
@@ -48,30 +48,29 @@ class TrajnetEvaluator:
         self.overall_nll = {'N': len(scenes_gt)}
         self.topk_ade = {'N': len(scenes_gt)}
         self.topk_fde = {'N': len(scenes_gt)}
-        if scenes_sub100 is not None:
-            self.scenes_sub100 = scenes_sub100
-
-    def aggregate(self, name, disable_collision):
-
-        ## Overall Scores
-        average = 0.0
-        final = 0.0
-
-        ## Aggregates ADE, FDE and Collision in GT & Pred for each category & sub_category
-        score = {1: [0.0, 0.0, 0, 0, 0], 2: [0.0, 0.0, 0, 0, 0], 3: [0.0, 0.0, 0, 0, 0], 4: [0.0, 0.0, 0, 0, 0]}
-        sub_score = {1: [0.0, 0.0, 0, 0, 0], 2: [0.0, 0.0, 0, 0, 0], 3: [0.0, 0.0, 0, 0, 0], 4: [0.0, 0.0, 0, 0, 0]}
-
-        ## Number of future trajectories proposed by the model #Multimodality
+        
         num_predictions = 0
-        tmp_prediction = {}
         for track in self.scenes_sub[0][0]:
             if track.prediction_number and track.prediction_number > num_predictions:
                 num_predictions = track.prediction_number
+        self.num_predictions = num_predictions
 
-        ## Max. 3 trajectories can only be outputted
-        if num_predictions > 0:
-            warnings.warn("3 predictions at most")
-            num_predictions = 0
+    def aggregate(self, name, disable_collision):
+
+        ## Overall Single Mode Scores
+        average = 0.0
+        final = 0.0
+
+        ## Overall Multi Mode Scores
+        average_topk_ade = 0
+        average_topk_fde = 0
+        average_nll = 0
+
+        ## Aggregates ADE, FDE and Collision in GT & Pred, Topk ADE-FDE , NLL for each category & sub_category
+        score = {1: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 2: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], \
+                 3: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 4: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0]}
+        sub_score =  {1: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 2: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], \
+                      3: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 4: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0]}
 
         ## Iterate
         for i in range(len(self.scenes_gt)):
@@ -91,19 +90,14 @@ class TrajnetEvaluator:
                     sub_keys.append(sub_key)
 
             ## Extract Prediction Frames
-            primary_tracks = [t for t in self.scenes_sub[i][0] if t.scene_id == self.scenes_id_gt[i]]
-            neighbours_tracks = [[t for t in self.scenes_sub[i][j] if t.scene_id == self.scenes_id_gt[i]] for j in range(1, len(self.scenes_sub[i]))]
+            primary_tracks_all = [t for t in self.scenes_sub[i][0] if t.scene_id == self.scenes_id_gt[i]]
+            neighbours_tracks_all = [[t for t in self.scenes_sub[i][j] if t.scene_id == self.scenes_id_gt[i]] for j in range(1, len(self.scenes_sub[i]))]
 
-            l2 = 1e10
-            for np in range(num_predictions + 1):
-                primary_prediction = [t for t in primary_tracks if t.prediction_number == np]
-                tmp_score = trajnettools.metrics.final_l2(ground_truth[0], primary_prediction)
-                if tmp_score < l2:      
-                    best_prediction_number = np
-                    l2 = tmp_score
+##### --------------------------------------------------- SINGLE -------------------------------------------- ####
 
-            primary_tracks = [t for t in primary_tracks if t.prediction_number == best_prediction_number]
-            neighbours_tracks = [[t for t in neighbours_tracks[j] if t.prediction_number == best_prediction_number] for j in range(len(neighbours_tracks))]
+
+            primary_tracks = [t for t in primary_tracks_all if t.prediction_number == 0]
+            neighbours_tracks = [[t for t in neighbours_tracks_all[j] if t.prediction_number == 0] for j in range(len(neighbours_tracks_all))]
 
             frame_gt = [t.frame for t in ground_truth[0]][-12:]
             frame_pred = [t.frame for t in primary_tracks]
@@ -159,22 +153,82 @@ class TrajnetEvaluator:
                 sub_score[sub_key][0] += average_l2
                 sub_score[sub_key][1] += final_l2  
 
+##### --------------------------------------------------- SINGLE -------------------------------------------- ####
+
+##### --------------------------------------------------- Top 3 -------------------------------------------- ####
+
+            if self.num_predictions > 2:
+                topk_ade, topk_fde = self.topk(primary_tracks_all, ground_truth[0])
+
+                average_topk_ade += topk_ade
+                ##Key
+                for key in keys:
+                    score[key][5] += topk_ade
+                ## SubKey
+                for sub_key in sub_keys:
+                    sub_score[sub_key][5] += topk_ade
+
+                average_topk_fde += topk_fde
+                ##Key
+                for key in keys:
+                    score[key][6] += topk_fde
+                ## SubKey
+                for sub_key in sub_keys:
+                    sub_score[sub_key][6] += topk_fde
+
+##### --------------------------------------------------- Top 3 -------------------------------------------- ####
+
+##### --------------------------------------------------- NLL -------------------------------------------- ####
+            if self.num_predictions > 99:
+                nll = self.nll(primary_tracks_all, ground_truth[0])
+
+                average_nll += nll
+                ##Key
+                for key in keys:
+                    score[key][7] += nll
+                ## SubKey
+                for sub_key in sub_keys:
+                    sub_score[sub_key][7] += nll
+##### --------------------------------------------------- NLL -------------------------------------------- ####
+
         ## Average ADE and FDE
         average /= len(self.scenes_gt)
         final /= len(self.scenes_gt)
+
+        ## Average TopK ADE and Topk FDE and NLL
+        average_topk_ade /= len(self.scenes_gt)
+        average_topk_fde /= len(self.scenes_gt)
+        average_nll /= len(self.scenes_gt)
+
+        ## Average categories
         for key in list(score.keys()):
             if self.indexes[key]:
                 score[key][0] /= len(self.indexes[key])
                 score[key][1] /= len(self.indexes[key])
+
+                score[key][5] /= len(self.indexes[key])
+                score[key][6] /= len(self.indexes[key])
+                score[key][7] /= len(self.indexes[key])
+
+        ## Average subcategories
         ## Sub
         for sub_key in list(sub_score.keys()):
             if self.sub_indexes[sub_key]:
                 sub_score[sub_key][0] /= len(self.sub_indexes[sub_key])
                 sub_score[sub_key][1] /= len(self.sub_indexes[sub_key]) 
 
+                sub_score[sub_key][5] /= len(self.sub_indexes[sub_key])
+                sub_score[sub_key][6] /= len(self.sub_indexes[sub_key])
+                sub_score[sub_key][7] /= len(self.sub_indexes[sub_key])
+
         # ##Adding value to dict
         self.average_l2[name] = average
         self.final_l2[name] = final
+
+        ##APPEND to overall keys
+        self.overall_nll[name] = average_nll
+        self.topk_ade[name] = average_topk_ade
+        self.topk_fde[name] = average_topk_fde
 
         ## Main
         self.static_scenes[name] = score[1]
@@ -187,136 +241,6 @@ class TrajnetEvaluator:
         self.ca[name] = sub_score[2]
         self.grp[name] = sub_score[3]
         self.others[name] = sub_score[4]
-
-        return self
-
-    def aggregate_multi(self, name):
-
-        ## Aggregates NLL for each category & sub_category
-        score = {1: [0.0, 0.0, 0.0], 2: [0.0, 0.0, 0.0], 3: [0.0, 0.0, 0.0], 4: [0.0, 0.0, 0.0]}
-        sub_score = {1: [0.0, 0.0, 0.0], 2: [0.0, 0.0, 0.0], 3: [0.0, 0.0, 0.0], 4: [0.0, 0.0, 0.0]}
-
-        # Check number of predictions is 100
-        # ## Check Frame Consistency
-        average_topk_ade = 0
-        average_topk_fde = 0
-        average_nll = 0
-
-        ## Iterate
-        for i in range(len(self.scenes_gt)):
-            ground_truth = self.scenes_gt[i]
-
-            ## Get Keys and Sub_keys
-            keys = []
-            sub_keys = []
-
-            ## Main
-            for key in list(score.keys()):
-                if self.scenes_id_gt[i] in self.indexes[key]:
-                    keys.append(key)
-            # ## Sub
-            for sub_key in list(sub_score.keys()):
-                if self.scenes_id_gt[i] in self.sub_indexes[sub_key]:
-                    sub_keys.append(sub_key)
-
-            ## Extract Prediction Frames
-            primary_tracks = [t for t in self.scenes_sub100[i][0] if t.scene_id == self.scenes_id_gt[i]]
-            # print("Primary: ", primary_tracks)
-            ## Future
-            # nll = trajnettools.metrics.average_l2(ground_truth[0], primary_tracks)
-            topk_ade, topk_fde = self.topk(primary_tracks, ground_truth[0])
-            nll = self.nll(primary_tracks, ground_truth[0])
-
-            average_topk_ade += topk_ade
-            ##Key
-            for key in keys:
-                score[key][0] += topk_ade
-            ## SubKey
-            for sub_key in sub_keys:
-                sub_score[sub_key][0] += topk_ade
-
-            average_topk_fde += topk_fde
-            ##Key
-            for key in keys:
-                score[key][1] += topk_fde
-            ## SubKey
-            for sub_key in sub_keys:
-                sub_score[sub_key][1] += topk_fde
-
-            average_nll += nll
-            ##Key
-            for key in keys:
-                score[key][2] += nll
-            ## SubKey
-            for sub_key in sub_keys:
-                sub_score[sub_key][2] += nll
-
-        ## Average ADE and FDE
-        average_topk_ade /= len(self.scenes_gt)
-        average_topk_fde /= len(self.scenes_gt)
-        average_nll /= len(self.scenes_gt)
-
-        ## Key
-        for key in list(score.keys()):
-            if self.indexes[key]:
-                score[key][0] /= len(self.indexes[key])
-                score[key][1] /= len(self.indexes[key])
-                score[key][2] /= len(self.indexes[key])
-
-        ## Sub
-        for sub_key in list(sub_score.keys()):
-            if self.sub_indexes[sub_key]:
-                sub_score[sub_key][0] /= len(self.sub_indexes[sub_key])
-                sub_score[sub_key][1] /= len(self.sub_indexes[sub_key])
-                sub_score[sub_key][2] /= len(self.sub_indexes[sub_key])
-
-        ##APPEND to overall keys
-        self.overall_nll[name] = average_nll
-        self.topk_ade[name] = average_topk_ade
-        self.topk_fde[name] = average_topk_fde
-
-        ## Main
-        self.static_scenes[name] += score[1]
-        self.linear_scenes[name] += score[2]
-        self.forced_non_linear_scenes[name] += score[3]
-        self.non_linear_scenes[name] += score[4]
-
-        ## Sub_keys
-        self.lf[name] += sub_score[1]
-        self.ca[name] += sub_score[2]
-        self.grp[name] += sub_score[3]
-        self.others[name] += sub_score[4]
-
-        return self
-
-    def aggregate_no_multi(self, name):
-
-        ## Aggregates NLL for each category & sub_category
-        score = {1: [0.0, 0.0, 0.0], 2: [0.0, 0.0, 0.0], 3: [0.0, 0.0, 0.0], 4: [0.0, 0.0, 0.0]}
-        sub_score = {1: [0.0, 0.0, 0.0], 2: [0.0, 0.0, 0.0], 3: [0.0, 0.0, 0.0], 4: [0.0, 0.0, 0.0]}
-
-        # Check number of predictions is 100
-        # ## Check Frame Consistency
-        average_topk_ade = 0
-        average_topk_fde = 0
-        average_nll = 0
-
-        ##APPEND to overall keys
-        self.overall_nll[name] = average_nll
-        self.topk_ade[name] = average_topk_ade
-        self.topk_fde[name] = average_topk_fde
-
-        ## Main
-        self.static_scenes[name] += score[1]
-        self.linear_scenes[name] += score[2]
-        self.forced_non_linear_scenes[name] += score[3]
-        self.non_linear_scenes[name] += score[4]
-
-        ## Sub_keys
-        self.lf[name] += sub_score[1]
-        self.ca[name] += sub_score[2]
-        self.grp[name] += sub_score[3]
-        self.others[name] += sub_score[4]
 
         return self
 
@@ -385,12 +309,6 @@ def eval(gt, input_file, args, input_file2=None):
     reader_sub = trajnettools.Reader(input_file, scene_type='paths')
     scenes_sub = [s for _, s in reader_sub.scenes()]
 
-    scenes_sub100 = None
-    if input_file2 is not None: 
-        # Scene Predictions (MultiModal)
-        reader_sub100 = trajnettools.Reader(input_file2, scene_type='paths')
-        scenes_sub100 = [s for _, s in reader_sub100.scenes()]
-
     ## indexes is dictionary deciding which scenes are in which type
     indexes = {}
     for i in range(1,5):
@@ -410,13 +328,8 @@ def eval(gt, input_file, args, input_file2=None):
                 sub_indexes[ii].append(scene)
 
     # Evaluate
-    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, scenes_sub100)
+    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes)
     evaluator.aggregate('kf', args.disable_collision)
-
-    if scenes_sub100 is not None:
-        evaluator.aggregate_multi('kf')
-    else:
-        evaluator.aggregate_no_multi('kf')
 
     return evaluator.result()
 
