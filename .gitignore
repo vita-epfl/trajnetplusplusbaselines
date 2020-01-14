@@ -5,6 +5,7 @@ output/
 OUTPUT_BLOCK/
 socialforce-master/
 profile_trace*.json
+checkpoints/
 
 # Python
 venv*/
@@ -24,8 +25,13 @@ dist/
 *.txt
 *.run
 *.sh
+*.pt 
+
 Makefile
 Makefile_backup
+
+##sgan
+trajnetbaselines/sgan/models/
 
 ## car
 video/
@@ -36,3 +42,4 @@ highway_vid/
 trajnetbaselines/style_lstm/
 trajnetbaselines/lstm/style_encoder.py
 tests/test_style.py
+trajnetbaselines/wta_lstm_backup/
