@@ -16,6 +16,7 @@ def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, pre
             path = input_paths[i]
             ped_id = path[0].pedestrian
             past_path = [t for t in path if t.frame <= start_frame]
+            future_path = [t for t in path if t.frame > start_frame]
             past_frames = [t.frame for t in path if t.frame <= start_frame]
             len_path = len(past_path)
 
@@ -34,6 +35,8 @@ def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, pre
                         raise ValueError
                 elif dest_type == 'interp':
                     [d_x, d_y] = dest_state(past_path, len_path-1)
+                elif dest_type == 'pred_end':
+                    [d_x, d_y] = [future_path[-1].x, future_path[-1].y]
                 else:
                     raise NotImplementedError
 
@@ -73,7 +76,7 @@ def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, pre
     ## orca_params = [nDist, nReact, radius]
 
     ## Parameters              freq          nD        obD       nR        oR     rad       max.spd
-    sim = rvo2.PyRVOSimulator(1 / fps, orca_params[0], 10, orca_params[1], 2, orca_params[2], 1.2)
+    sim = rvo2.PyRVOSimulator(1 / fps, orca_params[0], 10, orca_params[1], 5, orca_params[2], 1.5)
 
     # initialize
     trajectories, positions, goals, speed = init_states(input_paths, sim, start_frame, dest_dict, dest_type)

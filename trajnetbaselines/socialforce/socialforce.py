@@ -33,12 +33,12 @@ def predict(input_paths, dest_dict=None, dest_type='true', sf_params=None, predi
                         [d_x, d_y] = dest_dict[ped_id] 
                     else: 
                         raise ValueError
-                # elif dest_type == 'pred':
-                #     [d_x, d_y] = [future_path[-1].x, future_path[-1].y]
                 elif dest_type == 'interp':
                     [d_x, d_y] = dest_state(past_path, len_path-1)
                 elif dest_type == 'vel':
                     [d_x, d_y] = [12*v_x, 12*v_y]
+                elif dest_type == 'pred_end':
+                    [d_x, d_y] = [future_path[-1].x, future_path[-1].y]
                 else:
                     raise NotImplementedError
 
@@ -74,12 +74,19 @@ def predict(input_paths, dest_dict=None, dest_type='true', sf_params=None, predi
 
     if np.isnan(initial_state).any():
         raise ValueError
-        
+
+    fps = 20
+    sampling_rate = int(fps / 2.5)
+
     # run    
-    s = socialforce.Simulator(initial_state, tau=sf_params[0], 
+    s = socialforce.Simulator(initial_state, delta_t=1./fps, tau=sf_params[0], 
                               v0=sf_params[1], sigma=sf_params[2])
-    states = np.stack([s.step().state.copy() for _ in range(12)])
+    states = np.stack([s.step().state.copy() for _ in range(12*sampling_rate)])
+    
     ## states : 12 x num_ped x 7
+    states = np.array([s for num, s in enumerate(states) if num % sampling_rate == 0])
+    # print(len(states))
+
 
     # predictions
     for i in range(states.shape[1]):
