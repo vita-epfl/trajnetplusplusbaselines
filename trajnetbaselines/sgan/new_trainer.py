@@ -12,6 +12,7 @@ import trajnettools
 
 from .. import augmentation
 from .loss import PredictionLoss, L2Loss
+from .loss import bce_loss, gan_d_loss, gan_g_loss
 from .sgan import SGAN, drop_distant, SGANPredictor
 from .pooling import Pooling, HiddenStateMLPPooling
 from .. import __version__ as VERSION
@@ -35,6 +36,9 @@ class Trainer(object):
         self.model = self.model.to(self.device)
         self.criterion = self.criterion.to(self.device)
         self.log = logging.getLogger(self.__class__.__name__)
+
+        self.d_steps = 1
+        self.g_steps = 1
 
     def loop(self, train_scenes, val_scenes, out, epochs=35, start_epoch=0):
         for epoch in range(start_epoch, start_epoch + epochs):
@@ -65,6 +69,9 @@ class Trainer(object):
         random.shuffle(scenes)
         epoch_loss = 0.0
         self.model.train()
+
+        d_steps_left = self.d_steps
+        g_steps_left = self.g_steps
         for scene_i, (_, scene) in enumerate(scenes):
             scene_start = time.time()
             scene = drop_distant(scene)
@@ -73,7 +80,23 @@ class Trainer(object):
             scene = torch.Tensor(scene).to(self.device)
             preprocess_time = time.time() - scene_start
 
-            loss = self.train_batch(scene)
+
+            # Decide whether to use the batch for stepping on discriminator or
+            # generator; an iteration consists of args.d_steps steps on the
+            # discriminator followed by args.g_steps steps on the generator.
+            if d_steps_left > 0:
+                step_type = 'd'
+                d_steps_left -= 1
+            elif g_steps_left > 0:
+                step_type = 'g'
+                g_steps_left -= 1
+
+            ## Update d_steps, g_steps once they end
+            if d_steps_left == 0 and g_steps_left == 0:
+                d_steps_left = self.d_steps
+                g_steps_left = self.g_steps
+
+            loss = self.train_batch(scene, step_type)
             epoch_loss += loss
             total_time = time.time() - scene_start
 
@@ -111,16 +134,20 @@ class Trainer(object):
             'time': round(eval_time, 1),
         })
 
-    def train_batch(self, xy):
+    def train_batch(self, xy, step_type):
         observed = xy[:9]
-        prediction_truth = xy[9:-1].clone()  ## CLONE
+        prediction_truth = xy[9:].clone()  ## CLONE
         targets = xy[9:, 0] - xy[8:-1, 0]
 
         self.optimizer.zero_grad()
-        rel_outputs, _ = self.model(observed, prediction_truth)
+        rel_outputs, abs_outputs, scores_real, scores_fake = self.model(observed, prediction_truth, step_type=step_type)
 
-        ## Loss wrt primary only
-        loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
+        loss = self.loss_criterion(rel_outputs, targets, scores_fake, scores_real, step_type)
+
+        # ## Loss wrt primary only
+        # if step_type == 'd':
+        #     loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
+
         loss.backward()
 
         self.optimizer.step()
@@ -128,16 +155,23 @@ class Trainer(object):
 
     def val_batch(self, xy):
         observed = xy[:9]
-        prediction_truth = xy[9:-1].clone()  ## CLONE
+        prediction_truth = xy[9:].clone()  ## CLONE
 
         with torch.no_grad():
-            rel_outputs, _ = self.model(observed, prediction_truth)
-
+            rel_outputs, abs_outputs, scores_real, scores_fake  = self.model(observed, prediction_truth)
             targets = xy[9:, 0] - xy[8:-1, 0]
             loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
 
         return loss.item()
 
+    def loss_criterion(self, rel_outputs, targets, scores_fake, scores_real, step_type):
+        if step_type == 'd':
+            loss = gan_d_loss(scores_real, scores_fake)
+        else:
+            loss = self.criterion(rel_outputs[-12:, 0], targets) * 100  
+            loss += gan_g_loss(scores_fake)
+
+        return loss
 
 def main(epochs=50):
     parser = argparse.ArgumentParser()
