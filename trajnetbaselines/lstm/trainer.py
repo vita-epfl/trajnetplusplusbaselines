@@ -19,7 +19,7 @@ from .. import __version__ as VERSION
 
 class Trainer(object):
     def __init__(self, model=None, criterion='L2', optimizer=None, lr_scheduler=None,
-                 device=None):
+                 device=None, batch_size=32):
         self.model = model if model is not None else LSTM()
         if criterion == 'L2':
             self.criterion = L2Loss()
@@ -35,6 +35,8 @@ class Trainer(object):
         self.model = self.model.to(self.device)
         self.criterion = self.criterion.to(self.device)
         self.log = logging.getLogger(self.__class__.__name__)
+
+        self.batch_size = batch_size
 
     def loop(self, train_scenes, val_scenes, out, epochs=35, start_epoch=0):
         for epoch in range(start_epoch, start_epoch + epochs):
@@ -65,6 +67,8 @@ class Trainer(object):
         random.shuffle(scenes)
         epoch_loss = 0.0
         self.model.train()
+        self.optimizer.zero_grad()
+
         for scene_i, (_, scene) in enumerate(scenes):
             scene_start = time.time()
             scene = drop_distant(scene)
@@ -76,6 +80,10 @@ class Trainer(object):
             loss = self.train_batch(scene)
             epoch_loss += loss
             total_time = time.time() - scene_start
+            
+            if scene_i % self.batch_size == 0:
+                self.optimizer.step()
+                self.optimizer.zero_grad()
 
             if scene_i % 10 == 0:
                 self.log.info({
@@ -116,14 +124,14 @@ class Trainer(object):
         prediction_truth = xy[9:-1].clone()  ## CLONE
         targets = xy[9:, 0] - xy[8:-1, 0]
 
-        self.optimizer.zero_grad()
+        # self.optimizer.zero_grad()
         rel_outputs, _ = self.model(observed, prediction_truth)
 
         ## Loss wrt primary only
         loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
         loss.backward()
 
-        self.optimizer.step()
+        # self.optimizer.step()
         return loss.item()
 
     def val_batch(self, xy):
@@ -142,6 +150,8 @@ class Trainer(object):
 def main(epochs=50):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
+                        help='number of epochs')
+    parser.add_argument('--batch_size', default=1, type=int,
                         help='number of epochs')
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
@@ -265,7 +275,7 @@ def main(epochs=50):
             start_epoch = checkpoint['epoch']
 
     #trainer
-    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device, criterion=args.loss)
+    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device, criterion=args.loss, batch_size=args.batch_size)
     trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 
