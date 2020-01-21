@@ -46,26 +46,54 @@ def make_mlp(dim_list, activation='relu', batch_norm=True, dropout=0):
 
 class SGAN(torch.nn.Module):
     def __init__(self, embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True,
-                 noise_dim=8, add_noise=False, noise_type='gaussian'):
+                 noise_dim=8, add_noise=False, noise_type='gaussian', k=1, use_d=False,
+                 d_steps=1, g_steps=1):
         super(SGAN, self).__init__()
 
-        self.generator = LSTMGenerator(embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True,
-                                       noise_dim=8, add_noise=False, noise_type='gaussian')
-        self.discrimator = LSTMDiscriminator(embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True)
+        ## Generator
+        self.generator = LSTMGenerator(embedding_dim=embedding_dim, hidden_dim=hidden_dim, pool=pool, pool_to_input=pool_to_input,
+                                       noise_dim=noise_dim, add_noise=add_noise, noise_type=noise_type)
+        self.g_steps = g_steps
+        self.k = 1
+
+        ## Add Noise for Variety Loss
+        if add_noise:
+            self.k = k
+
+        ## Discriminator
+        self.use_d = use_d
+        self.d_steps = 0
+        if self.use_d: 
+            print("Using Discriminator")
+            self.discrimator = LSTMDiscriminator(embedding_dim=embedding_dim, hidden_dim=hidden_dim, pool=pool, pool_to_input=pool_to_input)
+            self.d_steps = d_steps
 
     def forward(self, observed, prediction_truth=None, n_predict=None, step_type='g'):
         """forward
 
         observed shape is (seq, n_tracks, observables)
         """
-        rel_pred_scene, pred_scene = self.generator(observed, prediction_truth, n_predict)
-        predicted_trajectory = torch.cat([observed, pred_scene[-12:]], dim=0)
-        real_trajectory = torch.cat([observed, prediction_truth], dim=0)
 
-        scores_real = self.discrimator(real_trajectory)
-        scores_fake = self.discrimator(predicted_trajectory)
+        rel_pred_list = []
+        pred_list = []
+        for k in range(self.k):
+            print("k:", k)
+            rel_pred_scene, pred_scene = self.generator(observed, prediction_truth, n_predict)
+            rel_pred_list.append(rel_pred_scene)
+            pred_list.append(pred_scene)
 
-        return rel_pred_scene, pred_scene, scores_real, scores_fake
+            if step_type == 'd':
+                break
+
+        if self.use_d:
+            predicted_trajectory = torch.cat([observed, pred_scene[-12:]], dim=0)
+            real_trajectory = torch.cat([observed, prediction_truth], dim=0)
+
+            scores_real = self.discrimator(real_trajectory)
+            scores_fake = self.discrimator(predicted_trajectory)
+            return rel_pred_list, pred_list, scores_real, scores_fake
+
+        return rel_pred_list, pred_list, None, None
 
 class LSTMGenerator(torch.nn.Module):
     def __init__(self, embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True, 
@@ -115,7 +143,7 @@ class LSTMGenerator(torch.nn.Module):
         new_hidden_state = self.mlp_decoder_context(hidden_cell_state[0])
 
         if self.add_noise:
-            noise = get_noise((self.noise_dim), self.noise_type)            
+            noise = get_noise((self.noise_dim, ), self.noise_type)            
         else:
             ## Add zeroes to inputs (CUDA if necessary)
             noise = torch.zeros(self.noise_dim)
@@ -190,6 +218,9 @@ class LSTMGenerator(torch.nn.Module):
         if n_predict is not None:
             # -1 because one prediction is done by the encoder already
             prediction_truth = [None for _ in range(n_predict - 1)]
+
+        if self.pool is None:
+            observed = observed[:, 0:1]
 
         # initialize: Because of tracks with different lengths and the masked
         # update, the hidden state for every LSTM needs to be a separate object

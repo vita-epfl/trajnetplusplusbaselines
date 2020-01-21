@@ -70,6 +70,7 @@ class L2Loss(torch.nn.Module):
     def forward(self, inputs, targets):
         return self.loss(inputs[:, :2], targets)
 
+
 class ADELoss(torch.nn.Module):
     """ADELoss between GT and Predicted Trajectory.
     """
@@ -125,3 +126,15 @@ def gan_d_loss(scores_real, scores_fake):
     loss_fake = bce_loss(scores_fake, y_fake)
     return loss_real + loss_fake
 
+
+def variety_loss(inputs, target):
+    """Variety Loss acc to SGAN
+    """
+    criterion = torch.nn.MSELoss()
+    min_loss_value = 1e10
+    for sample in inputs:
+        tmp_loss = criterion(sample[-12:, 0, :2], target) * 100
+        if tmp_loss.detach() < min_loss_value:
+            loss = tmp_loss
+            min_loss_value = tmp_loss.detach()
+    return loss

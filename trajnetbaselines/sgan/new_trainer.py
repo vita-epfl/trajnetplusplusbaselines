@@ -12,7 +12,7 @@ import trajnettools
 
 from .. import augmentation
 from .loss import PredictionLoss, L2Loss
-from .loss import bce_loss, gan_d_loss, gan_g_loss
+from .loss import bce_loss, gan_d_loss, gan_g_loss, variety_loss
 from .sgan import SGAN, drop_distant, SGANPredictor
 from .pooling import Pooling, HiddenStateMLPPooling
 from .. import __version__ as VERSION
@@ -36,9 +36,6 @@ class Trainer(object):
         self.model = self.model.to(self.device)
         self.criterion = self.criterion.to(self.device)
         self.log = logging.getLogger(self.__class__.__name__)
-
-        self.d_steps = 1
-        self.g_steps = 1
 
     def loop(self, train_scenes, val_scenes, out, epochs=35, start_epoch=0):
         for epoch in range(start_epoch, start_epoch + epochs):
@@ -70,8 +67,8 @@ class Trainer(object):
         epoch_loss = 0.0
         self.model.train()
 
-        d_steps_left = self.d_steps
-        g_steps_left = self.g_steps
+        d_steps_left = self.model.d_steps
+        g_steps_left = self.model.g_steps
         for scene_i, (_, scene) in enumerate(scenes):
             scene_start = time.time()
             scene = drop_distant(scene)
@@ -93,8 +90,8 @@ class Trainer(object):
 
             ## Update d_steps, g_steps once they end
             if d_steps_left == 0 and g_steps_left == 0:
-                d_steps_left = self.d_steps
-                g_steps_left = self.g_steps
+                d_steps_left = self.model.d_steps
+                g_steps_left = self.model.g_steps
 
             loss = self.train_batch(scene, step_type)
             epoch_loss += loss
@@ -140,14 +137,9 @@ class Trainer(object):
         targets = xy[9:, 0] - xy[8:-1, 0]
 
         self.optimizer.zero_grad()
-        rel_outputs, abs_outputs, scores_real, scores_fake = self.model(observed, prediction_truth, step_type=step_type)
+        rel_output_list, abs_output_list, scores_real, scores_fake = self.model(observed, prediction_truth, step_type=step_type)
 
-        loss = self.loss_criterion(rel_outputs, targets, scores_fake, scores_real, step_type)
-
-        # ## Loss wrt primary only
-        # if step_type == 'd':
-        #     loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
-
+        loss = self.loss_criterion(rel_output_list, targets, scores_fake, scores_real, step_type)
         loss.backward()
 
         self.optimizer.step()
@@ -158,18 +150,25 @@ class Trainer(object):
         prediction_truth = xy[9:].clone()  ## CLONE
 
         with torch.no_grad():
-            rel_outputs, abs_outputs, scores_real, scores_fake  = self.model(observed, prediction_truth)
+            rel_output_list, abs_outputs, scores_real, scores_fake  = self.model(observed, prediction_truth)
             targets = xy[9:, 0] - xy[8:-1, 0]
-            loss = self.criterion(rel_outputs[-12:, 0], targets) * 100
+            
+            ## top-k loss
+            loss = variety_loss(rel_output_list, targets)
 
         return loss.item()
 
-    def loss_criterion(self, rel_outputs, targets, scores_fake, scores_real, step_type):
+    def loss_criterion(self, rel_output_list, targets, scores_fake, scores_real, step_type):
         if step_type == 'd':
             loss = gan_d_loss(scores_real, scores_fake)
+        
         else:
-            loss = self.criterion(rel_outputs[-12:, 0], targets) * 100  
-            loss += gan_g_loss(scores_fake)
+            ## top-k loss
+            loss = variety_loss(rel_output_list, targets)
+
+            ## If discriminator used.
+            if self.model.use_d:
+                loss += gan_g_loss(scores_fake)
 
         return loss
 
@@ -205,6 +204,8 @@ def main(epochs=50):
                           help='load a pickled state dictionary before training')
 
     hyperparameters = parser.add_argument_group('hyperparameters')
+    hyperparameters.add_argument('--k', type=int, default=1,
+                                 help='number of samples for variety loss')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,
                                  help='RNN hidden dimension')
     hyperparameters.add_argument('--coordinate-embedding-dim', type=int, default=64,
@@ -214,8 +215,18 @@ def main(epochs=50):
     hyperparameters.add_argument('--n', type=int, default=10,
                                   help='number of cells per side')
 
+    hyperparameters.add_argument('--noise_dim', type=int, default=8,
+                                 help='dimension of z')
+    hyperparameters.add_argument('--add_noise', action='store_true',
+                                 help='To Add Noise')
+    hyperparameters.add_argument('--noise_type', default='gaussian',
+                                  help='type of noise to be added')
+    hyperparameters.add_argument('--discriminator', action='store_true',
+                                  help='discriminator to be added')
     args = parser.parse_args()
 
+    # torch.autograd.set_detect_anomaly(True)
+    
     if not os.path.exists('OUTPUT_BLOCK/{}'.format(args.path)):
         os.makedirs('OUTPUT_BLOCK/{}'.format(args.path))
     if args.output:
@@ -272,10 +283,13 @@ def main(epochs=50):
         else:
             pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim,
                            cell_side=args.cell_side, n=args.n, front=args.front)
+    print("discriminator: ", args.discriminator)
     model = SGAN(pool=pool,
                  embedding_dim=args.coordinate_embedding_dim,
                  hidden_dim=args.hidden_dim,
-                 noise_dim=8, add_noise=False, noise_type='gaussian')
+                 noise_dim=args.noise_dim, add_noise=args.add_noise, noise_type=args.noise_type,
+                 k=args.k, use_d=args.discriminator)
+
     # Default Load
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4) # , weight_decay=1e-4
     lr_scheduler = None
