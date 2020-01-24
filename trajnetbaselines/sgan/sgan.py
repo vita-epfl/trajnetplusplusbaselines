@@ -77,7 +77,7 @@ class SGAN(torch.nn.Module):
         rel_pred_list = []
         pred_list = []
         for k in range(self.k):
-            print("k:", k)
+            # print("k:", k)
             rel_pred_scene, pred_scene = self.generator(observed, prediction_truth, n_predict)
             rel_pred_list.append(rel_pred_scene)
             pred_list.append(pred_scene)

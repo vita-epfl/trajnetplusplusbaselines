@@ -215,7 +215,7 @@ def main(epochs=50):
     hyperparameters.add_argument('--n', type=int, default=10,
                                   help='number of cells per side')
 
-    hyperparameters.add_argument('--noise_dim', type=int, default=8,
+    hyperparameters.add_argument('--noise_dim', type=int, default=16,
                                  help='dimension of z')
     hyperparameters.add_argument('--add_noise', action='store_true',
                                  help='To Add Noise')
