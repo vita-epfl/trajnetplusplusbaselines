@@ -204,7 +204,7 @@ def main(epochs=50):
                           help='load a pickled state dictionary before training')
 
     hyperparameters = parser.add_argument_group('hyperparameters')
-    hyperparameters.add_argument('--k', type=int, default=1,
+    hyperparameters.add_argument('--k', type=int, default=3,
                                  help='number of samples for variety loss')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,
                                  help='RNN hidden dimension')
