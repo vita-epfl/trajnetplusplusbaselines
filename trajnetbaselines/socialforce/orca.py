@@ -24,6 +24,8 @@ def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, pre
             if (start_frame in past_frames) and len_path >= 4:
                 curr = past_path[-1]
                 prev = past_path[-4]
+
+                ## Velocity
                 curr_vel, curr_speed = vel_state(prev, curr, 3)
                 max_speed = MAX_SPEED_MULTIPLIER * curr_speed
 
@@ -45,8 +47,7 @@ def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, pre
                 goals.append((d_x, d_y))
 
                 sim.addAgent((curr.x, curr.y), maxSpeed=max_speed, velocity=tuple(curr_vel))
-                # speed.append((v_x, v_y))
-        
+
         trajectories = [[positions[i]] for i in range(len(positions))]
         return trajectories, positions, goals, speed
 
@@ -121,7 +122,7 @@ def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, pre
             neighbours_tracks.append([trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
                                       for j, (x, y) in enumerate(states[:, i, 0:2])])
 
-    ## Primary Prediction
+    ## Primary Prediction Only
     if not predict_all:
         neighbours_tracks = []
 

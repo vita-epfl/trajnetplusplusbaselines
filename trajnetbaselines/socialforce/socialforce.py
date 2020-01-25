@@ -85,8 +85,6 @@ def predict(input_paths, dest_dict=None, dest_type='true', sf_params=None, predi
     
     ## states : 12 x num_ped x 7
     states = np.array([s for num, s in enumerate(states) if num % sampling_rate == 0])
-    # print(len(states))
-
 
     # predictions
     for i in range(states.shape[1]):
@@ -98,7 +96,7 @@ def predict(input_paths, dest_dict=None, dest_type='true', sf_params=None, predi
             neighbours_tracks.append([trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
                                       for j, (x, y) in enumerate(states[:, i, 0:2])])
 
-    ## Primary Prediction
+    ## Primary Prediction Only
     if not predict_all:
         neighbours_tracks = []
 
