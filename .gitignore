@@ -5,6 +5,7 @@ output/
 OUTPUT_BLOCK/
 socialforce-master/
 profile_trace*.json
+
 checkpoints
 Python-RVO2-master/
 dest_new/
@@ -32,10 +33,16 @@ dist/
 Makefile
 Makefile_backup
 
-## Car
-highway_vid/
-video/
+##sgan
+trajnetbaselines/sgan/models/
 
-##WTA
+## car
+video/
 wta_expts/
+highway_vid/
+
+##Style
+trajnetbaselines/style_lstm/
+trajnetbaselines/lstm/style_encoder.py
+tests/test_style.py
 trajnetbaselines/wta_lstm_backup/
