@@ -7,14 +7,30 @@ def predict(paths, predict_all=False):
     multimodal_outputs = {}
     neighbours_tracks = []
 
+    primary = paths[0]
+    start_frame = primary[8].frame
+    frame_diff = primary[1].frame - primary[0].frame
+    first_frame = primary[8].frame + frame_diff
+
     ## Primary Prediction
     if not predict_all:
         paths = paths[0:1]
 
     for i, path in enumerate(paths):
         path = paths[i]
-        initial_state_mean = [path[0].x, 0, path[0].y, 0]
+        ped_id = path[0].pedestrian
+        past_path = [t for t in path if t.frame <= start_frame]
+        # print("PP: ", past_path)
+        # print("Path: ", path)
+        past_frames = [t.frame for t in path if t.frame <= start_frame]
 
+        ## To consider agent or not consider.
+        if (start_frame not in past_frames):
+            continue
+        if len(past_path) < 2:
+            continue
+
+        initial_state_mean = [path[0].x, 0, path[0].y, 0]  
         transition_matrix = [[1, 1, 0, 0],
                              [0, 1, 0, 0],
                              [0, 0, 1, 1],
@@ -30,13 +46,9 @@ def predict(paths, predict_all=False):
                                    initial_state_mean=initial_state_mean)
         # kf.em([(r.x, r.y) for r in path[:9]], em_vars=['transition_matrices',
         #                                                'observation_matrices'])
-        kf.em([(r.x, r.y) for r in path[:9]])
-        observed_states, _ = kf.smooth([(r.x, r.y) for r in path[:9]])
+        kf.em([(r.x, r.y) for r in past_path])
+        observed_states, _ = kf.smooth([(r.x, r.y) for r in past_path])
 
-        # prepare predictions
-        frame_diff = path[1].frame - path[0].frame
-        first_frame = path[8].frame + frame_diff
-        ped_id = path[8].pedestrian
 
         # sample predictions (first sample corresponds to last state)
         # average 5 sampled predictions

@@ -6,15 +6,19 @@ import os
 import argparse
 import torch
 
-def main(args, kf=False, sf=False):
+def main(args, kf=False, sf=False, orca=False):
     ## List of .json file inside the args.data (waiting to be predicted by the testing model)
     datasets = sorted([f for f in os.listdir(args.data.replace('_pred', '')) if not f.startswith('.') and f.endswith('.ndjson')])
 
+    ## Handcrafted Baselines 
     if kf:
         args.output.append('/kf.pkl')
     if sf:
         args.output.append('/sf.pkl')
-        args.output.append('/sf_new.pkl')
+        args.output.append('/sf_opt.pkl')
+    if orca:
+        args.output.append('/orca.pkl')
+        args.output.append('/orca_opt.pkl')
 
     ## Model names are passed as arguments
     for model in args.output:
@@ -46,8 +50,10 @@ def main(args, kf=False, sf=False):
             # Load the model
             if model_name == 'kf':
                 predictor = trajnetbaselines.kalman.predict
-            elif model_name == 'sf' or model_name == 'sf_new':
-                predictor = trajnetbaselines.socialforce.predict
+            elif model_name == 'sf' or model_name == 'sf_opt':
+                predictor = trajnetbaselines.socialforce.socialforce.predict
+            elif model_name == 'orca' or model_name == 'orca_opt':
+                predictor = trajnetbaselines.socialforce.orca.predict
             else:
                 predictor = trajnetbaselines.lstm.LSTMPredictor.load(model)
                 # On CPU
@@ -57,10 +63,13 @@ def main(args, kf=False, sf=False):
             # Write the prediction
             with open(args.data + '{}/{}'.format(model_name, name), "a") as myfile:
                 for scene_id, paths in scenes:
-                    if model_name == 'sf_new':
+                    if model_name == 'sf_opt':
                         predictions = predictor(paths, sf_params=[0.5, 1.0, 0.1]) ## optimal sf_params
+                    elif model_name == 'orca_opt':
+                        predictions = predictor(paths, orca_params=[0.25, 1.0, 0.3]) ## optimal orca_params
                     else:
                         predictions = predictor(paths)
+
                     for m in range(len(predictions)):
                         prediction, neigh_predictions = predictions[m]
                         

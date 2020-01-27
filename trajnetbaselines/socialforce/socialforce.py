@@ -5,7 +5,7 @@ import trajnettools
 
 import socialforce
 
-def predict(input_paths, dest_dict=None, dest_type='true', sf_params=None, predict_all=False):
+def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1, 0.3], predict_all=False):
 
     def init_states(input_paths, start_frame, dest_dict, dest_type):
         initial_state = []
@@ -18,14 +18,17 @@ def predict(input_paths, dest_dict=None, dest_type='true', sf_params=None, predi
             len_path = len(past_path)
 
             ## To consider agent or not consider.
-            if (start_frame in past_frames) and len_path >= 4:
+            if (start_frame in past_frames):
                 curr = past_path[-1]
-                prev = past_path[-4]
                 
                 ## Velocity
-                [v_x, v_y] = vel_state(prev, curr, 3)
-                if np.linalg.norm([v_x, v_y]) < 1e-6:
-                    continue
+                if len_path >= 4:
+                    stride = 3
+                    prev = past_path[-4]
+                else:
+                    stride = len_path - 1
+                    prev = past_path[-len_path]
+                [v_x, v_y] = vel_state(prev, curr, stride)
 
                 ## Destination
                 if dest_type == 'true':
@@ -34,7 +37,7 @@ def predict(input_paths, dest_dict=None, dest_type='true', sf_params=None, predi
                     else: 
                         raise ValueError
                 elif dest_type == 'interp':
-                    [d_x, d_y] = dest_state(past_path, len_path-1)
+                    [d_x, d_y] = dest_state(past_path, len_path)
                 elif dest_type == 'vel':
                     [d_x, d_y] = [12*v_x, 12*v_y]
                 elif dest_type == 'pred_end':
@@ -42,23 +45,24 @@ def predict(input_paths, dest_dict=None, dest_type='true', sf_params=None, predi
                 else:
                     raise NotImplementedError
 
-                if np.linalg.norm([curr.x - d_x, curr.y - d_y]) < 1e-6:
-                    continue
-
                 ## Initialize State
                 initial_state.append([curr.x, curr.y, v_x, v_y, d_x, d_y])
         return np.array(initial_state)
 
     def vel_state(prev, curr, stride):
+        if stride == 0:
+            return [0, 0]
         diff = np.array([curr.x - prev.x, curr.y - prev.y])
         theta = np.arctan2(diff[1], diff[0])
         speed = np.linalg.norm(diff) / (stride * 0.4)
         return [speed*np.cos(theta), speed*np.sin(theta)]
 
-    def dest_state(path, stride):
+    def dest_state(path, length):
+        if length == 1:
+            return [path[-1].x, path[-1].y]
         x = [t.x for t in path]
         y = [t.y for t in path]
-        time = list(range(stride+1))
+        time = list(range(length))
         f = interp1d(x=time, y=[x, y], fill_value='extrapolate')
         return f(time[-1] + 12)
 
@@ -72,19 +76,20 @@ def predict(input_paths, dest_dict=None, dest_type='true', sf_params=None, predi
     # initialize
     initial_state = init_states(input_paths, start_frame, dest_dict, dest_type)
 
-    if np.isnan(initial_state).any():
-        raise ValueError
-
     fps = 20
     sampling_rate = int(fps / 2.5)
 
-    # run    
-    s = socialforce.Simulator(initial_state, delta_t=1./fps, tau=sf_params[0], 
-                              v0=sf_params[1], sigma=sf_params[2])
-    states = np.stack([s.step().state.copy() for _ in range(12*sampling_rate)])
-    
-    ## states : 12 x num_ped x 7
-    states = np.array([s for num, s in enumerate(states) if num % sampling_rate == 0])
+    if len(initial_state):
+        # run    
+        s = socialforce.Simulator(initial_state, delta_t=1./fps, tau=sf_params[0], 
+                                  v0=sf_params[1], sigma=sf_params[2])
+        states = np.stack([s.step().state.copy() for _ in range(12*sampling_rate)])
+        ## states : 12 x num_ped x 7
+        states = np.array([s for num, s in enumerate(states) if num % sampling_rate == 0])
+    else:
+        ## Stationary
+        past_path = [t for t in input_paths[0] if t.frame == start_frame]
+        states = np.stack([[[past_path[0].x, past_path[0].y]] for _ in range(12)])
 
     # predictions
     for i in range(states.shape[1]):

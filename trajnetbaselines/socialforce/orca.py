@@ -7,7 +7,7 @@ import rvo2
 
 MAX_SPEED_MULTIPLIER = 1.3 # with respect to initial speed
 
-def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, predict_all=False):
+def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1.5, 0.4], predict_all=False):
 
     def init_states(input_paths, sim, start_frame, dest_dict, dest_type):
         initial_state = []
@@ -21,12 +21,17 @@ def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, pre
             len_path = len(past_path)
 
             ## To consider agent or not consider.
-            if (start_frame in past_frames) and len_path >= 4:
+            if (start_frame in past_frames):
                 curr = past_path[-1]
-                prev = past_path[-4]
 
                 ## Velocity
-                curr_vel, curr_speed = vel_state(prev, curr, 3)
+                if len_path >= 4:
+                    stride = 3
+                    prev = past_path[-4]
+                else:
+                    stride = len_path - 1
+                    prev = past_path[-len_path]
+                curr_vel, curr_speed = vel_state(prev, curr, stride)
                 max_speed = MAX_SPEED_MULTIPLIER * curr_speed
 
                 ## Destination
@@ -36,7 +41,7 @@ def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, pre
                     else: 
                         raise ValueError
                 elif dest_type == 'interp':
-                    [d_x, d_y] = dest_state(past_path, len_path-1)
+                    [d_x, d_y] = dest_state(past_path, len_path)
                 elif dest_type == 'pred_end':
                     [d_x, d_y] = [future_path[-1].x, future_path[-1].y]
                 else:
@@ -52,17 +57,21 @@ def predict(input_paths, dest_dict=None, dest_type='true', orca_params=None, pre
         return trajectories, positions, goals, speed
 
     def vel_state(prev, curr, stride):
+        if stride == 0:
+            return [0, 0], 0
         diff = np.array([curr.x - prev.x, curr.y - prev.y])
         theta = np.arctan2(diff[1], diff[0])
         speed = np.linalg.norm(diff) / (stride * 0.4)
         return [speed*np.cos(theta), speed*np.sin(theta)], speed
 
-    def dest_state(path, stride):
+    def dest_state(path, length):
+        if length == 1:
+            return [path[-1].x, path[-1].y]
         x = [t.x for t in path]
         y = [t.y for t in path]
-        time = list(range(stride+1))
+        time = list(range(length))
         f = interp1d(x=time, y=[x, y], fill_value='extrapolate')
-        return f(time[-1] + 12)
+        return f(time[-1] + 12)  
 
     multimodal_outputs = {}
     primary = input_paths[0]
