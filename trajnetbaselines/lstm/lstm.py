@@ -173,7 +173,7 @@ class LSTMPredictor(object):
             return torch.load(f)
 
 
-    def __call__(self, paths, n_predict=12, modes=1):
+    def __call__(self, paths, n_predict=12, modes=1, predict_all=True):
         self.model.eval()
 
         observed_path = paths[0]

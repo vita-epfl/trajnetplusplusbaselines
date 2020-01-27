@@ -239,7 +239,7 @@ def main(epochs=50):
     pool = None    
     if args.type == 'hiddenstatemlp':
         pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim)
-    if args.type == 'directionalmlp':
+    elif args.type == 'directionalmlp':
         pool = DirectionalMLPPooling(hidden_dim=args.hidden_dim)
     elif args.type != 'vanilla':
         if args.fast:
