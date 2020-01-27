@@ -14,7 +14,7 @@ from .. import augmentation
 from .loss import PredictionLoss, L2Loss
 from .loss import bce_loss, gan_d_loss, gan_g_loss, variety_loss
 from .sgan import SGAN, drop_distant, SGANPredictor
-from .pooling import Pooling, HiddenStateMLPPooling
+from ..lstm.pooling import Pooling, HiddenStateMLPPooling, FastPooling
 from .. import __version__ as VERSION
 
 

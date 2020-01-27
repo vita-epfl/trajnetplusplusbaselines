@@ -4,8 +4,6 @@ import torch
 import math
 import numpy as np
 
-# import matplotlib.pyplot as plt
-
 def one_cold(i, n):
     """Inverse one-hot encoding."""
     x = torch.ones(n, dtype=torch.bool)
