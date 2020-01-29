@@ -108,7 +108,7 @@ class TrajnetEvaluator:
             if frame_gt != frame_pred:
                 raise Exception('frame numbers are not consistent')
 
-            average_l2 = trajnettools.metrics.average_l2(ground_truth[0], primary_tracks)
+            average_l2 = trajnettools.metrics.average_l2(ground_truth[0], primary_tracks, n_predictions=self.pred_length)
             final_l2 = trajnettools.metrics.final_l2(ground_truth[0], primary_tracks)
 
             if not disable_collision:
@@ -116,7 +116,7 @@ class TrajnetEvaluator:
                 ## Collisions in GT
                 # person_radius=0.1
                 for j in range(1, len(ground_truth)):
-                    if trajnettools.metrics.collision(primary_tracks, ground_truth[j]):
+                    if trajnettools.metrics.collision(primary_tracks, ground_truth[j], n_predictions=self.pred_length):
                         for key in keys:
                             score[key][2] += 1
                         ## Sub
@@ -131,14 +131,14 @@ class TrajnetEvaluator:
                     for key in keys:
                         score[key][4] += 1
                         for j in range(len(neighbours_tracks)):
-                            if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j]):
+                            if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j], n_predictions=self.pred_length):
                                 score[key][3] += 1
                                 break
                     ## Sub
                     for sub_key in sub_keys:
                         sub_score[sub_key][4] += 1
                         for j in range(len(neighbours_tracks)):
-                            if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j]):
+                            if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j], n_predictions=self.pred_length):
                                 sub_score[sub_key][3] += 1
                                 break  
 
@@ -160,7 +160,7 @@ class TrajnetEvaluator:
 ##### --------------------------------------------------- Top 3 -------------------------------------------- ####
 
             if self.num_predictions > 1:
-                topk_ade, topk_fde = self.topk(primary_tracks_all, ground_truth[0])
+                topk_ade, topk_fde = trajnettools.metrics.topk(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length)
 
                 average_topk_ade += topk_ade
                 ##Key
@@ -182,7 +182,7 @@ class TrajnetEvaluator:
 
 ##### --------------------------------------------------- NLL -------------------------------------------- ####
             if self.num_predictions > 98:
-                nll = self.nll(primary_tracks_all, ground_truth[0], pred_length=self.pred_length)
+                nll = trajnettools.metrics.nll(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length)
 
                 average_nll += nll
                 ##Key
@@ -245,53 +245,6 @@ class TrajnetEvaluator:
         self.others[name] = sub_score[4]
 
         return self
-
-    def topk(self, primary_tracks, ground_truth, topk=3):
-        ## TopK multimodal 
-
-        l2 = 1e10
-        ## preds: Pred_len x Num_preds x 2
-        for pred_num in range(topk):
-            primary_prediction = [t for t in primary_tracks if t.prediction_number == pred_num]
-            tmp_score = trajnettools.metrics.final_l2(ground_truth, primary_prediction)
-            if tmp_score < l2:      
-                l2 = tmp_score 
-                topk_fde = tmp_score
-                topk_ade = trajnettools.metrics.average_l2(ground_truth, primary_prediction)
-
-        return topk_ade, topk_fde
-
-    def nll(self, primary_tracks, ground_truth, pred_length=12, log_pdf_lower_bound=-20):
-        ## Inspired from Boris.
-        gt = numpy.array([[t.x, t.y] for t in ground_truth][-pred_length:])
-        frame_gt = [t.frame for t in ground_truth][-pred_length:]
-        preds = numpy.array([[[t.x, t.y] for t in primary_tracks if t.frame == frame] for frame in frame_gt])
-        ## preds: Pred_len x Num_preds x 2
-
-        ## To verify if 100 predictions
-        if preds.shape[1] != 100:
-            raise Exception('Need 100 predictions')
-
-        pred_len = len(frame_gt)
-
-        ll = 0.0
-        same_pred = 0
-        for timestep in range(pred_len):
-            curr_gt = gt[timestep]
-            try:
-                scipy_kde = gaussian_kde(preds[timestep].T)
-                # We need [0] because it's a (1,)-shaped numpy array.
-                log_pdf = numpy.clip(scipy_kde.logpdf(curr_gt.T), a_min=log_pdf_lower_bound, a_max=None)[0]
-                ll += log_pdf
-            except:
-                same_pred += 1
-
-        if same_pred == pred_len:
-            raise Exception('All 100 Predictions are Identical')
-
-        ll = ll / (pred_len - same_pred)
-        return ll
-
 
     def result(self):
         return self.average_l2, self.final_l2, \
