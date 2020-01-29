@@ -55,6 +55,7 @@ class SGAN(torch.nn.Module):
                                        noise_dim=noise_dim, add_noise=add_noise, noise_type=noise_type)
         self.g_steps = g_steps
         self.k = 1
+        self.pool = pool
 
         ## Add Noise for Variety Loss
         if add_noise:
@@ -86,11 +87,8 @@ class SGAN(torch.nn.Module):
                 break
 
         if self.use_d:
-            predicted_trajectory = torch.cat([observed, pred_scene[-12:]], dim=0)
-            real_trajectory = torch.cat([observed, prediction_truth], dim=0)
-
-            scores_real = self.discrimator(real_trajectory)
-            scores_fake = self.discrimator(predicted_trajectory)
+            scores_real = self.discrimator(observed, prediction_truth)
+            scores_fake = self.discrimator(observed, pred_scene[-12:])
             return rel_pred_list, pred_list, scores_real, scores_fake
 
         return rel_pred_list, pred_list, None, None
@@ -219,8 +217,11 @@ class LSTMGenerator(torch.nn.Module):
             # -1 because one prediction is done by the encoder already
             prediction_truth = [None for _ in range(n_predict - 1)]
 
-        if self.pool is None:
+        ## For faster training in case of no pooling
+        if self.pool is None and self.training:
             observed = observed[:, 0:1]
+            if prediction_truth is not None:
+                prediction_truth = prediction_truth[:, 0:1]
 
         # initialize: Because of tracks with different lengths and the masked
         # update, the hidden state for every LSTM needs to be a separate object
@@ -349,11 +350,19 @@ class LSTMDiscriminator(torch.nn.Module):
 
         return hidden_cell_state
 
-    def forward(self, observed):
+    def forward(self, observed, prediction):
         """forward
 
         observed shape is (seq, n_tracks, observables)
         """
+
+        ## For faster training in case of no pooling
+        if self.pool is None and self.training:
+            observed = observed[:, 0:1]
+            if prediction_truth is not None:
+                prediction_truth = prediction_truth[:, 0:1]
+
+        observed = torch.cat([observed, prediction], dim=0)
 
         # initialize: Because of tracks with different lengths and the masked
         # update, the hidden state for every LSTM needs to be a separate object
@@ -379,7 +388,8 @@ class LSTMDiscriminator(torch.nn.Module):
             torch.stack([c for c in hidden_cell_state[1]], dim=0),
         )
 
-        scores = self.real_classifier(hidden_cell_state[0])
+        ## Score only the primary pedestrian
+        scores = self.real_classifier(hidden_cell_state[0][0])
         return scores
 
 class SGANPredictor(object):
@@ -416,8 +426,10 @@ class SGANPredictor(object):
             xy = drop_distant(xy)
             xy = torch.Tensor(xy)  #.to(self.device)
             multimodal_outputs = {}
-            for num_p in range(modes):
-                _, output_scenes = self.model(xy[:9], n_predict=n_predict)
+            ## model.k outputs
+            _, output_scenes_list, _, _ = self.model(xy[:9], n_predict=n_predict)
+            for num_p in range(len(output_scenes_list)):
+                output_scenes = output_scenes_list[num_p]
                 outputs = output_scenes[-n_predict:, 0]
                 output_scenes = output_scenes[-n_predict:]
                 output_primary = [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id,

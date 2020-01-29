@@ -65,7 +65,7 @@ class Trainer(object):
 
         random.shuffle(scenes)
         epoch_loss = 0.0
-        self.model.train()
+        self.model.eval()
 
         d_steps_left = self.model.d_steps
         g_steps_left = self.model.g_steps
