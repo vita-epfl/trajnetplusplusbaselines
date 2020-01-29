@@ -359,8 +359,8 @@ class LSTMDiscriminator(torch.nn.Module):
         ## For faster training in case of no pooling
         if self.pool is None and self.training:
             observed = observed[:, 0:1]
-            if prediction_truth is not None:
-                prediction_truth = prediction_truth[:, 0:1]
+            if prediction is not None:
+                prediction = prediction[:, 0:1]
 
         observed = torch.cat([observed, prediction], dim=0)
 
