@@ -14,13 +14,15 @@ from . import socialforce
 from . import orca 
 
 class Evaluator(object):
-    def __init__(self, scenes, dest_dict=None, params=None):
+    def __init__(self, scenes, dest_dict=None, params=None, args=None):
         self.scenes = scenes
         self.dest = dest_dict
         self.params = params
 
         self.average_l2 = {'N': len(scenes)}
         self.final_l2 = {'N': len(scenes)}
+
+        self.args = args
 
     def aggregate(self, name, predictor, dest_type='true'):
         print('evaluating', name)
@@ -41,11 +43,11 @@ class Evaluator(object):
             # paths = [paths[0]] + neigh
 
             if 'kf' in name:
-                prediction, neigh = predictor(paths)[0]
+                prediction, neigh = predictor(paths, n_predict=self.args.pred_length, obs_length=self.args.obs_length)[0]
             if 'sf' in name:
-                prediction, neigh = predictor(paths, self.dest, dest_type, self.params['sf'])[0]
+                prediction, neigh = predictor(paths, self.dest, dest_type, self.params['sf'], args=self.args)[0]
             if 'orca' in name:
-                prediction, neigh = predictor(paths, self.dest, dest_type, self.params['orca'])[0]
+                prediction, neigh = predictor(paths, self.dest, dest_type, self.params['orca'], args=self.args)[0]
 
             ## visualize predictions ##
             # pred_dict['pred'] = prediction
@@ -76,7 +78,7 @@ class Evaluator(object):
         return self.average_l2, self.final_l2
 
 
-def eval(input_file, dest_file, simulator, params, type_ids=None):
+def eval(input_file, dest_file, simulator, params, type_ids, args):
     print('dataset', input_file)
 
     reader = trajnettools.Reader(input_file, scene_type='paths')
@@ -96,7 +98,7 @@ def eval(input_file, dest_file, simulator, params, type_ids=None):
     if dest_file is not None:
         dest_dict = pickle.load(open(dest_file, "rb"))
 
-    evaluator = Evaluator(scenes, dest_dict, params)
+    evaluator = Evaluator(scenes, dest_dict, params, args)
 
     ## Evaluate all
     if simulator == 'all':
@@ -124,8 +126,12 @@ def eval(input_file, dest_file, simulator, params, type_ids=None):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--obs_length', default=9, type=int,
+                        help='observation length')
+    parser.add_argument('--pred_length', default=12, type=int,
+                        help='prediction length')
 
-    parser.add_argument('--simulator', default='sf',
+    parser.add_argument('--simulator', default='all',
                         choices=('all', 'orca', 'sf', 'kalman'))
 
     parser.add_argument('--tau', default=0.5, type=float,
@@ -153,10 +159,10 @@ def main():
     print(params)
     datasets = [
         'DATA_BLOCK/data/train/real_data/biwi_hotel.ndjson',
-        'DATA_BLOCK/data/train/real_data/crowds_zara01.ndjson',
-        'DATA_BLOCK/data/train/real_data/crowds_zara03.ndjson',
-        'DATA_BLOCK/data/train/real_data/crowds_students001.ndjson',
-        'DATA_BLOCK/data/train/real_data/crowds_students003.ndjson',
+        # 'DATA_BLOCK/data/train/real_data/crowds_zara01.ndjson',
+        # 'DATA_BLOCK/data/train/real_data/crowds_zara03.ndjson',
+        # 'DATA_BLOCK/data/train/real_data/crowds_students001.ndjson',
+        # 'DATA_BLOCK/data/train/real_data/crowds_students003.ndjson',
         # 'DATA_BLOCK/data/train/real_data/lcas.ndjson',
         # 'DATA_BLOCK/data/train/real_data/wildtrack.ndjson',
     ]
@@ -164,10 +170,10 @@ def main():
     ## Final Destination Dictionaries
     dest_dicts = [
         'dest_new/biwi_hotel.pkl',
-        'dest_new/crowds_zara01.pkl',
-        'dest_new/crowds_zara03.pkl',
-        'dest_new/crowds_students001.pkl',
-        'dest_new/crowds_students003.pkl',
+        # 'dest_new/crowds_zara01.pkl',
+        # 'dest_new/crowds_zara03.pkl',
+        # 'dest_new/crowds_students001.pkl',
+        # 'dest_new/crowds_students003.pkl',
         # 'dest_new/lcas.pkl',
         # 'dest_new/wildtrack.pkl',       
     ]
@@ -192,7 +198,7 @@ def main():
         dataset_name = dataset.replace('DATA_BLOCK/data/train/real_data/', '').replace('.ndjson', '')
         if dataset_name in filtered_ids:
             type_ids = filtered_ids[dataset_name]        
-        results[dataset_name] = eval(dataset, dest_dicts[i], args.simulator, params, type_ids)
+        results[dataset_name] = eval(dataset, dest_dicts[i], args.simulator, params, type_ids, args)
 
     if args.simulator == 'all':
         print('## Average L2 [m]')
@@ -218,28 +224,28 @@ def main():
                 ' | {r[kf]:.2f}'.format(dataset=dataset, r=r)
             )       
 
-    print('params: {}, {}, {} \n'.format(*params['sf']))
-    with open(args.simulator + "_final.txt", "a") as myfile:
-            myfile.write('params: {}, {}, {} \n'.format(*params['sf']))
-            myfile.write('## Average L2 [m]\n')
-            myfile.write('{dataset:>30s} |   N  | Int \n'.format(dataset=''))
-            for dataset, (r, _) in results.items():
-                myfile.write(
-                            '{dataset:>30s}'
-                            ' | {r[N]:>4}'
-                            ' | {r[sfinterp]:.2f} \n'.format(dataset=dataset, r=r)
-                ) 
+    # print('params: {}, {}, {} \n'.format(*params['sf']))
+    # with open(args.simulator + "_final.txt", "a") as myfile:
+    #         myfile.write('params: {}, {}, {} \n'.format(*params['sf']))
+    #         myfile.write('## Average L2 [m]\n')
+    #         myfile.write('{dataset:>30s} |   N  | Int \n'.format(dataset=''))
+    #         for dataset, (r, _) in results.items():
+    #             myfile.write(
+    #                         '{dataset:>30s}'
+    #                         ' | {r[N]:>4}'
+    #                         ' | {r[sfinterp]:.2f} \n'.format(dataset=dataset, r=r)
+    #             ) 
 
-            myfile.write('\n')    
-            myfile.write('## Final L2 [m] \n')
-            myfile.write('{dataset:>30s} |   N  | Int \n'.format(dataset=''))
-            for dataset, (_, r) in results.items():
-                myfile.write(
-                            '{dataset:>30s}'
-                            ' | {r[N]:>4}'
-                            ' | {r[sfinterp]:.2f} \n'.format(dataset=dataset, r=r)
-                )
-            myfile.write('\n \n \n') 
+    #         myfile.write('\n')    
+    #         myfile.write('## Final L2 [m] \n')
+    #         myfile.write('{dataset:>30s} |   N  | Int \n'.format(dataset=''))
+    #         for dataset, (_, r) in results.items():
+    #             myfile.write(
+    #                         '{dataset:>30s}'
+    #                         ' | {r[N]:>4}'
+    #                         ' | {r[sfinterp]:.2f} \n'.format(dataset=dataset, r=r)
+    #             )
+    #         myfile.write('\n \n \n') 
 
 
 if __name__ == '__main__':

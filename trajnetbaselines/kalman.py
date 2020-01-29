@@ -3,14 +3,14 @@ import pykalman
 import trajnettools
 
 
-def predict(paths, predict_all=False):
+def predict(paths, predict_all=False, n_predict=12, obs_length=9):
     multimodal_outputs = {}
     neighbours_tracks = []
 
     primary = paths[0]
-    start_frame = primary[8].frame
+    start_frame = primary[obs_length-1].frame
     frame_diff = primary[1].frame - primary[0].frame
-    first_frame = primary[8].frame + frame_diff
+    first_frame = start_frame + frame_diff
 
     ## Primary Prediction
     if not predict_all:
@@ -20,8 +20,6 @@ def predict(paths, predict_all=False):
         path = paths[i]
         ped_id = path[0].pedestrian
         past_path = [t for t in path if t.frame <= start_frame]
-        # print("PP: ", past_path)
-        # print("Path: ", path)
         past_frames = [t.frame for t in path if t.frame <= start_frame]
 
         ## To consider agent or not consider.
@@ -54,7 +52,7 @@ def predict(paths, predict_all=False):
         # average 5 sampled predictions
         predictions = None
         for _ in range(5):
-            _, pred = kf.sample(12 + 1, initial_state=observed_states[-1])
+            _, pred = kf.sample(n_predict + 1, initial_state=observed_states[-1])
             if predictions is None:
                 predictions = pred
             else:

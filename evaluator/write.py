@@ -74,11 +74,11 @@ def main(args, kf=False, sf=False, orca=False):
             with open(args.data + '{}/{}'.format(model_name, name), "a") as myfile:
                 for scene_id, paths in scenes:
                     if model_name == 'sf_opt':
-                        predictions = predictor(paths, sf_params=[0.5, 1.0, 0.1]) ## optimal sf_params
+                        predictions = predictor(paths, sf_params=[0.5, 1.0, 0.1], args=args) ## optimal sf_params
                     elif model_name == 'orca_opt':
-                        predictions = predictor(paths, orca_params=[0.25, 1.0, 0.3]) ## optimal orca_params
+                        predictions = predictor(paths, orca_params=[0.25, 1.0, 0.3], args=args) ## optimal orca_params
                     else:
-                        predictions = predictor(paths)
+                        predictions = predictor(paths, n_predict=args.pred_length, obs_length=args.obs_length)
 
                     for m in range(len(predictions)):
                         prediction, neigh_predictions = predictions[m]

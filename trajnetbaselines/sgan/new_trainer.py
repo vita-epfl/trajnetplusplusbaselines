@@ -11,16 +11,16 @@ import torch
 import trajnettools
 
 from .. import augmentation
-from .loss import PredictionLoss, L2Loss
-from .loss import bce_loss, gan_d_loss, gan_g_loss, variety_loss
-from .sgan import SGAN, drop_distant, SGANPredictor
+from ..lstm.loss import PredictionLoss, L2Loss
+from ..lstm.loss import bce_loss, gan_d_loss, gan_g_loss, variety_loss
 from ..lstm.pooling import Pooling, HiddenStateMLPPooling, FastPooling
+from .sgan import SGAN, drop_distant, SGANPredictor
 from .. import __version__ as VERSION
 
 
 class Trainer(object):
     def __init__(self, model=None, criterion='L2', optimizer=None, lr_scheduler=None,
-                 device=None):
+                 device=None, batch_size=1, obs_length=9, pred_length=12):
         self.model = model if model is not None else LSTM()
         if criterion == 'L2':
             self.criterion = L2Loss()
@@ -36,6 +36,10 @@ class Trainer(object):
         self.model = self.model.to(self.device)
         self.criterion = self.criterion.to(self.device)
         self.log = logging.getLogger(self.__class__.__name__)
+
+        self.batch_size = batch_size
+        self.obs_length = obs_length
+        self.pred_length = pred_length
 
     def loop(self, train_scenes, val_scenes, out, epochs=35, start_epoch=0):
         for epoch in range(start_epoch, start_epoch + epochs):
@@ -132,9 +136,9 @@ class Trainer(object):
         })
 
     def train_batch(self, xy, step_type):
-        observed = xy[:9]
-        prediction_truth = xy[9:].clone()  ## CLONE
-        targets = xy[9:, 0] - xy[8:-1, 0]
+        observed = xy[:self.obs_length]
+        prediction_truth = xy[self.obs_length:-1].clone()  ## CLONE
+        targets = xy[self.obs_length:, 0] - xy[self.obs_length-1:-1, 0]
 
         self.optimizer.zero_grad()
         rel_output_list, abs_output_list, scores_real, scores_fake = self.model(observed, prediction_truth, step_type=step_type)
@@ -146,15 +150,15 @@ class Trainer(object):
         return loss.item()
 
     def val_batch(self, xy):
-        observed = xy[:9]
-        prediction_truth = xy[9:].clone()  ## CLONE
+        observed = xy[:self.obs_length]
+        prediction_truth = xy[self.obs_length:-1].clone()  ## CLONE
 
         with torch.no_grad():
             rel_output_list, abs_outputs, scores_real, scores_fake  = self.model(observed, prediction_truth)
-            targets = xy[9:, 0] - xy[8:-1, 0]
+            targets = xy[self.obs_length:, 0] - xy[self.obs_length-1:-1, 0]
             
             ## top-k loss
-            loss = variety_loss(rel_output_list, targets)
+            loss = variety_loss(rel_output_list, targets, self.pred_length)
 
         return loss.item()
 
@@ -175,6 +179,12 @@ class Trainer(object):
 def main(epochs=50):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
+                        help='number of epochs')
+    parser.add_argument('--obs_length', default=9, type=int,
+                        help='observation length')
+    parser.add_argument('--pred_length', default=12, type=int,
+                        help='prediction length')
+    parser.add_argument('--batch_size', default=1, type=int,
                         help='number of epochs')
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
@@ -314,7 +324,8 @@ def main(epochs=50):
             start_epoch = checkpoint['epoch']
 
     #trainer
-    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device, criterion=args.loss)
+    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device, criterion=args.loss, 
+                             batch_size=args.batch_size, obs_length=args.obs_length, pred_length=args.pred_length)
     trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 

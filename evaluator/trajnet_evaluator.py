@@ -14,7 +14,7 @@ from evaluator.design_pd import Table
 from scipy.stats import gaussian_kde
 
 class TrajnetEvaluator:
-    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes):
+    def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, args):
         self.reader_gt = reader_gt
         
         ##Ground Truth
@@ -54,6 +54,8 @@ class TrajnetEvaluator:
             if track.prediction_number and track.prediction_number > num_predictions:
                 num_predictions = track.prediction_number
         self.num_predictions = num_predictions
+
+        self.pred_length = args.pred_length
 
     def aggregate(self, name, disable_collision):
 
@@ -99,7 +101,7 @@ class TrajnetEvaluator:
             primary_tracks = [t for t in primary_tracks_all if t.prediction_number == 0]
             neighbours_tracks = [[t for t in neighbours_tracks_all[j] if t.prediction_number == 0] for j in range(len(neighbours_tracks_all))]
 
-            frame_gt = [t.frame for t in ground_truth[0]][-12:]
+            frame_gt = [t.frame for t in ground_truth[0]][-self.pred_length:]
             frame_pred = [t.frame for t in primary_tracks]
 
             ## To verify if same scene
@@ -180,7 +182,7 @@ class TrajnetEvaluator:
 
 ##### --------------------------------------------------- NLL -------------------------------------------- ####
             if self.num_predictions > 98:
-                nll = self.nll(primary_tracks_all, ground_truth[0])
+                nll = self.nll(primary_tracks_all, ground_truth[0], pred_length=self.pred_length)
 
                 average_nll += nll
                 ##Key
@@ -259,10 +261,10 @@ class TrajnetEvaluator:
 
         return topk_ade, topk_fde
 
-    def nll(self, primary_tracks, ground_truth, log_pdf_lower_bound=-20):
+    def nll(self, primary_tracks, ground_truth, pred_length=12, log_pdf_lower_bound=-20):
         ## Inspired from Boris.
-        gt = numpy.array([[t.x, t.y] for t in ground_truth][-12:])
-        frame_gt = [t.frame for t in ground_truth][-12:]
+        gt = numpy.array([[t.x, t.y] for t in ground_truth][-pred_length:])
+        frame_gt = [t.frame for t in ground_truth][-pred_length:]
         preds = numpy.array([[[t.x, t.y] for t in primary_tracks if t.frame == frame] for frame in frame_gt])
         ## preds: Pred_len x Num_preds x 2
 
@@ -328,7 +330,7 @@ def eval(gt, input_file, args, input_file2=None):
                 sub_indexes[ii].append(scene)
 
     # Evaluate
-    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes)
+    evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, args)
     evaluator.aggregate('kf', args.disable_collision)
 
     return evaluator.result()
@@ -340,6 +342,10 @@ def main():
                         help='directory of data to test')    
     parser.add_argument('--output', required=True, nargs='+',
                         help='relative path to saved model')
+    parser.add_argument('--obs_length', default=9, type=int,
+                        help='observation length')
+    parser.add_argument('--pred_length', default=12, type=int,
+                        help='prediction length')
     parser.add_argument('--disable-write', action='store_true',
                         help='disable writing new files')
     parser.add_argument('--disable-collision', action='store_true',

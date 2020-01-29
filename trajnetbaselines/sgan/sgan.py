@@ -6,7 +6,7 @@ import torch
 import trajnettools
 import torch.nn as nn
 
-from .modules import Hidden2Normal, InputEmbedding
+from ..lstm.modules import Hidden2Normal, InputEmbedding
 
 NAN = float('nan')
 
@@ -69,7 +69,7 @@ class SGAN(torch.nn.Module):
             self.discrimator = LSTMDiscriminator(embedding_dim=embedding_dim, hidden_dim=hidden_dim, pool=pool, pool_to_input=pool_to_input)
             self.d_steps = d_steps
 
-    def forward(self, observed, prediction_truth=None, n_predict=None, step_type='g'):
+    def forward(self, observed, prediction_truth=None, n_predict=None, step_type='g', pred_length=12):
         """forward
 
         observed shape is (seq, n_tracks, observables)
@@ -88,7 +88,7 @@ class SGAN(torch.nn.Module):
 
         if self.use_d:
             scores_real = self.discrimator(observed, prediction_truth)
-            scores_fake = self.discrimator(observed, pred_scene[-12:])
+            scores_fake = self.discrimator(observed, pred_scene[-pred_length:])
             return rel_pred_list, pred_list, scores_real, scores_fake
 
         return rel_pred_list, pred_list, None, None
@@ -411,7 +411,7 @@ class SGANPredictor(object):
             return torch.load(f)
 
 
-    def __call__(self, paths, n_predict=12, modes=1):
+    def __call__(self, paths, n_predict=12, modes=1, predict_all=True, obs_length=9):
         self.model.eval()
 
         observed_path = paths[0]
@@ -420,14 +420,14 @@ class SGANPredictor(object):
         for j, _ in enumerate(paths):
             ped_id_.append(paths[j][0].pedestrian)
         frame_diff = observed_path[1].frame - observed_path[0].frame
-        first_frame = observed_path[8].frame + frame_diff
+        first_frame = observed_path[obs_length-1].frame + frame_diff
         with torch.no_grad():
             xy = trajnettools.Reader.paths_to_xy(paths)
             xy = drop_distant(xy)
             xy = torch.Tensor(xy)  #.to(self.device)
             multimodal_outputs = {}
             ## model.k outputs
-            _, output_scenes_list, _, _ = self.model(xy[:9], n_predict=n_predict)
+            _, output_scenes_list, _, _ = self.model(xy[:obs_length], n_predict=n_predict)
             for num_p in range(len(output_scenes_list)):
                 output_scenes = output_scenes_list[num_p]
                 outputs = output_scenes[-n_predict:, 0]

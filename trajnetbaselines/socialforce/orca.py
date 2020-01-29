@@ -7,7 +7,9 @@ import rvo2
 
 MAX_SPEED_MULTIPLIER = 1.3 # with respect to initial speed
 
-def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1.5, 0.4], predict_all=False):
+def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1.5, 0.4], predict_all=False, args=None):
+    pred_length = args.pred_length
+    obs_length = args.obs_length
 
     def init_states(input_paths, sim, start_frame, dest_dict, dest_type):
         initial_state = []
@@ -71,14 +73,14 @@ def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1
         y = [t.y for t in path]
         time = list(range(length))
         f = interp1d(x=time, y=[x, y], fill_value='extrapolate')
-        return f(time[-1] + 12)  
+        return f(time[-1] + pred_length)  
 
     multimodal_outputs = {}
     primary = input_paths[0]
     neighbours_tracks = []
     frame_diff = primary[1].frame - primary[0].frame
-    start_frame = primary[8].frame
-    first_frame = primary[8].frame + frame_diff
+    start_frame = primary[obs_length-1].frame
+    first_frame = primary[obs_length-1].frame + frame_diff
 
     fps = 20
     sampling_rate = fps / 2.5
@@ -95,7 +97,7 @@ def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1
     count = 0
     end_range = 0.05
     ##Simulate a scene
-    while count < sampling_rate * 12 + 1:
+    while count < sampling_rate * args.pred_length + 1:
         count += 1
         sim.doStep()
         reaching_goal = []
