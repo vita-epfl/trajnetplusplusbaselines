@@ -174,8 +174,8 @@ class LSTMGenerator(torch.nn.Module):
         track_mask = (torch.isnan(obs1[:, 0]) + torch.isnan(obs2[:, 0])) == 0
         obs1, obs2 = obs1[track_mask], obs2[track_mask]
         hidden_cell_stacked = [
-            torch.stack([h for h in hidden_cell_state[0]], dim=0),
-            torch.stack([c for c in hidden_cell_state[1]], dim=0),
+            torch.stack([h for m, h in zip(track_mask, hidden_cell_state[0]) if m], dim=0),
+            torch.stack([c for m, c in zip(track_mask, hidden_cell_state[1]) if m], dim=0),
         ]
 
         # input embedding and optional pooling

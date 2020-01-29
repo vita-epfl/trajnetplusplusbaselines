@@ -46,15 +46,25 @@ def main(args, kf=False, sf=False, orca=False):
             reader = trajnettools.Reader(args.data.replace('_pred', '') + dataset, scene_type='paths')
             scenes = [s for s in reader.scenes()]
 
+            # Loading the appropriate model
             print("Model Name: ", model_name)
-            # Load the model
             if model_name == 'kf':
+                print("Kalman")
                 predictor = trajnetbaselines.kalman.predict
             elif model_name == 'sf' or model_name == 'sf_opt':
+                print("Social Force")
                 predictor = trajnetbaselines.socialforce.socialforce.predict
             elif model_name == 'orca' or model_name == 'orca_opt':
+                print("ORCA")
                 predictor = trajnetbaselines.socialforce.orca.predict
+            elif 'sgan' in model_name:
+                print("SGAN")
+                predictor = trajnetbaselines.sgan.SGANPredictor.load(model)
+                # On CPU
+                device = torch.device('cpu')
+                predictor.model.to(device)
             else:
+                print("LSTM")
                 predictor = trajnetbaselines.lstm.LSTMPredictor.load(model)
                 # On CPU
                 device = torch.device('cpu')

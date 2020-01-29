@@ -157,7 +157,7 @@ class TrajnetEvaluator:
 
 ##### --------------------------------------------------- Top 3 -------------------------------------------- ####
 
-            if self.num_predictions > 2:
+            if self.num_predictions > 1:
                 topk_ade, topk_fde = self.topk(primary_tracks_all, ground_truth[0])
 
                 average_topk_ade += topk_ade
@@ -179,7 +179,7 @@ class TrajnetEvaluator:
 ##### --------------------------------------------------- Top 3 -------------------------------------------- ####
 
 ##### --------------------------------------------------- NLL -------------------------------------------- ####
-            if self.num_predictions > 99:
+            if self.num_predictions > 98:
                 nll = self.nll(primary_tracks_all, ground_truth[0])
 
                 average_nll += nll
@@ -244,7 +244,7 @@ class TrajnetEvaluator:
 
         return self
 
-    def topk(self, primary_tracks, ground_truth, topk=20):
+    def topk(self, primary_tracks, ground_truth, topk=3):
         ## TopK multimodal 
 
         l2 = 1e10
@@ -267,7 +267,7 @@ class TrajnetEvaluator:
         ## preds: Pred_len x Num_preds x 2
 
         ## To verify if 100 predictions
-        if preds.shape[1] != 20:
+        if preds.shape[1] != 100:
             raise Exception('Need 100 predictions')
 
         pred_len = len(frame_gt)
