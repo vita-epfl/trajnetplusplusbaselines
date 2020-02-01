@@ -4,6 +4,8 @@ from scipy.interpolate import interp1d
 import trajnettools
 
 import socialforce
+from socialforce.potentials import PedPedPotential
+from socialforce.fieldofview import FieldOfView
 
 def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1, 0.3], predict_all=False, args=None):
     pred_length = args.pred_length
@@ -83,8 +85,10 @@ def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1
 
     if len(initial_state):
         # run    
-        s = socialforce.Simulator(initial_state, delta_t=1./fps, tau=sf_params[0], 
-                                  v0=sf_params[1], sigma=sf_params[2])
+        ped_ped = PedPedPotential(1./fps, v0=sf_params[1], sigma=sf_params[2])
+        field_of_view = FieldOfView()
+        s = socialforce.Simulator(initial_state, ped_ped=ped_ped, field_of_view=field_of_view,
+                                  delta_t=1./fps, tau=sf_params[0])
         states = np.stack([s.step().state.copy() for _ in range(pred_length*sampling_rate)])
         ## states : pred_length x num_ped x 7
         states = np.array([s for num, s in enumerate(states) if num % sampling_rate == 0])
