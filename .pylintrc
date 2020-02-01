@@ -10,4 +10,4 @@ good-names=i,n,nx,ny,xy,r
 # expressions are accepted.
 generated-members=numpy.*,torch.*
 
-disable=missing-docstring
+disable=missing-docstring,duplicate-code

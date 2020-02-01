@@ -7,7 +7,8 @@ import socialforce
 from socialforce.potentials import PedPedPotential
 from socialforce.fieldofview import FieldOfView
 
-def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1, 0.3], predict_all=False,  n_predict=12, obs_length=9):
+def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1, 0.3],
+            predict_all=False, n_predict=12, obs_length=9):
     pred_length = n_predict
 
     def init_states(input_paths, start_frame, dest_dict, dest_type):
@@ -21,9 +22,9 @@ def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1
             len_path = len(past_path)
 
             ## To consider agent or not consider.
-            if (start_frame in past_frames):
+            if start_frame in past_frames:
                 curr = past_path[-1]
-                
+
                 ## Velocity
                 if len_path >= 4:
                     stride = 3
@@ -36,8 +37,8 @@ def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1
                 ## Destination
                 if dest_type == 'true':
                     if dest_dict is not None:
-                        [d_x, d_y] = dest_dict[ped_id] 
-                    else: 
+                        [d_x, d_y] = dest_dict[ped_id]
+                    else:
                         raise ValueError
                 elif dest_type == 'interp':
                     [d_x, d_y] = dest_state(past_path, len_path)
@@ -82,8 +83,8 @@ def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1
     fps = 20
     sampling_rate = int(fps / 2.5)
 
-    if len(initial_state):
-        # run    
+    if len(initial_state) == 0:
+        # run  
         ped_ped = PedPedPotential(1./fps, v0=sf_params[1], sigma=sf_params[2])
         field_of_view = FieldOfView()
         s = socialforce.Simulator(initial_state, ped_ped=ped_ped, field_of_view=field_of_view,

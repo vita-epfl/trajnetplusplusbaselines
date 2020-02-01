@@ -1,6 +1,7 @@
 import math
-import torch
 import random
+
+import torch
 
 class PredictionLoss(torch.nn.Module):
     """2D Gaussian with a flat background.
@@ -70,16 +71,7 @@ class L2Loss(torch.nn.Module):
     def forward(self, inputs, targets):
         return self.loss(inputs[:, :2], targets)
 
-class ADELoss(torch.nn.Module):
-    """ADELoss between GT and Predicted Trajectory.
-    """
-    def __init__(self):
-        super(ADELoss, self).__init__()
-
-    def forward(self, inputs, targets):
-        return torch.mean(torch.norm((inputs[:, :2] - targets), dim=1))
-
-def bce_loss(input, target):
+def bce_loss(input_, target):
     """
     Numerically stable version of the binary cross-entropy loss function.
     As per https://github.com/pytorch/pytorch/issues/751
@@ -93,8 +85,8 @@ def bce_loss(input, target):
     - A PyTorch Tensor containing the mean BCE loss over the minibatch of
       input data.
     """
-    neg_abs = -input.abs()
-    loss = input.clamp(min=0) - input * target + (1 + neg_abs.exp()).log()
+    neg_abs = -input_.abs()
+    loss = input_.clamp(min=0) - input_ * target + (1 + neg_abs.exp()).log()
     return loss.mean()
 
 

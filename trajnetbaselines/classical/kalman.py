@@ -23,12 +23,12 @@ def predict(paths, predict_all=False, n_predict=12, obs_length=9):
         past_frames = [t.frame for t in path if t.frame <= start_frame]
 
         ## To consider agent or not consider.
-        if (start_frame not in past_frames):
+        if start_frame not in past_frames:
             continue
         if len(past_path) < 2:
             continue
 
-        initial_state_mean = [path[0].x, 0, path[0].y, 0]  
+        initial_state_mean = [path[0].x, 0, path[0].y, 0]
         transition_matrix = [[1, 1, 0, 0],
                              [0, 1, 0, 0],
                              [0, 0, 1, 1],

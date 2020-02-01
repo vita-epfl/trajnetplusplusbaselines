@@ -1,17 +1,15 @@
 """Command line tool to create a table of evaluations metrics."""
 import argparse
-from itertools import compress
 
 import pickle
-import numpy as np
 
 import trajnettools
 from trajnettools import show
 from trajnettools.interactions import collision_avoidance
-from trajnetbaselines import kalman 
 
-from . import socialforce 
-from . import orca 
+from . import kalman
+from . import socialforce
+from . import orca
 
 class Evaluator(object):
     def __init__(self, scenes, dest_dict=None, params=None, args=None):
@@ -30,11 +28,11 @@ class Evaluator(object):
         average = 0.0
         final = 0.0
 
-        pred_dict = {}
-        pred_neigh_dict = {}
-        n = 0
+        # pred_dict = {}
+        # pred_neigh_dict = {}
+        # n = 0
 
-        for scene_i, paths in enumerate(self.scenes):
+        for _, paths in enumerate(self.scenes):
             ## select only those trajectories which interactions ##
             # rows = trajnettools.Reader.paths_to_xy(paths)
             # neigh_paths = paths[1:]
@@ -51,7 +49,7 @@ class Evaluator(object):
 
             ## visualize predictions ##
             # pred_dict['pred'] = prediction
-            # pred_neigh_dict['pred'] = neigh 
+            # pred_neigh_dict['pred'] = neigh
             # n += 1
             # if n < 17:
             #     with show.predicted_paths(paths, pred_dict, pred_neigh_paths=pred_neigh_dict):
@@ -111,14 +109,14 @@ def eval(input_file, dest_file, simulator, params, type_ids, args):
     elif simulator == 'orca':
         for dest_type in ['interp']:
             evaluator.aggregate('orca' + dest_type, orca.predict, dest_type)
-    
+
     # Social Force only
     elif simulator == 'sf':
         for dest_type in ['interp']:
             evaluator.aggregate('sf' + dest_type, socialforce.predict, dest_type)
 
     # Kalman only
-    elif simulator == 'kf':       
+    elif simulator == 'kf':  
         evaluator.aggregate('kf', kalman.predict)
 
     return evaluator.result()
@@ -175,9 +173,9 @@ def main():
         # 'dest_new/crowds_students001.pkl',
         # 'dest_new/crowds_students003.pkl',
         # 'dest_new/lcas.pkl',
-        # 'dest_new/wildtrack.pkl',       
+        # 'dest_new/wildtrack.pkl',   
     ]
-    
+
     ## Selected Interaction Scenes for Fitting and Visualizing Simulator Parameters
     filtered_ids = {}
     ## IDs according to TrajData
@@ -197,7 +195,7 @@ def main():
         type_ids = None
         dataset_name = dataset.replace('DATA_BLOCK/data/train/real_data/', '').replace('.ndjson', '')
         if dataset_name in filtered_ids:
-            type_ids = filtered_ids[dataset_name]        
+            type_ids = filtered_ids[dataset_name]       
         results[dataset_name] = eval(dataset, dest_dicts[i], args.simulator, params, type_ids, args)
 
     if args.simulator == 'all':
@@ -222,8 +220,9 @@ def main():
                 ' | {r[orcainterp]:.2f}'
                 ' | {r[sfinterp]:.2f}'
                 ' | {r[kf]:.2f}'.format(dataset=dataset, r=r)
-            )       
+            )
 
+    ## For Hyperparameter Tuning
     # print('params: {}, {}, {} \n'.format(*params['sf']))
     # with open(args.simulator + "_final.txt", "a") as myfile:
     #         myfile.write('params: {}, {}, {} \n'.format(*params['sf']))
@@ -234,9 +233,9 @@ def main():
     #                         '{dataset:>30s}'
     #                         ' | {r[N]:>4}'
     #                         ' | {r[sfinterp]:.2f} \n'.format(dataset=dataset, r=r)
-    #             ) 
+    #             )
 
-    #         myfile.write('\n')    
+    #         myfile.write('\n')
     #         myfile.write('## Final L2 [m] \n')
     #         myfile.write('{dataset:>30s} |   N  | Int \n'.format(dataset=''))
     #         for dataset, (_, r) in results.items():
@@ -245,8 +244,7 @@ def main():
     #                         ' | {r[N]:>4}'
     #                         ' | {r[sfinterp]:.2f} \n'.format(dataset=dataset, r=r)
     #             )
-    #         myfile.write('\n \n \n') 
-
+    #         myfile.write('\n \n \n')
 
 if __name__ == '__main__':
     main()

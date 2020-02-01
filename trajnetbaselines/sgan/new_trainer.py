@@ -12,16 +12,17 @@ import trajnettools
 
 from .. import augmentation
 from ..lstm.loss import PredictionLoss, L2Loss
-from ..lstm.loss import bce_loss, gan_d_loss, gan_g_loss, variety_loss
+from ..lstm.loss import gan_d_loss, gan_g_loss, variety_loss
 from ..lstm.pooling import Pooling, HiddenStateMLPPooling, FastPooling
 from .sgan import SGAN, drop_distant, SGANPredictor
+from .sgan import LSTMGenerator, LSTMDiscriminator
 from .. import __version__ as VERSION
 
 
 class Trainer(object):
     def __init__(self, model=None, criterion='L2', optimizer=None, lr_scheduler=None,
                  device=None, batch_size=1, obs_length=9, pred_length=12):
-        self.model = model if model is not None else LSTM()
+        self.model = model if model is not None else SGAN()
         if criterion == 'L2':
             self.criterion = L2Loss()
         else:
@@ -141,7 +142,7 @@ class Trainer(object):
         targets = xy[self.obs_length:, 0] - xy[self.obs_length-1:-1, 0]
 
         self.optimizer.zero_grad()
-        rel_output_list, abs_output_list, scores_real, scores_fake = self.model(observed, prediction_truth, step_type=step_type)
+        rel_output_list, _, scores_real, scores_fake = self.model(observed, prediction_truth, step_type=step_type)
 
         loss = self.loss_criterion(rel_output_list, targets, scores_fake, scores_real, step_type)
         loss.backward()
@@ -154,9 +155,9 @@ class Trainer(object):
         prediction_truth = xy[self.obs_length:-1].clone()  ## CLONE
 
         with torch.no_grad():
-            rel_output_list, abs_outputs, scores_real, scores_fake  = self.model(observed, prediction_truth)
+            rel_output_list, _, _, _ = self.model(observed, prediction_truth)
             targets = xy[self.obs_length:, 0] - xy[self.obs_length-1:-1, 0]
-            
+
             ## top-k loss
             loss = variety_loss(rel_output_list, targets, self.pred_length)
 
@@ -165,7 +166,7 @@ class Trainer(object):
     def loss_criterion(self, rel_output_list, targets, scores_fake, scores_real, step_type):
         if step_type == 'd':
             loss = gan_d_loss(scores_real, scores_fake)
-        
+
         else:
             ## top-k loss
             loss = variety_loss(rel_output_list, targets)
@@ -223,20 +224,20 @@ def main(epochs=50):
     hyperparameters.add_argument('--cell_side', type=float, default=1.0,
                                  help='cell size of real world')
     hyperparameters.add_argument('--n', type=int, default=10,
-                                  help='number of cells per side')
+                                 help='number of cells per side')
 
     hyperparameters.add_argument('--noise_dim', type=int, default=16,
                                  help='dimension of z')
     hyperparameters.add_argument('--add_noise', action='store_true',
                                  help='To Add Noise')
     hyperparameters.add_argument('--noise_type', default='gaussian',
-                                  help='type of noise to be added')
+                                 help='type of noise to be added')
     hyperparameters.add_argument('--discriminator', action='store_true',
-                                  help='discriminator to be added')
+                                 help='discriminator to be added')
     args = parser.parse_args()
 
     # torch.autograd.set_detect_anomaly(True)
-    
+
     if not os.path.exists('OUTPUT_BLOCK/{}'.format(args.path)):
         os.makedirs('OUTPUT_BLOCK/{}'.format(args.path))
     if args.output:
@@ -273,7 +274,7 @@ def main(epochs=50):
     args.device = torch.device('cpu')
     # if not args.disable_cuda and torch.cuda.is_available():
     #     args.device = torch.device('cuda')
-    
+
     # read in datasets
     args.path = 'DATA_BLOCK/' + args.path
 
@@ -281,11 +282,11 @@ def main(epochs=50):
     val_scenes = list(trajnettools.load_all(args.path + '/val/**/*.ndjson'))
 
     # create model
-    pool = None    
+
+    # pooling
+    pool = None
     if args.type == 'hiddenstatemlp':
         pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim)
-    if args.type == 'directionalmlp':
-        pool = DirectionalMLPPooling(hidden_dim=args.hidden_dim)
     elif args.type != 'vanilla':
         if args.fast:
             pool = FastPooling(type_=args.type, hidden_dim=args.hidden_dim,
@@ -293,12 +294,22 @@ def main(epochs=50):
         else:
             pool = Pooling(type_=args.type, hidden_dim=args.hidden_dim,
                            cell_side=args.cell_side, n=args.n, front=args.front)
+
+    # generator
+    lstm_generator = LSTMGenerator(embedding_dim=args.embedding_dim, hidden_dim=args.hidden_dim,
+                                   pool=pool, noise_dim=args.noise_dim, add_noise=args.add_noise,
+                                   noise_type=args.noise_type)
+
+    # discriminator
     print("discriminator: ", args.discriminator)
-    model = SGAN(pool=pool,
-                 embedding_dim=args.coordinate_embedding_dim,
-                 hidden_dim=args.hidden_dim,
-                 noise_dim=args.noise_dim, add_noise=args.add_noise, noise_type=args.noise_type,
-                 k=args.k, use_d=args.discriminator)
+    lstm_discriminator = None
+    if args.discriminator:
+        lstm_discriminator = LSTMDiscriminator(embedding_dim=args.embedding_dim,
+                                               hidden_dim=args.hidden_dim, pool=pool)
+
+    # GAN model
+    model = SGAN(generator=lstm_generator, discriminator=lstm_discriminator,
+                 add_noise=args.add_noise, k=args.k)
 
     # Default Load
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4) # , weight_decay=1e-4
@@ -324,8 +335,9 @@ def main(epochs=50):
             start_epoch = checkpoint['epoch']
 
     #trainer
-    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device, criterion=args.loss, 
-                             batch_size=args.batch_size, obs_length=args.obs_length, pred_length=args.pred_length)
+    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device,
+                      criterion=args.loss, batch_size=args.batch_size, obs_length=args.obs_length,
+                      pred_length=args.pred_length)
     trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 

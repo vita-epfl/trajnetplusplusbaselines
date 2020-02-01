@@ -2,7 +2,6 @@ import argparse
 import datetime
 import json
 
-import matplotlib.ticker
 import numpy as np
 import pysparkling
 import trajnettools.show

@@ -3,9 +3,9 @@ import itertools
 
 import numpy as np
 import torch
-import trajnettools
 import torch.nn as nn
 
+import trajnettools
 from ..lstm.modules import Hidden2Normal, InputEmbedding
 
 NAN = float('nan')
@@ -23,10 +23,10 @@ def drop_distant(xy, r=25.0):
     return xy[:, mask]
 
 def get_noise(shape, noise_type):
-    ## removed cuda
+    ## removed cuda ##
     if noise_type == 'gaussian':
         return torch.randn(*shape)
-    elif noise_type == 'uniform':
+    if noise_type == 'uniform':
         return torch.rand(*shape).sub_(0.5).mul_(2.0)
     raise ValueError('Unrecognized noise type "%s"' % noise_type)
 
@@ -45,29 +45,27 @@ def make_mlp(dim_list, activation='relu', batch_norm=True, dropout=0):
     return nn.Sequential(*layers)
 
 class SGAN(torch.nn.Module):
-    def __init__(self, embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True,
-                 noise_dim=8, add_noise=False, noise_type='gaussian', k=1, use_d=False,
-                 d_steps=1, g_steps=1):
+    def __init__(self, generator, discriminator=None, add_noise=False, k=1, d_steps=1, g_steps=1):
         super(SGAN, self).__init__()
 
         ## Generator
-        self.generator = LSTMGenerator(embedding_dim=embedding_dim, hidden_dim=hidden_dim, pool=pool, pool_to_input=pool_to_input,
-                                       noise_dim=noise_dim, add_noise=add_noise, noise_type=noise_type)
+        self.generator = generator
         self.g_steps = g_steps
-        self.k = 1
-        self.pool = pool
 
+        self.k = 1
         ## Add Noise for Variety Loss
         if add_noise:
             self.k = k
 
         ## Discriminator
-        self.use_d = use_d
+        self.use_d = False
         self.d_steps = 0
-        if self.use_d: 
+        if discriminator is not None:
             print("Using Discriminator")
-            self.discrimator = LSTMDiscriminator(embedding_dim=embedding_dim, hidden_dim=hidden_dim, pool=pool, pool_to_input=pool_to_input)
+            self.discrimator = discriminator
+            self.use_d = True
             self.d_steps = d_steps
+
 
     def forward(self, observed, prediction_truth=None, n_predict=None, step_type='g', pred_length=12):
         """forward
@@ -77,7 +75,7 @@ class SGAN(torch.nn.Module):
 
         rel_pred_list = []
         pred_list = []
-        for k in range(self.k):
+        for _ in range(self.k):
             # print("k:", k)
             rel_pred_scene, pred_scene = self.generator(observed, prediction_truth, n_predict)
             rel_pred_list.append(rel_pred_scene)
@@ -94,7 +92,7 @@ class SGAN(torch.nn.Module):
         return rel_pred_list, pred_list, None, None
 
 class LSTMGenerator(torch.nn.Module):
-    def __init__(self, embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True, 
+    def __init__(self, embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True,
                  noise_dim=8, add_noise=False, noise_type='gaussian'):
         super(LSTMGenerator, self).__init__()
         self.hidden_dim = hidden_dim
@@ -106,7 +104,7 @@ class LSTMGenerator(torch.nn.Module):
         if self.pool is not None and self.pool_to_input:
             self.input_embedding = InputEmbedding(2 + self.pool.out_dim, self.embedding_dim, 4.0)
 
-        self.encoder = torch.nn.LSTMCell(self.embedding_dim, self.hidden_dim)           
+        self.encoder = torch.nn.LSTMCell(self.embedding_dim, self.hidden_dim)
         self.decoder = torch.nn.LSTMCell(self.embedding_dim, self.hidden_dim)
 
         # Predict the parameters of a multivariate normal:
@@ -141,7 +139,7 @@ class LSTMGenerator(torch.nn.Module):
         new_hidden_state = self.mlp_decoder_context(hidden_cell_state[0])
 
         if self.add_noise:
-            noise = get_noise((self.noise_dim, ), self.noise_type)            
+            noise = get_noise((self.noise_dim, ), self.noise_type)
         else:
             ## Add zeroes to inputs (CUDA if necessary)
             noise = torch.zeros(self.noise_dim)
@@ -256,7 +254,7 @@ class LSTMGenerator(torch.nn.Module):
         ))
 
 ########################################################################################################################
-        ## ADD NOISE 
+        ## ADD NOISE
         hidden_cell_state = self.adding_noise(hidden_cell_state)
 ########################################################################################################################
 
@@ -343,8 +341,8 @@ class LSTMDiscriminator(torch.nn.Module):
         # unmask
         mask_index = [i for i, m in enumerate(track_mask) if m]
         for i, h, c in zip(mask_index,
-                              hidden_cell_stacked[0],
-                              hidden_cell_stacked[1]):
+                           hidden_cell_stacked[0],
+                           hidden_cell_stacked[1]):
             hidden_cell_state[0][i] = h
             hidden_cell_state[1][i] = c
 
@@ -428,7 +426,7 @@ class SGANPredictor(object):
             multimodal_outputs = {}
             ## model.k outputs
             _, output_scenes_list, _, _ = self.model(xy[:obs_length], n_predict=n_predict)
-            for num_p in range(len(output_scenes_list)):
+            for num_p, _ in enumerate(output_scenes_list):
                 output_scenes = output_scenes_list[num_p]
                 outputs = output_scenes[-n_predict:, 0]
                 output_scenes = output_scenes[-n_predict:]

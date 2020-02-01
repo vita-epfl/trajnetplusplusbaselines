@@ -13,7 +13,7 @@ import trajnettools
 from .. import augmentation
 from .loss import PredictionLoss, L2Loss
 from .lstm import LSTM, LSTMPredictor, drop_distant
-from .pooling import Pooling, HiddenStateMLPPooling, DirectionalMLPPooling, FastPooling
+from .pooling import Pooling, HiddenStateMLPPooling, FastPooling
 from .. import __version__ as VERSION
 
 
@@ -82,7 +82,7 @@ class Trainer(object):
             loss = self.train_batch(scene)
             epoch_loss += loss
             total_time = time.time() - scene_start
-            
+
             if scene_i % self.batch_size == 0:
                 self.optimizer.step()
                 self.optimizer.zero_grad()
@@ -194,7 +194,7 @@ def main(epochs=50):
     hyperparameters.add_argument('--cell_side', type=float, default=1.0,
                                  help='cell size of real world')
     hyperparameters.add_argument('--n', type=int, default=10,
-                                  help='number of cells per side')
+                                 help='number of cells per side')
 
     args = parser.parse_args()
 
@@ -234,7 +234,7 @@ def main(epochs=50):
     args.device = torch.device('cpu')
     # if not args.disable_cuda and torch.cuda.is_available():
     #     args.device = torch.device('cuda')
-    
+
     # read in datasets
     args.path = 'DATA_BLOCK/' + args.path
 
@@ -242,11 +242,9 @@ def main(epochs=50):
     val_scenes = list(trajnettools.load_all(args.path + '/val/**/*.ndjson'))
 
     # create model
-    pool = None    
+    pool = None
     if args.type == 'hiddenstatemlp':
         pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim)
-    elif args.type == 'directionalmlp':
-        pool = DirectionalMLPPooling(hidden_dim=args.hidden_dim)
     elif args.type != 'vanilla':
         if args.fast:
             pool = FastPooling(type_=args.type, hidden_dim=args.hidden_dim,
@@ -258,7 +256,7 @@ def main(epochs=50):
                  embedding_dim=args.coordinate_embedding_dim,
                  hidden_dim=args.hidden_dim)
     # Default Load
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4) # , weight_decay=1e-4
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4) # 1e-4
     lr_scheduler = None
     start_epoch = 0
 
@@ -281,8 +279,9 @@ def main(epochs=50):
             start_epoch = checkpoint['epoch']
 
     #trainer
-    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device, criterion=args.loss, 
-                             batch_size=args.batch_size, obs_length=args.obs_length, pred_length=args.pred_length)
+    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device,
+                      criterion=args.loss, batch_size=args.batch_size, obs_length=args.obs_length,
+                      pred_length=args.pred_length)
     trainer.loop(train_scenes, val_scenes, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 

@@ -1,17 +1,18 @@
 import numpy as np
 from scipy.interpolate import interp1d
 
+import rvo2
+
 import trajnettools
 
-import rvo2
 
 MAX_SPEED_MULTIPLIER = 1.3 # with respect to initial speed
 
-def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1.5, 0.4], predict_all=False, n_predict=12, obs_length=9):
+def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1.5, 0.4],
+            predict_all=False, n_predict=12, obs_length=9):
     pred_length = n_predict
 
     def init_states(input_paths, sim, start_frame, dest_dict, dest_type):
-        initial_state = []
         positions, goals, speed = [], [], []
         for i, _ in enumerate(input_paths):
             path = input_paths[i]
@@ -22,7 +23,7 @@ def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1
             len_path = len(past_path)
 
             ## To consider agent or not consider.
-            if (start_frame in past_frames):
+            if start_frame in past_frames:
                 curr = past_path[-1]
 
                 ## Velocity
@@ -38,8 +39,8 @@ def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1
                 ## Destination
                 if dest_type == 'true':
                     if dest_dict is not None:
-                        [d_x, d_y] = dest_dict[ped_id] 
-                    else: 
+                        [d_x, d_y] = dest_dict[ped_id]
+                    else:
                         raise ValueError
                 elif dest_type == 'interp':
                     [d_x, d_y] = dest_state(past_path, len_path)
@@ -72,7 +73,7 @@ def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1
         y = [t.y for t in path]
         time = list(range(length))
         f = interp1d(x=time, y=[x, y], fill_value='extrapolate')
-        return f(time[-1] + pred_length)  
+        return f(time[-1] + pred_length)
 
     multimodal_outputs = {}
     primary = input_paths[0]
@@ -90,8 +91,8 @@ def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1
     sim = rvo2.PyRVOSimulator(1 / fps, orca_params[0], 10, orca_params[1], 5, orca_params[2], 1.5)
 
     # initialize
-    trajectories, positions, goals, speed = init_states(input_paths, sim, start_frame, dest_dict, dest_type)
-    
+    trajectories, _, goals, speed = init_states(input_paths, sim, start_frame, dest_dict, dest_type)
+
     num_ped = len(speed)
     count = 0
     end_range = 0.05
@@ -99,7 +100,6 @@ def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1
     while count < sampling_rate * pred_length + 1:
         count += 1
         sim.doStep()
-        reaching_goal = []
         for i in range(num_ped):
             if count == 1:
                 trajectories[i].pop(0)
