@@ -1,5 +1,4 @@
 import trajnettools
-import trajnetbaselines.kalman as kalman
 import trajnetbaselines
 import shutil
 import os
@@ -50,13 +49,13 @@ def main(args, kf=False, sf=False, orca=False):
             print("Model Name: ", model_name)
             if model_name == 'kf':
                 print("Kalman")
-                predictor = trajnetbaselines.kalman.predict
+                predictor = trajnetbaselines.classical.kalman.predict
             elif model_name == 'sf' or model_name == 'sf_opt':
                 print("Social Force")
-                predictor = trajnetbaselines.socialforce.socialforce.predict
+                predictor = trajnetbaselines.classical.socialforce.predict
             elif model_name == 'orca' or model_name == 'orca_opt':
                 print("ORCA")
-                predictor = trajnetbaselines.socialforce.orca.predict
+                predictor = trajnetbaselines.classical.orca.predict
             elif 'sgan' in model_name:
                 print("SGAN")
                 predictor = trajnetbaselines.sgan.SGANPredictor.load(model)

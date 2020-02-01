@@ -4,4 +4,4 @@ from . import augmentation
 from . import kalman
 from . import lstm
 from . import sgan
-# from . import socialforce
+from . import classical
