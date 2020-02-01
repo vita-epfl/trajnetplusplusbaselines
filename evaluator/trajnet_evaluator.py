@@ -253,8 +253,21 @@ class TrajnetEvaluator:
                self.topk_ade, self.topk_fde, self.overall_nll
 
 
+def collision_test(list_sub, name, args):
+    """ Simple Collision Test """
+    submit_datasets = [args.data + name + '/' + f for f in list_sub if 'collision_test.ndjson' in f]
+    if len(submit_datasets):
+        # Scene Prediction
+        reader_sub = trajnettools.Reader(submit_datasets[0], scene_type='paths')
+        scenes_sub = [s for _, s in reader_sub.scenes()]
 
-def eval(gt, input_file, args, input_file2=None):
+        if trajnettools.metrics.collision(scenes_sub[0][0], scenes_sub[0][1], n_predictions=args.pred_length):
+            return "Fail"
+        return "Pass"
+
+    return "NA"
+
+def eval(gt, input_file, args):
     # Ground Truth
     reader_gt = trajnettools.Reader(gt, scene_type='paths')
     scenes_gt = [s for _, s in reader_gt.scenes()]
@@ -350,8 +363,12 @@ def main():
             list_sub = sorted([f for f in os.listdir(args.data + name)
                                if not f.startswith('.')])
 
-            submit_datasets = [args.data + name + '/' + f for f in list_sub]
-            true_datasets = [args.data.replace('pred', 'private') + f for f in list_sub]
+            ## Simple Collision Test
+            result = collision_test(list_sub, name, args)
+            table.add_collision_entry(labels[num], result)
+
+            submit_datasets = [args.data + name + '/' + f for f in list_sub if 'collision_test.ndjson' not in f]
+            true_datasets = [args.data.replace('pred', 'private') + f for f in list_sub if 'collision_test.ndjson' not in f]
 
             ## Evaluate submitted datasets with True Datasets [The main eval function]
             # results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):

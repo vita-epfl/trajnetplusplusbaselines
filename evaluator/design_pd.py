@@ -15,6 +15,10 @@ class Table(object):
         self.arg = arg
         self.results = {}
         self.sub_results = {}
+        self.collision_test = {}
+
+    def add_collision_entry(self, name, result):
+        self.collision_test[name] = result
 
     def add_entry(self, name, results):
         final_results = []
@@ -140,11 +144,11 @@ class Table(object):
         ax1.axis('tight')
         ax1.axis('off')
 
-        df = pd.DataFrame(columns=['', 'Model', 'No.', 'ADE', 'FDE', 'Col I', 'Col II', 'Top3 ADE', 'Top3 FDE', 'NLL'])
+        df = pd.DataFrame(columns=['', 'Model', 'No.', 'ADE', 'FDE', 'Col I', 'Col II', 'Top3 ADE', 'Top3 FDE', 'NLL', 'Col_test'])
         it = 0
         len_name = 10
         for key in self.results:
-            df.loc[it] = ['Overall'] + [key[:len_name]] + [self.results[key][index].__format__('.2f') for index in range(32, 40)] 
+            df.loc[it] = ['Overall'] + [key[:len_name]] + [self.results[key][index].__format__('.2f') for index in range(32, 40)] + [self.collision_test[key]]
             it += 1
         ax1 = self.render_mpl_table(df, header_columns=0, col_width=2.0, bbox=[0, 0.9, 1, 0.1*len(self.results)], ax=ax1)
 
