@@ -69,7 +69,6 @@ class SGAN(torch.nn.Module):
 
     def forward(self, observed, prediction_truth=None, n_predict=None, step_type='g', pred_length=12):
         """forward
-
         observed shape is (seq, n_tracks, observables)
         """
 
@@ -207,13 +206,12 @@ class LSTMGenerator(torch.nn.Module):
 
     def forward(self, observed, prediction_truth=None, n_predict=None):
         """forward
-
         observed shape is (seq, n_tracks, observables)
         """
         assert ((prediction_truth is None) + (n_predict is None)) == 1
         if n_predict is not None:
             # -1 because one prediction is done by the encoder already
-            prediction_truth = [None for _ in range(n_predict - 1)]
+            prediction_truth = [None for _ in range(n_predict)]
 
         ## For faster training in case of no pooling
         if self.pool is None and self.training:
@@ -350,7 +348,6 @@ class LSTMDiscriminator(torch.nn.Module):
 
     def forward(self, observed, prediction):
         """forward
-
         observed shape is (seq, n_tracks, observables)
         """
 

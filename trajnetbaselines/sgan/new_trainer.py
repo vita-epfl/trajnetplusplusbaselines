@@ -138,7 +138,7 @@ class Trainer(object):
 
     def train_batch(self, xy, step_type):
         observed = xy[:self.obs_length]
-        prediction_truth = xy[self.obs_length:-1].clone()  ## CLONE
+        prediction_truth = xy[self.obs_length:].clone()  ## CLONE
         targets = xy[self.obs_length:, 0] - xy[self.obs_length-1:-1, 0]
 
         self.optimizer.zero_grad()
@@ -152,7 +152,7 @@ class Trainer(object):
 
     def val_batch(self, xy):
         observed = xy[:self.obs_length]
-        prediction_truth = xy[self.obs_length:-1].clone()  ## CLONE
+        prediction_truth = xy[self.obs_length:].clone()  ## CLONE
 
         with torch.no_grad():
             rel_output_list, _, _, _ = self.model(observed, prediction_truth)
