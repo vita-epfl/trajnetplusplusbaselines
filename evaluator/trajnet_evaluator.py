@@ -319,6 +319,12 @@ def main():
                         help='disable collision metrics')
     parser.add_argument('--labels', required=False, nargs='+',
                         help='labels of models')
+    parser.add_argument('--sf', action='store_true',
+                        help='consider socialforce in evaluation')
+    parser.add_argument('--orca', action='store_true',
+                        help='consider orca in evaluation')
+    parser.add_argument('--kf', action='store_true',
+                        help='consider kalman in evaluation')
     args = parser.parse_args()
 
     ## Path to the data folder name to predict 
@@ -327,11 +333,10 @@ def main():
     ## Test_pred : Folders for saving model predictions
     args.data = args.data + 'test_pred/'
 
-
     ## Writes to Test_pred
     ### Does this overwrite existing predictions? No. ###
     if not args.disable_write:
-        write.main(args)
+        write.main(args, kf=args.kf, sf=args.sf, orca=args.orca)
 
     ## Evaluates test_pred with test_private
     names = []
