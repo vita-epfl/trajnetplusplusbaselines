@@ -1,9 +1,25 @@
 data/
+dest/
+dest_new/
+
 DATA_BLOCK/
 output/
 OUTPUT_BLOCK/
 socialforce-master/
 profile_trace*.json
+Python-RVO2-master/
+evaluator/old_table/
+
+checkpoints
+Python-RVO2-master/
+dest_new/
+evaluator/old_table/
+	
+*.txt
+*.png
+*.sh
+*.run
+*.pt
 
 # Python
 venv*/
@@ -17,3 +33,21 @@ dist/
 
 # OS
 .DS_Store
+
+Makefile
+Makefile_backup
+
+##sgan
+trajnetbaselines/sgan/models/
+
+## car
+video/
+wta_expts/
+highway_vid/
+
+##Style
+trajnetbaselines/style_lstm/
+trajnetbaselines/lstm/style_encoder.py
+tests/test_style.py
+trajnetbaselines/wta_lstm_backup/
+
