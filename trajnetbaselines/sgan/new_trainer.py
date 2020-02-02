@@ -296,7 +296,7 @@ def main(epochs=50):
                            cell_side=args.cell_side, n=args.n, front=args.front)
 
     # generator
-    lstm_generator = LSTMGenerator(embedding_dim=args.embedding_dim, hidden_dim=args.hidden_dim,
+    lstm_generator = LSTMGenerator(embedding_dim=args.coordinate_embedding_dim, hidden_dim=args.hidden_dim,
                                    pool=pool, noise_dim=args.noise_dim, add_noise=args.add_noise,
                                    noise_type=args.noise_type)
 
@@ -304,7 +304,7 @@ def main(epochs=50):
     print("discriminator: ", args.discriminator)
     lstm_discriminator = None
     if args.discriminator:
-        lstm_discriminator = LSTMDiscriminator(embedding_dim=args.embedding_dim,
+        lstm_discriminator = LSTMDiscriminator(embedding_dim=args.coordinate_embedding_dim,
                                                hidden_dim=args.hidden_dim, pool=pool)
 
     # GAN model
