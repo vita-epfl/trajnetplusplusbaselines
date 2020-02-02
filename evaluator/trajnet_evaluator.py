@@ -146,6 +146,7 @@ class TrajnetEvaluator:
             # aggregate FDE and ADE
             average += average_l2
             final += final_l2
+
             for key in keys:
                 score[key][0] += average_l2
                 score[key][1] += final_l2     
@@ -355,8 +356,9 @@ def main():
         if os.path.exists(result_file + '/results.pkl'):
             print("Loading Saved Results")
             with open(result_file + '/results.pkl', 'rb') as handle:
-                [final_result, sub_final_result] = pickle.load(handle)
+                [final_result, sub_final_result, col_result] = pickle.load(handle)
             table.add_result(labels[num], final_result, sub_final_result)
+            table.add_collision_entry(labels[num], col_result)
 
         # ## Else, Calculate results and save
         else:
@@ -364,8 +366,8 @@ def main():
                                if not f.startswith('.')])
 
             ## Simple Collision Test
-            result = collision_test(list_sub, name, args)
-            table.add_collision_entry(labels[num], result)
+            col_result = collision_test(list_sub, name, args)
+            table.add_collision_entry(labels[num], col_result)
 
             submit_datasets = [args.data + name + '/' + f for f in list_sub if 'collision_test.ndjson' not in f]
             true_datasets = [args.data.replace('pred', 'private') + f for f in list_sub if 'collision_test.ndjson' not in f]
@@ -387,7 +389,7 @@ def main():
             ## Save results as pkl (to avoid computation again) 
             os.makedirs(result_file)
             with open(result_file + '/results.pkl', 'wb') as handle:
-                pickle.dump([final_result, sub_final_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump([final_result, sub_final_result, col_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     ## Make Result Table 
     table.print_table()
