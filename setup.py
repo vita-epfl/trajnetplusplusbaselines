@@ -27,6 +27,8 @@ setup(
         'scipy',
         'torch',
         'trajnettools',
+        'joblib',
+        'pandas',
     ],
     extras_require={
         'test': [
