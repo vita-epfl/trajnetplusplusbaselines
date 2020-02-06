@@ -1,45 +1,19 @@
 Data Setup
 ==========
 
-Data Conversion
----------------
-
-For data conversion, refer to Trajnetplusplusdataset_
-
-.. _Trajnetplusplusdataset: https://github.com/vita-epfl/trajnetplusplusdataset
-
 Data Directory Setup
 --------------------
 
-All the converted datasets are stored in DATA_BLOCK
+All Datasets are stored in DATA_BLOCK
 
-Directory structure of DATA_BLOCK:
+All Models after training are stored in OUTPUT_BLOCK: ``mkdir OUTPUT_BLOCK``
 
-- Dataset1 (default: trajdata)
+Data Conversion
+---------------
 
-   - train
-   - val
-   - test
-   - test_private
+For data conversion, refer to Trajnetdataset.
 
-- Dataset2
-
-   - train
-   - val
-   - test
-   - test_private
-
-
-Move the converted dataset for training to DATA_BLOCK:
-
-``mkdir -p DATA_BLOCK/trajdata``
-
-``cp -r <converted_dataset>/ DATA_BLOCK/trajdata``
-
-
-The models after training are stored in OUTPUT_BLOCK:
-
-``mkdir OUTPUT_BLOCK``
+After conversion, copy the converted dataset to DATA_BLOCK
 
 Training LSTMs
 ==============
@@ -47,14 +21,17 @@ Training LSTMs
 The training script and its help menu:
 ``python -m trajnetbaselines.lstm.trainer --help``
 
+Training GANs
+==============
+
+The training script and its help menu:
+``python -m trajnetbaselines.sgan.trainer --help``
 
 Evaluation
 ==========
 
+The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator --help``
+
 Evaluation on datasplits is based on the following categorization:
 
 .. image:: docs/train/Categorize.png
-
-The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator --help``
-
-.. image:: docs/train/Eval.png
