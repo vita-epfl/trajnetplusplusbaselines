@@ -182,8 +182,8 @@ class TrajnetEvaluator:
 ##### --------------------------------------------------- Top 3 -------------------------------------------- ####
 
 ##### --------------------------------------------------- NLL -------------------------------------------- ####
-            if self.num_predictions > 98:
-                nll = trajnettools.metrics.nll(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length)
+            if self.num_predictions > 18:
+                nll = trajnettools.metrics.nll(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length, n_samples=20)
 
                 average_nll += nll
                 ##Key
