@@ -406,8 +406,11 @@ class SGANPredictor(object):
             return torch.load(f)
 
 
-    def __call__(self, paths, n_predict=12, modes=1, predict_all=True, obs_length=9):
+    def __call__(self, paths, n_predict=12, modes=None, predict_all=True, obs_length=9):
         self.model.eval()
+        self.model.use_d = False
+        if modes is not None:
+            self.model.k = modes
 
         observed_path = paths[0]
         ped_id = observed_path[0].pedestrian
