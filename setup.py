@@ -28,6 +28,8 @@ setup(
         'torch',
         'trajnettools',
         'pysparkling',
+        'joblib',
+        'pandas',
     ],
     extras_require={
         'test': [
