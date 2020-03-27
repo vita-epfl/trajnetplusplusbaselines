@@ -1,3 +1,5 @@
+""" Writes the Model Predictions of test file in test_pred folder"""
+
 import trajnettools
 import trajnetbaselines
 import shutil
@@ -6,10 +8,10 @@ import argparse
 import torch
 
 def main(args, kf=False, sf=False, orca=False):
-    ## List of .json file inside the args.data (waiting to be predicted by the testing model)
+    ## List of test files (.json) inside the test folder (waiting to be predicted by the prediction model)
     datasets = sorted([f for f in os.listdir(args.data.replace('_pred', '')) if not f.startswith('.') and f.endswith('.ndjson')])
 
-    ## Handcrafted Baselines 
+    ## Handcrafted Baselines (if required to compare)
     if kf:
         args.output.append('/kf.pkl')
     if sf:
@@ -19,12 +21,12 @@ def main(args, kf=False, sf=False, orca=False):
         args.output.append('/orca.pkl')
         args.output.append('/orca_opt.pkl')
 
-    ## Model names are passed as arguments
+    ## Extract Model names from arguments and create its own folder in 'test_pred' for storing predictions
+    ## WARNING: If Model predictions already exist from previous run, this process SKIPS WRITING
     for model in args.output:
         model_name = model.split('/')[-1].replace('.pkl', '')
 
-        ## Make a directory in DATA_BLOCK which will contain the model outputs
-        ## If model is already written, you skip writing
+        ## Check if model predictions already exist
         if not os.path.exists(args.data):
             os.makedirs(args.data)
         if not os.path.exists(args.data + model_name):
@@ -32,20 +34,20 @@ def main(args, kf=False, sf=False, orca=False):
         else:
             continue
 
-        ## Start writing in dataset/test_pred
+        ## Start writing predictions in dataset/test_pred
         for dataset in datasets:
             # Model's name
             name = dataset.replace(args.data.replace('_pred', '') + 'test/', '')
 
-            # Copy file from test into test/train_pred folder
+            # Copy observations from test folder into test_pred folder
             shutil.copyfile(args.data.replace('_pred', '') + name, args.data + '{}/{}'.format(model_name, name))
             print('processing ' + name)
 
-            # Read file from 'test'
+            # Read Scenes from 'test' folder
             reader = trajnettools.Reader(args.data.replace('_pred', '') + dataset, scene_type='paths')
             scenes = [s for s in reader.scenes()]
 
-            # Loading the appropriate model
+            # Loading the APPROPRIATE model
             print("Model Name: ", model_name)
             if model_name == 'kf':
                 print("Kalman")
@@ -69,9 +71,23 @@ def main(args, kf=False, sf=False, orca=False):
                 device = torch.device('cpu')
                 predictor.model.to(device)
 
-            # Write the prediction
+            # Get the model prediction and write them in corresponding file
+            """ 
+            VERY IMPORTANT: Prediction Format
+
+            The predictor function should output a dictionary. The keys of the dictionary should correspond to the prediction modes. 
+            ie. predictions[0] corresponds to the first mode. predictions[m] corresponds to the m^th mode.... Multimodal predictions!
+            Each modal prediction comprises of primary prediction and neighbour prediction i.e. predictions[m] = [primary_prediction, neigh_prediction] 
+            Note: Return [primary_prediction, []] if model does not provide neighbour predictions
+
+
+            Shape of primary_prediction: List of Length = Prediction length. Each element is a TrackRow of the primary pedestrian 
+            Shape of Neighbour_prediction: List of Shape [Num_Neigh, Prediction_Length]. Each element is a TrackRow of the nieghbour pedestrian 
+            (See LSTMPredictor.py for more details)
+            """
             with open(args.data + '{}/{}'.format(model_name, name), "a") as myfile:
                 for scene_id, paths in scenes:
+                    ## For each scene, get predictions
                     if model_name == 'sf_opt':
                         predictions = predictor(paths, sf_params=[0.5, 1.0, 0.1], n_predict=args.pred_length, obs_length=args.obs_length) ## optimal sf_params
                     elif model_name == 'orca_opt':
@@ -89,7 +105,7 @@ def main(args, kf=False, sf=False, orca=False):
                             myfile.write(trajnettools.writers.trajnet(track))
                             myfile.write('\n')
 
-                        ## Write Neighbours
+                        ## Write Neighbours (if non-empty)
                         for n in range(len(neigh_predictions)):
                             neigh = neigh_predictions[n]
                             for j in range(len(neigh)):

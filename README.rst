@@ -11,7 +11,7 @@ All Models after training are stored in OUTPUT_BLOCK: ``mkdir OUTPUT_BLOCK``
 Data Conversion
 ---------------
 
-For data conversion, refer to Trajnetdataset.
+For data conversion, refer to trajnetplusplusdataset.
 
 After conversion, copy the converted dataset to DATA_BLOCK
 

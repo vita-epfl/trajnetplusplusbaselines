@@ -188,18 +188,21 @@ class LSTMPredictor(object):
             xy = drop_distant(xy)
             xy = torch.Tensor(xy)  #.to(self.device)
             multimodal_outputs = {}
+            ## Take 'mode' number of predictions from model
             for num_p in range(modes):
                 _, output_scenes = self.model(xy[:obs_length], n_predict=n_predict)
                 outputs = output_scenes[-n_predict:, 0]
                 output_scenes = output_scenes[-n_predict:]
+                ## Write Primary Prediction as List of TrackRows
                 output_primary = [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id,
                                                         outputs[i, 0], outputs[i, 1], 0)
                                   for i in range(len(outputs))]
-
+                ## Write Neighbour Predictions as List of List of TrackRows. Shape [num_tracks-1, n_predict]
                 output_all = [[trajnettools.TrackRow(first_frame + i * frame_diff, ped_id_[j],
                                                      output_scenes[i, j, 0], output_scenes[i, j, 1], 0)
                                for i in range(len(outputs))]
                               for j in range(1, output_scenes.shape[1])]
-
+                ## Dictionary of predictions. Each key corresponds to one mode
                 multimodal_outputs[num_p] = [output_primary, output_all]
+        ## Return Dictionary of predictions. Each key corresponds to one mode
         return multimodal_outputs
