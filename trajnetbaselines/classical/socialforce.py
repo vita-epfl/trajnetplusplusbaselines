@@ -98,14 +98,8 @@ def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1
         states = np.stack([[[past_path[0].x, past_path[0].y]] for _ in range(pred_length)])
 
     # predictions
-    for i in range(states.shape[1]):
-        ped_id = input_paths[i][0].pedestrian
-        if i == 0:
-            primary_track = [trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
-                             for j, (x, y) in enumerate(states[:, i, 0:2])]
-        else:
-            neighbours_tracks.append([trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
-                                      for j, (x, y) in enumerate(states[:, i, 0:2])])
+    primary_track = states[:, 0, 0:2]
+    neighbours_tracks = states[:, 1:, 0:2]
 
     ## Primary Prediction Only
     if not predict_all:

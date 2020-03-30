@@ -61,11 +61,9 @@ def predict(paths, predict_all=False, n_predict=12, obs_length=9):
 
         #write
         if i == 0:
-            primary_track = [trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
-                             for j, (x, y) in enumerate(predictions[1:])]
+            primary_track = predictions[1:]
         else:
-            neighbours_tracks.append([trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
-                                      for j, (x, y) in enumerate(predictions[1:])])
+            neighbours_tracks.append(predictions[1:])
 
     ## Unimodal Ouput
     multimodal_outputs[0] = primary_track, neighbours_tracks

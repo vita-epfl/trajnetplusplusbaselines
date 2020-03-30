@@ -175,14 +175,6 @@ class LSTMPredictor(object):
 
     def __call__(self, paths, n_predict=12, modes=1, predict_all=True, obs_length=9):
         self.model.eval()
-
-        observed_path = paths[0]
-        ped_id = observed_path[0].pedestrian
-        ped_id_ = []
-        for j, _ in enumerate(paths):
-            ped_id_.append(paths[j][0].pedestrian)
-        frame_diff = observed_path[1].frame - observed_path[0].frame
-        first_frame = observed_path[obs_length-1].frame + frame_diff
         with torch.no_grad():
             xy = trajnettools.Reader.paths_to_xy(paths)
             xy = drop_distant(xy)
@@ -191,18 +183,10 @@ class LSTMPredictor(object):
             ## Take 'mode' number of predictions from model
             for num_p in range(modes):
                 _, output_scenes = self.model(xy[:obs_length], n_predict=n_predict)
-                outputs = output_scenes[-n_predict:, 0]
-                output_scenes = output_scenes[-n_predict:]
-                ## Write Primary Prediction as List of TrackRows
-                output_primary = [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id,
-                                                        outputs[i, 0], outputs[i, 1], 0)
-                                  for i in range(len(outputs))]
-                ## Write Neighbour Predictions as List of List of TrackRows. Shape [num_tracks-1, n_predict]
-                output_all = [[trajnettools.TrackRow(first_frame + i * frame_diff, ped_id_[j],
-                                                     output_scenes[i, j, 0], output_scenes[i, j, 1], 0)
-                               for i in range(len(outputs))]
-                              for j in range(1, output_scenes.shape[1])]
+                output_primary = output_scenes[-n_predict:, 0].numpy()
+                output_neighs = output_scenes[-n_predict:, 1:].numpy()
                 ## Dictionary of predictions. Each key corresponds to one mode
-                multimodal_outputs[num_p] = [output_primary, output_all]
+                multimodal_outputs[num_p] = [output_primary, output_neighs]
+
         ## Return Dictionary of predictions. Each key corresponds to one mode
         return multimodal_outputs

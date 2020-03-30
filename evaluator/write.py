@@ -48,6 +48,7 @@ def main(args, kf=False, sf=False, orca=False):
             scenes = [s for s in reader.scenes()]
 
             # Loading the APPROPRIATE model
+            ## Keep Adding Different Models to this List
             print("Model Name: ", model_name)
             if model_name == 'kf':
                 print("Kalman")
@@ -71,22 +72,31 @@ def main(args, kf=False, sf=False, orca=False):
                 device = torch.device('cpu')
                 predictor.model.to(device)
 
-            # Get the model prediction and write them in corresponding file
+            # Get the model prediction and write them in corresponding test_pred file
             """ 
             VERY IMPORTANT: Prediction Format
 
             The predictor function should output a dictionary. The keys of the dictionary should correspond to the prediction modes. 
             ie. predictions[0] corresponds to the first mode. predictions[m] corresponds to the m^th mode.... Multimodal predictions!
-            Each modal prediction comprises of primary prediction and neighbour prediction i.e. predictions[m] = [primary_prediction, neigh_prediction] 
+            Each modal prediction comprises of primary prediction and neighbour (surrrounding) predictions i.e. predictions[m] = [primary_prediction, neigh_predictions]
             Note: Return [primary_prediction, []] if model does not provide neighbour predictions
 
-
-            Shape of primary_prediction: List of Length = Prediction length. Each element is a TrackRow of the primary pedestrian 
-            Shape of Neighbour_prediction: List of Shape [Num_Neigh, Prediction_Length]. Each element is a TrackRow of the nieghbour pedestrian 
+            Shape of primary_prediction: Tensor of Shape (Prediction length, 2)
+            Shape of Neighbour_prediction: Tensor of Shape (Prediction length, n_tracks - 1, 2).
             (See LSTMPredictor.py for more details)
             """
             with open(args.data + '{}/{}'.format(model_name, name), "a") as myfile:
                 for scene_id, paths in scenes:
+
+                    ## Extract 1) first_frame, 2) frame_diff 3) ped_ids for writing predictions
+                    observed_path = paths[0]
+                    frame_diff = observed_path[1].frame - observed_path[0].frame
+                    first_frame = observed_path[args.obs_length-1].frame + frame_diff
+                    ped_id = observed_path[0].pedestrian
+                    ped_id_ = []
+                    for j, _ in enumerate(paths[1:]): ## Only need neighbour ids
+                        ped_id_.append(paths[j+1][0].pedestrian)
+
                     ## For each scene, get predictions
                     if model_name == 'sf_opt':
                         predictions = predictor(paths, sf_params=[0.5, 1.0, 0.1], n_predict=args.pred_length, obs_length=args.obs_length) ## optimal sf_params
@@ -97,20 +107,20 @@ def main(args, kf=False, sf=False, orca=False):
 
                     for m in range(len(predictions)):
                         prediction, neigh_predictions = predictions[m]
-                        
                         ## Write Primary
                         for i in range(len(prediction)):
-                            track = trajnettools.TrackRow(prediction[i].frame, prediction[i].pedestrian,
-                                                          prediction[i].x.item(), prediction[i].y.item(), m, scene_id)
+                            # print(i)
+                            track = trajnettools.TrackRow(first_frame + i * frame_diff, ped_id,
+                                                          prediction[i, 0].item(), prediction[i, 1].item(), m, scene_id)
                             myfile.write(trajnettools.writers.trajnet(track))
                             myfile.write('\n')
 
                         ## Write Neighbours (if non-empty)
-                        for n in range(len(neigh_predictions)):
-                            neigh = neigh_predictions[n]
+                        for n in range(neigh_predictions.shape[1]):
+                            neigh = neigh_predictions[:, n]
                             for j in range(len(neigh)):
-                                track = trajnettools.TrackRow(neigh[j].frame, neigh[j].pedestrian,
-                                                              neigh[j].x.item(), neigh[j].y.item(), m, scene_id)
+                                track = trajnettools.TrackRow(first_frame + j * frame_diff, ped_id_[n],
+                                                              neigh[j, 0].item(), neigh[j, 1].item(), m, scene_id)
                                 myfile.write(trajnettools.writers.trajnet(track))
                                 myfile.write('\n')
         print('')

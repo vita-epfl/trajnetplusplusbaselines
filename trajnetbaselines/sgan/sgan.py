@@ -412,13 +412,6 @@ class SGANPredictor(object):
         if modes is not None:
             self.model.k = modes
 
-        observed_path = paths[0]
-        ped_id = observed_path[0].pedestrian
-        ped_id_ = []
-        for j, _ in enumerate(paths):
-            ped_id_.append(paths[j][0].pedestrian)
-        frame_diff = observed_path[1].frame - observed_path[0].frame
-        first_frame = observed_path[obs_length-1].frame + frame_diff
         with torch.no_grad():
             xy = trajnettools.Reader.paths_to_xy(paths)
             xy = drop_distant(xy)
@@ -428,16 +421,7 @@ class SGANPredictor(object):
             _, output_scenes_list, _, _ = self.model(xy[:obs_length], n_predict=n_predict)
             for num_p, _ in enumerate(output_scenes_list):
                 output_scenes = output_scenes_list[num_p]
-                outputs = output_scenes[-n_predict:, 0]
-                output_scenes = output_scenes[-n_predict:]
-                output_primary = [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id,
-                                                        outputs[i, 0], outputs[i, 1], 0)
-                                  for i in range(len(outputs))]
-
-                output_all = [[trajnettools.TrackRow(first_frame + i * frame_diff, ped_id_[j],
-                                                     output_scenes[i, j, 0], output_scenes[i, j, 1], 0)
-                               for i in range(len(outputs))]
-                              for j in range(1, output_scenes.shape[1])]
-
-                multimodal_outputs[num_p] = [output_primary, output_all]
+                output_primary = output_scenes[-n_predict:, 0].numpy()
+                output_neighs = output_scenes[-n_predict:, 1:].numpy()
+                multimodal_outputs[num_p] = [output_primary, output_neighs]
         return multimodal_outputs
