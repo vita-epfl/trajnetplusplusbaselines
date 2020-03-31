@@ -123,14 +123,8 @@ def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1
     states = np.array(trajectories).transpose(1, 0, 2)
 
     # predictions
-    for i in range(states.shape[1]):
-        ped_id = input_paths[i][0].pedestrian
-        if i == 0:
-            primary_track = [trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
-                             for j, (x, y) in enumerate(states[:, i, 0:2])]
-        else:
-            neighbours_tracks.append([trajnettools.TrackRow(first_frame + j * frame_diff, ped_id, x, y)
-                                      for j, (x, y) in enumerate(states[:, i, 0:2])])
+    primary_track = states[:, 0, 0:2]
+    neighbours_tracks = states[:, 1:, 0:2]
 
     ## Primary Prediction Only
     if not predict_all:

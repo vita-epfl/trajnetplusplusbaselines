@@ -57,6 +57,17 @@ class Evaluator(object):
             # else:
             #     break
 
+            ## Convert numpy array to Track Rows ##
+            ## Extract 1) first_frame, 2) frame_diff 3) ped_ids for writing predictions
+            observed_path = paths[0]
+            frame_diff = observed_path[1].frame - observed_path[0].frame
+            first_frame = observed_path[self.args.obs_length-1].frame + frame_diff
+            ped_id = observed_path[0].pedestrian
+
+            ## make Track Rows
+            prediction = [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id, prediction[i, 0], prediction[i, 1], 0)
+                          for i in range(len(prediction))]
+
             average_l2 = trajnettools.metrics.average_l2(paths[0], prediction)
             final_l2 = trajnettools.metrics.final_l2(paths[0], prediction)
 
