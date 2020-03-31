@@ -7,17 +7,17 @@ import os
 import argparse
 import torch
 
-def main(args, kf=False, sf=False, orca=False):
+def main(args):
     ## List of test files (.json) inside the test folder (waiting to be predicted by the prediction model)
     datasets = sorted([f for f in os.listdir(args.data.replace('_pred', '')) if not f.startswith('.') and f.endswith('.ndjson')])
 
     ## Handcrafted Baselines (if required to compare)
-    if kf:
+    if args.kf:
         args.output.append('/kf.pkl')
-    if sf:
+    if args.sf:
         args.output.append('/sf.pkl')
         args.output.append('/sf_opt.pkl')
-    if orca:
+    if args.orca:
         args.output.append('/orca.pkl')
         args.output.append('/orca_opt.pkl')
 

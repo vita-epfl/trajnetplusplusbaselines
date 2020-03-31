@@ -79,6 +79,17 @@ def main():
                 ## Considers only the First MODE
                 prediction, neigh_predictions = predictions[0]
 
+                ## Convert numpy array to Track Rows ##
+                ## Extract 1) first_frame, 2) frame_diff 3) ped_ids for writing predictions
+                observed_path = paths[0]
+                frame_diff = observed_path[1].frame - observed_path[0].frame
+                first_frame = observed_path[args.obs_length-1].frame + frame_diff
+                ped_id = observed_path[0].pedestrian
+
+                ## make Track Rows
+                prediction = [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id, prediction[i, 0], prediction[i, 1], 0)
+                              for i in range(len(prediction))]
+
                 primary_tracks = [t for t in prediction if t.prediction_number == 0]
                 # frame_gt = [t.frame for t in ground_truth[0]][-args.pred_length:]
                 frame_gt = [t.frame for t in ground_truth[0]][args.obs_length:args.obs_length+args.pred_length]
@@ -95,14 +106,15 @@ def main():
                 average += average_l2
                 final += final_l2
 
-                if len(predictions) > 2:
-                    # print(predictions)
-                    primary_tracks_all = [t for mode in predictions for t in predictions[mode][0]]
-                    # import pdb
-                    # pdb.set_trace()
-                    topk_ade, topk_fde = trajnettools.metrics.topk(primary_tracks_all, ground_truth[0][args.obs_length:args.obs_length+args.pred_length], n_predictions=args.pred_length)
-                    topk_average += topk_ade
-                    topk_final += topk_fde
+                ## TODO
+                # if len(predictions) > 2:
+                #     # print(predictions)
+                #     primary_tracks_all = [t for mode in predictions for t in predictions[mode][0]]
+                #     # import pdb
+                #     # pdb.set_trace()
+                #     topk_ade, topk_fde = trajnettools.metrics.topk(primary_tracks_all, ground_truth[0][args.obs_length:args.obs_length+args.pred_length], n_predictions=args.pred_length)
+                #     topk_average += topk_ade
+                #     topk_final += topk_fde
 
         ## Average ADE and FDE
         average /= total_scenes
@@ -112,13 +124,14 @@ def main():
         print('ADE: ', average)
         print('FDE: ', final)
 
-        if len(predictions) > 2:
-            topk_average /= total_scenes
-            topk_final /= total_scenes            
+        ## TODO
+        # if len(predictions) > 2:
+        #     topk_average /= total_scenes
+        #     topk_final /= total_scenes            
 
-            # ##Adding value to dict    
-            print('Topk_ADE: ', topk_average)
-            print('Topk_FDE: ', topk_final)
+        #     # ##Adding value to dict    
+        #     print('Topk_ADE: ', topk_average)
+        #     print('Topk_FDE: ', topk_final)
 
  
 if __name__ == '__main__':

@@ -336,7 +336,7 @@ def main():
     ## Writes to Test_pred
     ### Does this overwrite existing predictions? No. ###
     if not args.disable_write:
-        write.main(args, kf=args.kf, sf=args.sf, orca=args.orca)
+        write.main(args)
 
     ## Evaluates test_pred with test_private
     names = []
