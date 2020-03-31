@@ -1,3 +1,7 @@
+Link to the Challenge: `Trajnet++Challenge <https://www.aicrowd.com/challenges/trajnet-a-trajectory-forecasting-challenge>`_
+
+Starter Guide (NEW): `IntroducingTrajnet++Framework <https://thedebugger811.github.io/posts/2020/03/intro_trajnetpp/>`_
+
 Data Setup
 ==========
 
