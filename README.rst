@@ -1,7 +1,4 @@
-Trajnet++ Challenge: Trajnet++Challenge_.
-
-.. _Trajnet++Challenge: https://www.aicrowd.com/challenges/trajnet-a-trajectory-forecasting-challenge
-
+Link to the Challenge: `Trajnet++Challenge <https://www.aicrowd.com/challenges/trajnet-a-trajectory-forecasting-challenge>`_
 
 Starter Guide (NEW): IntroducingTrajnet++Framework_.
 
