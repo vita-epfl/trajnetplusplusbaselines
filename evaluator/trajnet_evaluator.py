@@ -4,6 +4,7 @@ import argparse
 
 import pickle
 from joblib import Parallel, delayed
+import scipy
 
 import trajnetplusplustools
 import evaluator.write as write
@@ -328,6 +329,8 @@ def main():
     parser.add_argument('--goal_path', default=None,
                         help='Path to the goal (.pkl file)')
     args = parser.parse_args()
+
+    scipy.seterr('ignore')
 
     ## Path to the data folder name to predict
     args.path = 'DATA_BLOCK/' + args.path + '/'

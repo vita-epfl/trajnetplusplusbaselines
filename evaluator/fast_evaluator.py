@@ -6,6 +6,7 @@ import argparse
 import pickle
 
 import numpy as np
+import scipy
 import torch
 
 import trajnetplusplustools
@@ -47,6 +48,8 @@ def main():
     parser.add_argument('--multimodal', action='store_true',
                         help='provide multimodal nll evaluation')
     args = parser.parse_args()
+
+    scipy.seterr('ignore')
 
     ## Path to the data folder name to predict
     args.path = 'DATA_BLOCK/' + args.path + '/'
