@@ -1,14 +1,15 @@
 import numpy as np
 from scipy.interpolate import interp1d
 
-import trajnettools
+import trajnetplusplustools
 
 import socialforce
 from socialforce.potentials import PedPedPotential
 from socialforce.fieldofview import FieldOfView
 
 def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1, 0.3],
-            predict_all=False, n_predict=12, obs_length=9):
+            predict_all=True, n_predict=12, obs_length=9):
+    
     pred_length = n_predict
 
     def init_states(input_paths, start_frame, dest_dict, dest_type):
@@ -83,7 +84,7 @@ def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1
     fps = 20
     sampling_rate = int(fps / 2.5)
 
-    if len(initial_state) == 0:
+    if len(initial_state) != 0:
         # run  
         ped_ped = PedPedPotential(1./fps, v0=sf_params[1], sigma=sf_params[2])
         field_of_view = FieldOfView()

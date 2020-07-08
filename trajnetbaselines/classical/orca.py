@@ -3,13 +3,12 @@ from scipy.interpolate import interp1d
 
 import rvo2
 
-import trajnettools
-
+import trajnetplusplustools
 
 MAX_SPEED_MULTIPLIER = 1.3 # with respect to initial speed
 
 def predict(input_paths, dest_dict=None, dest_type='interp', orca_params=[1.5, 1.5, 0.4],
-            predict_all=False, n_predict=12, obs_length=9):
+            predict_all=True, n_predict=12, obs_length=9):
     pred_length = n_predict
 
     def init_states(input_paths, sim, start_frame, dest_dict, dest_type):

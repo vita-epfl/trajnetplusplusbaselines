@@ -3,9 +3,9 @@ import argparse
 
 import pickle
 
-import trajnettools
-from trajnettools import show
-from trajnettools.interactions import collision_avoidance
+import trajnetplusplustools
+from trajnetplusplustools import show
+from trajnetplusplustools.interactions import collision_avoidance
 
 from . import kalman
 from . import socialforce
@@ -34,7 +34,7 @@ class Evaluator(object):
 
         for _, paths in enumerate(self.scenes):
             ## select only those trajectories which interactions ##
-            # rows = trajnettools.Reader.paths_to_xy(paths)
+            # rows = trajnetplusplustools.Reader.paths_to_xy(paths)
             # neigh_paths = paths[1:]
             # interaction_index = collision_avoidance(rows)
             # neigh = list(compress(neigh_paths, interaction_index))
@@ -65,11 +65,11 @@ class Evaluator(object):
             ped_id = observed_path[0].pedestrian
 
             ## make Track Rows
-            prediction = [trajnettools.TrackRow(first_frame + i * frame_diff, ped_id, prediction[i, 0], prediction[i, 1], 0)
+            prediction = [trajnetplusplustools.TrackRow(first_frame + i * frame_diff, ped_id, prediction[i, 0], prediction[i, 1], 0)
                           for i in range(len(prediction))]
 
-            average_l2 = trajnettools.metrics.average_l2(paths[0], prediction)
-            final_l2 = trajnettools.metrics.final_l2(paths[0], prediction)
+            average_l2 = trajnetplusplustools.metrics.average_l2(paths[0], prediction)
+            final_l2 = trajnetplusplustools.metrics.final_l2(paths[0], prediction)
 
             # aggregate
             average += average_l2
@@ -90,7 +90,7 @@ class Evaluator(object):
 def eval(input_file, dest_file, simulator, params, type_ids, args):
     print('dataset', input_file)
 
-    reader = trajnettools.Reader(input_file, scene_type='paths')
+    reader = trajnetplusplustools.Reader(input_file, scene_type='paths')
     scenes = [s for _, s in reader.scenes()]
 
     ## Filter scenes according to category type

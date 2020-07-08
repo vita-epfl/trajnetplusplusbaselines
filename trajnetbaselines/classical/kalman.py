@@ -1,9 +1,9 @@
 import numpy as np
 import pykalman
-import trajnettools
+import trajnetplusplustools
 
 
-def predict(paths, predict_all=False, n_predict=12, obs_length=9):
+def predict(paths, predict_all=True, n_predict=12, obs_length=9, args=None):
     multimodal_outputs = {}
     neighbours_tracks = []
 
@@ -63,8 +63,12 @@ def predict(paths, predict_all=False, n_predict=12, obs_length=9):
         if i == 0:
             primary_track = predictions[1:]
         else:
-            neighbours_tracks.append(predictions[1:])
+            neighbours_tracks.append(np.array(predictions[1:]))
 
     ## Unimodal Ouput
+    neighbours_tracks = []
+    if len(np.array(neighbours_tracks)):
+        neighbours_tracks = np.array(neighbours_tracks).transpose(1, 0, 2)
+
     multimodal_outputs[0] = primary_track, neighbours_tracks
     return multimodal_outputs
