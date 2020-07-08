@@ -26,10 +26,11 @@ setup(
         'python-json-logger',
         'scipy',
         'torch',
-        'trajnettools',
+        'trajnetplusplustools',
         'pysparkling',
         'joblib',
         'pandas',
+        'matplotlib',
     ],
     extras_require={
         'test': [

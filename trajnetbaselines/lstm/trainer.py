@@ -316,7 +316,7 @@ def main(epochs=50):
                                  help='interaction module layer dims for gridbased pooling')
     hyperparameters.add_argument('--pool_dim', type=int, default=256,
                                  help='pooling dimension')
-    hyperparameters.add_argument('--embedding_arch', default='twoLayer',
+    hyperparameters.add_argument('--embedding_arch', default='two_layer',
                                  help='interaction arch')
     hyperparameters.add_argument('--goal_dim', type=int, default=64,
                                  help='goal dimension')
