@@ -6,13 +6,13 @@ python -m trajnetbaselines.lstm.profile_train
 
 import torch
 import trajnetbaselines.lstm.trainer
-import trajnettools
+import trajnetplusplustools
 
 
 def main():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-    scenes = list(trajnettools.Reader('data/train/biwi_hotel.ndjson').scenes(limit=1))
+    scenes = list(trajnetplusplustools.Reader('data/train/biwi_hotel.ndjson').scenes(limit=1))
 
     pool = trajnetbaselines.lstm.Pooling(type_='social')
     model = trajnetbaselines.lstm.LSTM(pool=pool)

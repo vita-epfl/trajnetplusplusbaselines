@@ -18,7 +18,7 @@ class PredictionLoss(torch.nn.Module):
     def gaussian_2d(mu1mu2s1s2rho, x1x2):
         """This supports backward().
 
-        Insprired by
+        Inspired by
         https://github.com/naba89/RNN-Handwriting-Generation-Pytorch/blob/master/loss_functions.py
         """
 
@@ -43,7 +43,9 @@ class PredictionLoss(torch.nn.Module):
 
         return numerator / denominator
 
-    def forward(self, inputs, targets):
+    def forward(self, inputs, targets, nan_list=None):
+        inputs = inputs[:, 0].clone()
+        targets = targets[:, 0].clone()
         inputs_bg = inputs.clone()
         inputs_bg[:, 2] = 3.0  # sigma_x
         inputs_bg[:, 3] = 3.0  # sigma_y
@@ -62,14 +64,36 @@ class PredictionLoss(torch.nn.Module):
 
 
 class L2Loss(torch.nn.Module):
-    """Pytorch L2 Loss between Mean of predicted gaussians and targets
+    """L2 Loss (deterministic version of PredictionLoss)
+
+    This Loss penalizes only the primary trajectories
     """
-    def __init__(self):
+    def __init__(self, pos_weight=1):
         super(L2Loss, self).__init__()
         self.loss = torch.nn.MSELoss()
+        self.pos_weight = pos_weight
 
-    def forward(self, inputs, targets):
-        return self.loss(inputs[:, :2], targets)
+    def forward(self, inputs, targets, nan_list=None):
+        loss = self.loss(inputs[:, 0, :2], targets[:, 0])
+        return loss
+
+
+class L2Loss_ALL(torch.nn.Module):
+    """L2 Loss (deterministic version of PredictionLoss)
+
+    This Loss penalizes all the predicted trajectories
+    """
+    def __init__(self):
+        super(L2Loss_ALL, self).__init__()
+        self.loss = torch.nn.MSELoss()
+
+    def forward(self, inputs, targets, nan_list):
+        inputs = inputs[:, :, :2]
+        targets = targets.reshape(-1)
+        inputs = inputs.reshape(-1)
+        targets = targets[~nan_list]
+        inputs = inputs[~nan_list]
+        return self.loss(inputs, targets)
 
 def bce_loss(input_, target):
     """
@@ -88,7 +112,6 @@ def bce_loss(input_, target):
     neg_abs = -input_.abs()
     loss = input_.clamp(min=0) - input_ * target + (1 + neg_abs.exp()).log()
     return loss.mean()
-
 
 def gan_g_loss(scores_fake):
     """
@@ -119,12 +142,14 @@ def gan_d_loss(scores_real, scores_fake):
 
 
 def variety_loss(inputs, target, pred_length=12):
-    """Variety Loss acc to SGAN
+    """Variety Loss defined according to Social GAN
+
+    Variety loss calculated over the multiple primary trajectory predictions
     """
     criterion = torch.nn.MSELoss()
     min_loss_value = 1e10
     for sample in inputs:
-        tmp_loss = criterion(sample[-pred_length:, 0, :2], target) * 100
+        tmp_loss = criterion(sample[-pred_length:, 0, :2], target[:, 0]) * 100
         if tmp_loss.detach() < min_loss_value:
             loss = tmp_loss
             min_loss_value = tmp_loss.detach()
