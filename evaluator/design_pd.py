@@ -83,7 +83,7 @@ class Table(object):
                 overall[keys][6] /= overall[keys][0]
                 overall[keys][7] /= overall[keys][0]
                 overall[keys][8] /= overall[keys][0]
-                final_results += [int(overall[keys][0]), overall[keys][1], overall[keys][2], overall[keys][3], overall[keys][4],
+                final_results += [int(overall[keys][0]), overall[keys][1], overall[keys][2], overall[keys][4], overall[keys][3],
                                   overall[keys][6], overall[keys][7], overall[keys][8]]
             else:
                 final_results += [0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -100,7 +100,7 @@ class Table(object):
                 sub_overall[keys][6] /= sub_overall[keys][0]
                 sub_overall[keys][7] /= sub_overall[keys][0]
                 sub_overall[keys][8] /= sub_overall[keys][0]
-                sub_final_results += [int(sub_overall[keys][0]), sub_overall[keys][1], sub_overall[keys][2], sub_overall[keys][3], sub_overall[keys][4], 
+                sub_final_results += [int(sub_overall[keys][0]), sub_overall[keys][1], sub_overall[keys][2], sub_overall[keys][4], sub_overall[keys][3], 
                                       sub_overall[keys][6], sub_overall[keys][7], sub_overall[keys][8]]
             else:
                 sub_final_results += [0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

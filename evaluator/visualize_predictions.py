@@ -1,6 +1,6 @@
 import argparse
-from trajnettools.reader import Reader
-from trajnettools import show
+from trajnetplusplustools.reader import Reader
+from trajnetplusplustools import show
 
 
 def main():
@@ -15,6 +15,8 @@ def main():
                         help='specify output prefix')
     parser.add_argument('--random', default=True, action='store_true',
                         help='randomize scenes')
+    parser.add_argument('--labels', required=False, nargs='+',
+                        help='labels of models')
     args = parser.parse_args()
 
     ## TODO Configure Writing images
@@ -32,24 +34,30 @@ def main():
 
     ## Reader Predictions 
     reader_list = {}
-    for dataset_file in args.dataset_files[1:]:
+    label_dict = {}
+    for i, dataset_file in enumerate(args.dataset_files[1:]):
         name = dataset_file.split('/')[-2]
+        label_dict[name] = args.labels[i] if args.labels else name
         reader_list[name] = Reader(dataset_file, scene_type='paths')
 
     ## Visualize
     pred_paths = {}
+    pred_neigh_paths = {}
     for scene_id, paths in scenes:
+        print("Scene ID: ", scene_id)
         for dataset_file in args.dataset_files[1:]:
             name = dataset_file.split('/')[-2]
             scenes_pred = reader_list[name].scenes(ids=[scene_id])
             for scene_id, preds in scenes_pred:
-                primary = preds[0]
-                primary_path = [t for t in primary if t.scene_id == scene_id]
-            pred_paths[name] = primary_path
+                predicted_paths = [[t for t in pred if t.scene_id == scene_id] for pred in preds]
+            pred_paths[label_dict[name]] = predicted_paths[0]
+            pred_neigh_paths[label_dict[name]] = predicted_paths[1:]
         ##TODO
         # output = '{}.scene{}.png'.format(args.output, scene_id)
         with show.predicted_paths(paths, pred_paths):
             pass
+        # with show.predicted_paths(paths, pred_paths, pred_neigh_paths):
+        #     pass
 
 if __name__ == '__main__':
     main()

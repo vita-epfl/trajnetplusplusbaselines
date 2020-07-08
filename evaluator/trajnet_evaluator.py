@@ -1,22 +1,18 @@
-import shutil
 import os
-import warnings
 from collections import OrderedDict
 import argparse
 
-import pickle 
+import pickle
 from joblib import Parallel, delayed
-import numpy
 
-import trajnettools
+import trajnetplusplustools
 import evaluator.write as write
 from evaluator.design_pd import Table
-from scipy.stats import gaussian_kde
 
 class TrajnetEvaluator:
     def __init__(self, reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, args):
         self.reader_gt = reader_gt
-        
+
         ##Ground Truth
         self.scenes_gt = scenes_gt
         self.scenes_id_gt = scenes_id_gt
@@ -48,7 +44,7 @@ class TrajnetEvaluator:
         self.overall_nll = {'N': len(scenes_gt)}
         self.topk_ade = {'N': len(scenes_gt)}
         self.topk_fde = {'N': len(scenes_gt)}
-        
+
         num_predictions = 0
         for track in self.scenes_sub[0][0]:
             if track.prediction_number and track.prediction_number > num_predictions:
@@ -71,13 +67,13 @@ class TrajnetEvaluator:
         ## Aggregates ADE, FDE and Collision in GT & Pred, Topk ADE-FDE , NLL for each category & sub_category
         score = {1: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 2: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], \
                  3: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 4: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0]}
-        sub_score =  {1: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 2: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], \
-                      3: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 4: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0]}
+        sub_score = {1: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 2: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], \
+                     3: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0], 4: [0.0, 0.0, 0, 0, 0, 0.0, 0.0, 0.0]}
 
         ## Iterate
         for i in range(len(self.scenes_gt)):
             ground_truth = self.scenes_gt[i]
-            
+
             ## Get Keys and Sub_keys
             keys = []
             sub_keys = []
@@ -106,17 +102,19 @@ class TrajnetEvaluator:
 
             ## To verify if same scene
             if frame_gt != frame_pred:
+                print("Frame id Groud truth: ", frame_gt)
+                print("Frame id Predictions: ", frame_pred)
                 raise Exception('frame numbers are not consistent')
 
-            average_l2 = trajnettools.metrics.average_l2(ground_truth[0], primary_tracks, n_predictions=self.pred_length)
-            final_l2 = trajnettools.metrics.final_l2(ground_truth[0], primary_tracks)
+            average_l2 = trajnetplusplustools.metrics.average_l2(ground_truth[0], primary_tracks, n_predictions=self.pred_length)
+            final_l2 = trajnetplusplustools.metrics.final_l2(ground_truth[0], primary_tracks)
 
             if not disable_collision:
-               
+
                 ## Collisions in GT
                 # person_radius=0.1
                 for j in range(1, len(ground_truth)):
-                    if trajnettools.metrics.collision(primary_tracks, ground_truth[j], n_predictions=self.pred_length):
+                    if trajnetplusplustools.metrics.collision(primary_tracks, ground_truth[j], n_predictions=self.pred_length):
                         for key in keys:
                             score[key][2] += 1
                         ## Sub
@@ -125,22 +123,22 @@ class TrajnetEvaluator:
                         break
 
 
-                ## Collision in Predictions 
+                ## Collision in Predictions
                 flat_neigh_list = [item for sublist in neighbours_tracks for item in sublist]
-                if len(flat_neigh_list): 
+                if len(flat_neigh_list):
                     for key in keys:
                         score[key][4] += 1
                         for j in range(len(neighbours_tracks)):
-                            if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j], n_predictions=self.pred_length):
+                            if trajnetplusplustools.metrics.collision(primary_tracks, neighbours_tracks[j], n_predictions=self.pred_length):
                                 score[key][3] += 1
                                 break
                     ## Sub
                     for sub_key in sub_keys:
                         sub_score[sub_key][4] += 1
                         for j in range(len(neighbours_tracks)):
-                            if trajnettools.metrics.collision(primary_tracks, neighbours_tracks[j], n_predictions=self.pred_length):
+                            if trajnetplusplustools.metrics.collision(primary_tracks, neighbours_tracks[j], n_predictions=self.pred_length):
                                 sub_score[sub_key][3] += 1
-                                break  
+                                break
 
 
             # aggregate FDE and ADE
@@ -149,19 +147,19 @@ class TrajnetEvaluator:
 
             for key in keys:
                 score[key][0] += average_l2
-                score[key][1] += final_l2     
+                score[key][1] += final_l2
 
             ## Sub
             for sub_key in sub_keys:
                 sub_score[sub_key][0] += average_l2
-                sub_score[sub_key][1] += final_l2  
+                sub_score[sub_key][1] += final_l2
 
 ##### --------------------------------------------------- SINGLE -------------------------------------------- ####
 
 ##### --------------------------------------------------- Top 3 -------------------------------------------- ####
 
             if self.num_predictions > 1:
-                topk_ade, topk_fde = trajnettools.metrics.topk(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length)
+                topk_ade, topk_fde = trajnetplusplustools.metrics.topk(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length)
 
                 average_topk_ade += topk_ade
                 ##Key
@@ -183,7 +181,7 @@ class TrajnetEvaluator:
 
 ##### --------------------------------------------------- NLL -------------------------------------------- ####
             if self.num_predictions > 18:
-                nll = trajnettools.metrics.nll(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length, n_samples=20)
+                nll = trajnetplusplustools.metrics.nll(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length, n_samples=20)
 
                 average_nll += nll
                 ##Key
@@ -218,7 +216,7 @@ class TrajnetEvaluator:
         for sub_key in list(sub_score.keys()):
             if self.sub_indexes[sub_key]:
                 sub_score[sub_key][0] /= len(self.sub_indexes[sub_key])
-                sub_score[sub_key][1] /= len(self.sub_indexes[sub_key]) 
+                sub_score[sub_key][1] /= len(self.sub_indexes[sub_key])
 
                 sub_score[sub_key][5] /= len(self.sub_indexes[sub_key])
                 sub_score[sub_key][6] /= len(self.sub_indexes[sub_key])
@@ -256,13 +254,13 @@ class TrajnetEvaluator:
 
 def collision_test(list_sub, name, args):
     """ Simple Collision Test """
-    submit_datasets = [args.data + name + '/' + f for f in list_sub if 'collision_test.ndjson' in f]
+    submit_datasets = [args.path + name + '/' + f for f in list_sub if 'collision_test.ndjson' in f]
     if len(submit_datasets):
         # Scene Prediction
-        reader_sub = trajnettools.Reader(submit_datasets[0], scene_type='paths')
+        reader_sub = trajnetplusplustools.Reader(submit_datasets[0], scene_type='paths')
         scenes_sub = [s for _, s in reader_sub.scenes()]
 
-        if trajnettools.metrics.collision(scenes_sub[0][0], scenes_sub[0][1], n_predictions=args.pred_length):
+        if trajnetplusplustools.metrics.collision(scenes_sub[0][0], scenes_sub[0][1], n_predictions=args.pred_length):
             return "Fail"
         return "Pass"
 
@@ -270,21 +268,21 @@ def collision_test(list_sub, name, args):
 
 def eval(gt, input_file, args):
     # Ground Truth
-    reader_gt = trajnettools.Reader(gt, scene_type='paths')
+    reader_gt = trajnetplusplustools.Reader(gt, scene_type='paths')
     scenes_gt = [s for _, s in reader_gt.scenes()]
     scenes_id_gt = [s_id for s_id, _ in reader_gt.scenes()]
 
     # Scene Predictions
-    reader_sub = trajnettools.Reader(input_file, scene_type='paths')
+    reader_sub = trajnetplusplustools.Reader(input_file, scene_type='paths')
     scenes_sub = [s for _, s in reader_sub.scenes()]
 
     ## indexes is dictionary deciding which scenes are in which type
     indexes = {}
-    for i in range(1,5):
+    for i in range(1, 5):
         indexes[i] = []
     ## sub-indexes
     sub_indexes = {}
-    for i in range(1,5):
+    for i in range(1, 5):
         sub_indexes[i] = []
     for scene in reader_gt.scenes_by_id:
         tags = reader_gt.scenes_by_id[scene].tag
@@ -305,8 +303,8 @@ def eval(gt, input_file, args):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data', default='trajdata',
-                        help='directory of data to test')    
+    parser.add_argument('--path', default='trajdata',
+                        help='directory of data to test')
     parser.add_argument('--output', required=True, nargs='+',
                         help='relative path to saved model')
     parser.add_argument('--obs_length', default=9, type=int,
@@ -325,13 +323,17 @@ def main():
                         help='consider orca in evaluation')
     parser.add_argument('--kf', action='store_true',
                         help='consider kalman in evaluation')
+    parser.add_argument('--normalize_scene', action='store_true',
+                        help='augment scenes')
+    parser.add_argument('--goal_path', default=None,
+                        help='Path to the goal (.pkl file)')
     args = parser.parse_args()
 
-    ## Path to the data folder name to predict 
-    args.data = 'DATA_BLOCK/' + args.data + '/'
+    ## Path to the data folder name to predict
+    args.path = 'DATA_BLOCK/' + args.path + '/'
 
     ## Test_pred : Folders for saving model predictions
-    args.data = args.data + 'test_pred/'
+    args.path = args.path + 'test_pred/'
 
     ## Writes to Test_pred
     ### Does this overwrite existing predictions? No. ###
@@ -355,7 +357,7 @@ def main():
     for num, name in enumerate(names):
         print(name)
 
-        result_file = args.data.replace('pred', 'results') + name
+        result_file = args.path.replace('pred', 'results') + name
 
         ## If result was pre-calculated and saved, Load
         if os.path.exists(result_file + '/results.pkl'):
@@ -367,38 +369,37 @@ def main():
 
         # ## Else, Calculate results and save
         else:
-            list_sub = sorted([f for f in os.listdir(args.data + name)
+            list_sub = sorted([f for f in os.listdir(args.path + name)
                                if not f.startswith('.')])
 
             ## Simple Collision Test
             col_result = collision_test(list_sub, name, args)
             table.add_collision_entry(labels[num], col_result)
 
-            submit_datasets = [args.data + name + '/' + f for f in list_sub if 'collision_test.ndjson' not in f]
-            true_datasets = [args.data.replace('pred', 'private') + f for f in list_sub if 'collision_test.ndjson' not in f]
+            submit_datasets = [args.path + name + '/' + f for f in list_sub if 'collision_test.ndjson' not in f]
+            true_datasets = [args.path.replace('pred', 'private') + f for f in list_sub if 'collision_test.ndjson' not in f]
 
             ## Evaluate submitted datasets with True Datasets [The main eval function]
-            # results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
+            # results = {submit_datasets[i].replace(args.path, '').replace('.ndjson', ''):
             #             eval(true_datasets[i], submit_datasets[i], args)
             #            for i in range(len(true_datasets))}
 
             results_list = Parallel(n_jobs=4)(delayed(eval)(true_datasets[i], submit_datasets[i], args)
                                                             for i in range(len(true_datasets)))
-            results = {submit_datasets[i].replace(args.data, '').replace('.ndjson', ''):
-                       results_list[i] for i in range(len(true_datasets))}
+            results = {submit_datasets[i].replace(args.path, '').replace('.ndjson', ''): results_list[i] 
+                       for i in range(len(true_datasets))}
 
             # print(results)
-            ## Generate results 
+            ## Generate results
             final_result, sub_final_result = table.add_entry(labels[num], results)
 
-            ## Save results as pkl (to avoid computation again) 
+            ## Save results as pkl (to avoid computation again)
             os.makedirs(result_file)
             with open(result_file + '/results.pkl', 'wb') as handle:
                 pickle.dump([final_result, sub_final_result, col_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    ## Make Result Table 
+    ## Make Result Table
     table.print_table()
- 
+
 if __name__ == '__main__':
     main()
-
