@@ -1,6 +1,6 @@
-Link to the Challenge: `Trajnet++Challenge <https://www.aicrowd.com/challenges/trajnet-a-trajectory-forecasting-challenge>`_
+Link to the Challenge: `Trajnet++ Challenge <https://www.aicrowd.com/challenges/trajnet-a-trajectory-forecasting-challenge>`_
 
-Starter Guide (NEW): `IntroducingTrajnet++Framework <https://thedebugger811.github.io/posts/2020/03/intro_trajnetpp/>`_
+Starter Guide (NEW): `Introducing Trajnet++ Framework <https://thedebugger811.github.io/posts/2020/03/intro_trajnetpp/>`_
 
 Data Setup
 ==========
@@ -39,3 +39,17 @@ The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator
 Evaluation on datasplits is based on the following categorization:
 
 .. image:: docs/train/Categorize.png
+
+Citation
+========
+
+If you find this code useful in your research then please cite
+
+.. code-block::
+
+    @inproceedings{Kothari2020HumanTF,
+      title={Human Trajectory Forecasting in Crowds: A Deep Learning Perspective},
+      author={Parth Kothari and Sven Kreiss and Alexandre Alahi},
+      year={2020}
+    }
+
