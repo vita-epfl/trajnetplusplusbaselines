@@ -12,7 +12,7 @@ The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator
 
 3. Once the predictions are written in 'test_pred', our trajnet_evaluator compares the model predictions in 'test_pred' with groundtruth predictions in 'test_private' providing a complete table of evaluation metrics as Results.png.
 
-Eg: ``python -m evaluator.trajnet_evaluator --data trajdata --output OUTPUT_BLOCK/trajdata/occupancy.pkl``
+Eg: ``python -m evaluator.trajnet_evaluator --path trajdata --output OUTPUT_BLOCK/trajdata/occupancy.pkl``
 
 
 Description of the FAST evaluation procedure (outputs only ADE/FDE metrics):
@@ -22,4 +22,4 @@ The evaluation script and its help menu: ``python -m evaluator.fast_evaluator --
 
 1.  This procedure does not generate a test_pred file. It quickly provides only the ADE/FDE metric in the terminal. 
 
-Eg: ``python -m evaluator.fast_evaluator --data trajdata --output OUTPUT_BLOCK/trajdata/occupancy.pkl``
+Eg: ``python -m evaluator.fast_evaluator --path trajdata --output OUTPUT_BLOCK/trajdata/occupancy.pkl --unimodal``
