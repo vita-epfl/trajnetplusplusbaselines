@@ -453,17 +453,16 @@ class SGANPredictor(object):
     def __call__(self, paths, scene_goal, n_predict=12, modes=1, predict_all=True, obs_length=9, start_length=0, args=None):
         self.model.eval()
         self.model.use_d = False
-        modes = 20 #(Trajnet Eval)
+        modes = 50 #(Trajnet Eval)
         if modes is not None:
             self.model.k = modes
 
         with torch.no_grad():
             xy = trajnetplusplustools.Reader.paths_to_xy(paths)
 
-            ## Drop Distant
-            ## REAL
-            xy, mask = drop_distant(xy, r=6.0)
-            scene_goal = scene_goal[mask]
+            ## Drop Distant (for real data)
+            # xy, mask = drop_distant(xy, r=15.0)
+            # scene_goal = scene_goal[mask]
 
             if args.normalize_scene:
                 xy, rotation, center, scene_goal = center_scene(xy, obs_length, goals=scene_goal)

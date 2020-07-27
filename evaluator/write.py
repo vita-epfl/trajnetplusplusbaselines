@@ -20,6 +20,7 @@ def main(args=None):
     ## List of .json file inside the args.path (waiting to be predicted by the testing model)
     datasets = sorted([f.split('.')[-2] for f in os.listdir(args.path.replace('_pred', '')) if not f.startswith('.') and f.endswith('.ndjson')])
     all_goals = {}
+    seq_length = args.obs_length + args.pred_length
 
     ## Handcrafted Baselines (if included)
     if args.kf:
@@ -49,9 +50,6 @@ def main(args=None):
             # Model's name
             name = dataset.replace(args.path.replace('_pred', '') + 'test/', '') + '.ndjson'
             print('NAME: ', name)
-            # Copy observations from test folder into test_pred folder
-            shutil.copyfile(args.path.replace('_pred', '') + name, args.path + '{}/{}'.format(model_name, name))
-            print('processing ' + name)
 
             # Read Scenes from 'test' folder
             reader = trajnetplusplustools.Reader(args.path.replace('_pred', '') + dataset + '.ndjson', scene_type='paths')
@@ -118,6 +116,12 @@ def main(args=None):
                     else:
                         goals = get_goals(paths, all_goals, filename, scene_id) ## Zeros if no goals utilized
                         predictions = predictor(paths, goals, n_predict=args.pred_length, obs_length=args.obs_length, args=args)
+
+                    ## Write SceneRow
+                    scenerow = trajnetplusplustools.SceneRow(scene_id, ped_id, observed_path[0].frame, 
+                                                             observed_path[0].frame + seq_length - 1, 2.5, 0)
+                    myfile.write(trajnetplusplustools.writers.trajnet(scenerow))
+                    myfile.write('\n')
 
                     for m in range(len(predictions)):
                         prediction, neigh_predictions = predictions[m]
