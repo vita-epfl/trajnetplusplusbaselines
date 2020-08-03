@@ -35,6 +35,7 @@ Evaluation
 ==========
 
 The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator --help``
+
 More details regarding TrajNet++ evaluator are provided `here <https://github.com/vita-epfl/trajnetplusplusbaselines/blob/master/evaluator/README.rst>`_
 
 Evaluation on datasplits is based on the following categorization:
