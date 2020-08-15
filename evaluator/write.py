@@ -43,6 +43,8 @@ def main(args=None):
         if not os.path.exists(args.path + model_name):
             os.makedirs(args.path + model_name)
         else:
+            print('Predictions corresponding to {} already exist.'.format(model_name))
+            print('Loading the saved predictions')
             continue
 
         ## Start writing predictions in dataset/test_pred

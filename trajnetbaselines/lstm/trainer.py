@@ -122,11 +122,11 @@ class Trainer(object):
             epoch_loss += loss
             total_time = time.time() - scene_start
 
-            if scene_i % self.batch_size == 0:
+            if (scene_i + 1) % self.batch_size == 0:
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
-            if scene_i % 10 == 0:
+            if (scene_i + 1) % 10 == 0:
                 self.log.info({
                     'type': 'train',
                     'epoch': epoch, 'batch': scene_i, 'n_batches': len(scenes),
