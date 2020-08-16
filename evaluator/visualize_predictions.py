@@ -52,9 +52,11 @@ def main():
                 predicted_paths = [[t for t in pred if t.scene_id == scene_id] for pred in preds]
             pred_paths[label_dict[name]] = predicted_paths[0]
             pred_neigh_paths[label_dict[name]] = predicted_paths[1:]
-        ##TODO
-        # output = '{}.scene{}.png'.format(args.output, scene_id)
-        with show.predicted_paths(paths, pred_paths):
+
+        output_filename = None
+        if args.output is not None:
+            output_filename = '{}.scene{}.png'.format(args.output, scene_id)
+        with show.predicted_paths(paths, pred_paths, output_file=output_filename):
             pass
         # with show.predicted_paths(paths, pred_paths, pred_neigh_paths):
         #     pass
