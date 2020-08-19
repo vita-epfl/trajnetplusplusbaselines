@@ -9,6 +9,15 @@ class NMMP(torch.nn.Module):
         mlp_dim: embedding size of hidden-state
         k: number of iterations of message passing
         out_dim: dimension of resultant interaction vector
+        
+        Attributes
+        ----------
+        mlp_dim : Scalar
+            Embedding dimension of hidden-state of LSTM
+        k : Scalar
+            Number of iterations of message passing
+        out_dim: Scalar
+            Dimension of resultant interaction vector
     """
     def __init__(self, hidden_dim=128, mlp_dim=32, k=5, out_dim=None):
         super(NMMP, self).__init__()
@@ -51,14 +60,16 @@ class NMMP(torch.nn.Module):
         refined_embeddings = self.edge_to_node_embedding(concat_nodes)
         return refined_embeddings
 
-    def forward(self, hidden_states, obs1, _):
+    def forward(self, hidden_states, _, obs2):
 
         ## If only primary present
-        n = obs1.size(0)
-        if n == 1:
-            return torch.zeros(1, self.out_dim, device=obs1.device)
+        num_tracks = obs2.size(0)
+        if num_tracks == 1:
+            return torch.zeros(1, self.out_dim, device=obs2.device)
 
+        ## Embed hidden-state
         node_embeddings = self.hidden_embedding(hidden_states)
+        ## Iterative Message Passing
         for _ in range(self.k):
             node_embeddings = self.message_pass(node_embeddings)
 
