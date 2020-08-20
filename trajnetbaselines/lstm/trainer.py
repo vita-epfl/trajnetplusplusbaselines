@@ -318,6 +318,8 @@ def prepare_data(path, subset='/train/', sample=1.0, goals=True):
         Determines the ratio of data to be sampled
     goals: Bool
         If true, the goals of each track are extracted
+        The corresponding goal file must be present in the 'goal_files' folder
+        The name of the goal file must be the same as the name of the training file
 
     Returns
     -------
@@ -340,7 +342,7 @@ def prepare_data(path, subset='/train/', sample=1.0, goals=True):
         ## Necessary modification of train scene to add filename
         scene = [(file, s_id, s) for s_id, s in reader.scenes(sample=sample)]
         if goals:
-            goal_dict = pickle.load(open('dest_new/' + subset + file +'.pkl', "rb"))
+            goal_dict = pickle.load(open('goal_files/' + subset + file +'.pkl', "rb"))
             ## Get goals corresponding to train scene
             all_goals[file] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scene}
         all_scenes += scene

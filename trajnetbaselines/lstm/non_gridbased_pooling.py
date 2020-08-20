@@ -620,7 +620,7 @@ class SAttention_fast(torch.nn.Module):
 
         # Make Adjacency Matrix of visible pedestrians
         num_tracks_in_batch = len(self.track_mask)
-        adj_vector = self.track_mask.unsqueeze(1).int()
+        adj_vector = self.track_mask.unsqueeze(1).float()
         adj_matrix = torch.mm(adj_vector, adj_vector.transpose(0, 1)).bool()
         # Remove reference to self
         adj_matrix[torch.eye(num_tracks_in_batch).bool()] = False

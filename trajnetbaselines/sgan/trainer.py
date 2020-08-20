@@ -364,7 +364,7 @@ class Trainer(object):
             Each element of the list is Tensor [pred_length, num_tracks, 5]
             Predicted velocities of pedestrians as multivariate normal
             i.e. positions relative to previous positions
-        targets : Tensor [pred_length, num_tracks, 2]
+        target : Tensor [pred_length, num_tracks, 2]
             Groundtruth sequence of primary pedestrians of each scene
         batch_split : Tensor [batch_size + 1]
             Tensor defining the split of the batch.
@@ -376,14 +376,13 @@ class Trainer(object):
             variety loss
         """
 
-        min_loss_value = 1e10*torch.ones(batch_split[:-1].size(0), device=target.device)
+        iterative_loss = [] 
         for sample in inputs:
-            tmp_loss = self.criterion(sample[-self.pred_length:], target, batch_split) * self.loss_multiplier
+            sample_loss = self.criterion(sample[-self.pred_length:], target, batch_split) * self.loss_multiplier
+            iterative_loss.append(sample_loss)
 
-            ## Update Min Loss
-            loss = torch.min(tmp_loss, min_loss_value)
-            min_loss_value = loss.detach()
-
+        loss = torch.stack(iterative_loss)
+        loss = torch.min(loss, dim=0)[0]
         loss = torch.sum(loss)
         return loss
 
@@ -398,6 +397,8 @@ def prepare_data(path, subset='/train/', sample=1.0, goals=True):
         Determines the ratio of data to be sampled
     goals: Bool
         If true, the goals of each track are extracted
+        The corresponding goal file must be present in the 'goal_files' folder
+        The name of the goal file must be the same as the name of the training file
 
     Returns
     -------
@@ -420,7 +421,7 @@ def prepare_data(path, subset='/train/', sample=1.0, goals=True):
         ## Necessary modification of train scene to add filename
         scene = [(file, s_id, s) for s_id, s in reader.scenes(sample=sample)]
         if goals:
-            goal_dict = pickle.load(open('dest_new/' + subset + file +'.pkl', "rb"))
+            goal_dict = pickle.load(open('goal_files/' + subset + file +'.pkl', "rb"))
             ## Get goals corresponding to train scene
             all_goals[file] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scene}
         all_scenes += scene

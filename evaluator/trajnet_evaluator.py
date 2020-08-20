@@ -326,8 +326,10 @@ def main():
                         help='consider kalman in evaluation')
     parser.add_argument('--normalize_scene', action='store_true',
                         help='augment scenes')
-    parser.add_argument('--goal_path', default=None,
-                        help='Path to the goal (.pkl file)')
+    parser.add_argument('--goals', action='store_true',
+                        help='Considers goals during prediction')
+    parser.add_argument('--modes', default=1, type=int,
+                        help='number of modes to predict')
     args = parser.parse_args()
 
     scipy.seterr('ignore')
@@ -346,7 +348,9 @@ def main():
     ## Evaluates test_pred with test_private
     names = []
     for model in args.output:
-        names.append(model.split('/')[-1].replace('.pkl', ''))
+        model_name = model.split('/')[-1].replace('.pkl', '')
+        model_name = model_name + '_modes' + str(args.modes)
+        names.append(model_name)
 
     ## labels
     if args.labels:

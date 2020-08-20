@@ -36,6 +36,7 @@ def main(args=None):
     ## WARNING: If Model predictions already exist from previous run, this process SKIPS WRITING
     for model in args.output:
         model_name = model.split('/')[-1].replace('.pkl', '')
+        model_name = model_name + '_modes' + str(args.modes)
 
         ## Check if model predictions already exist
         if not os.path.exists(args.path):
@@ -57,9 +58,11 @@ def main(args=None):
             reader = trajnetplusplustools.Reader(args.path.replace('_pred', '') + dataset + '.ndjson', scene_type='paths')
             ## Necessary modification of train scene to add filename (for goals)
             scenes = [(dataset, s_id, s) for s_id, s in reader.scenes()]
-            ## Add goals
-            if args.goal_path is not None:
-                goal_dict = pickle.load(open('dest_new/test_private/' + dataset +'.pkl', "rb"))
+            ## Consider goals
+            ## Goal file must be present in 'goal_files/test_private' folder 
+            ## Goal file must have the same name as corresponding test file 
+            if args.goals:
+                goal_dict = pickle.load(open('goal_files/test_private/' + dataset +'.pkl', "rb"))
                 all_goals[dataset] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scenes}
 
             # Loading the APPROPRIATE model
@@ -117,7 +120,7 @@ def main(args=None):
                         predictions = predictor(paths, n_predict=args.pred_length, obs_length=args.obs_length, args=args)
                     else:
                         goals = get_goals(paths, all_goals, filename, scene_id) ## Zeros if no goals utilized
-                        predictions = predictor(paths, goals, n_predict=args.pred_length, obs_length=args.obs_length, args=args)
+                        predictions = predictor(paths, goals, n_predict=args.pred_length, obs_length=args.obs_length, modes=args.modes, args=args)
 
                     ## Write SceneRow
                     scenerow = trajnetplusplustools.SceneRow(scene_id, ped_id, observed_path[0].frame, 

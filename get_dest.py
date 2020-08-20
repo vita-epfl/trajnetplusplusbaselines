@@ -55,7 +55,7 @@ def generate_dest(sc, input_file):
     # dataset = input_file.replace('./DATA_BLOCK/data/groundtruth/real_data/', '').replace('.ndjson', '')
     print(dataset)
     print(dict_dest)
-    with open('dest_new/' + dataset_type + '/' + dataset + '.pkl', 'wb') as f:
+    with open('goal_files/' + dataset_type + '/' + dataset + '.pkl', 'wb') as f:
         pickle.dump(dict_dest, f)
 
 
