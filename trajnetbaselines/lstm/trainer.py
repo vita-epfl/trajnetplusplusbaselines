@@ -18,7 +18,7 @@ from .loss import PredictionLoss, L2Loss
 from .lstm import LSTM, LSTMPredictor, drop_distant
 from .gridbased_pooling import GridBasedPooling
 from .non_gridbased_pooling import NN_Pooling, HiddenStateMLPPooling, AttentionMLPPooling, DirectionalMLPPooling
-from .non_gridbased_pooling import NN_LSTM, TrajectronPooling, SAttention, SAttention_fast
+from .non_gridbased_pooling import NN_LSTM, TrajectronPooling, SAttention_fast
 from .more_non_gridbased_pooling import NMMP
 
 from .. import __version__ as VERSION
@@ -91,6 +91,11 @@ class Trainer(object):
         self.model.train()
         self.optimizer.zero_grad()
 
+        ## Initialize batch of scenes
+        batch_scene = []
+        batch_scene_goal = []
+        batch_split = [0]
+
         for scene_i, (filename, scene_id, paths) in enumerate(scenes):
             scene_start = time.time()
 
@@ -114,19 +119,34 @@ class Trainer(object):
                 scene, scene_goal = random_rotation(scene, goals=scene_goal)
                 # scene = augmentation.add_noise(scene, thresh=0.01)
 
-            scene = torch.Tensor(scene).to(self.device)
-            scene_goal = torch.Tensor(scene_goal).to(self.device)
-            preprocess_time = time.time() - scene_start
+            ## Augment scene to batch of scenes
+            batch_scene.append(scene)
+            batch_split.append(int(scene.shape[1]))
+            batch_scene_goal.append(scene_goal)
 
-            loss, _ = self.train_batch(scene, scene_goal)
-            epoch_loss += loss
-            total_time = time.time() - scene_start
+            if ((scene_i + 1) % self.batch_size == 0) or ((scene_i + 1) == len(scenes)):
+                ## Construct Batch
+                batch_scene = np.concatenate(batch_scene, axis=1)
+                batch_scene_goal = np.concatenate(batch_scene_goal, axis=0)
+                batch_split = np.cumsum(batch_split)
+                
+                batch_scene = torch.Tensor(batch_scene).to(self.device)
+                batch_scene_goal = torch.Tensor(batch_scene_goal).to(self.device)
+                batch_split = torch.Tensor(batch_split).to(self.device).long()
 
-            if (scene_i + 1) % self.batch_size == 0:
-                self.optimizer.step()
-                self.optimizer.zero_grad()
+                preprocess_time = time.time() - scene_start
 
-            if (scene_i + 1) % 10 == 0:
+                ## Train Batch
+                loss = self.train_batch(batch_scene, batch_scene_goal, batch_split)
+                epoch_loss += loss
+                total_time = time.time() - scene_start
+
+                ## Reset Batch
+                batch_scene = []
+                batch_scene_goal = []
+                batch_split = [0]
+
+            if (scene_i + 1) % (10*self.batch_size) == 0:
                 self.log.info({
                     'type': 'train',
                     'epoch': epoch, 'batch': scene_i, 'n_batches': len(scenes),
@@ -149,8 +169,14 @@ class Trainer(object):
         val_loss = 0.0
         test_loss = 0.0
         self.model.train()
-        for _, (filename, scene_id, paths) in enumerate(scenes):
-            # make new scene
+
+        ## Initialize batch of scenes
+        batch_scene = []
+        batch_scene_goal = []
+        batch_split = [0]
+
+        for scene_i, (filename, scene_id, paths) in enumerate(scenes):
+            ## make new scene
             scene = trajnetplusplustools.Reader.paths_to_xy(paths)
 
             ## get goals
@@ -163,13 +189,34 @@ class Trainer(object):
             scene, mask = drop_distant(scene)
             scene_goal = scene_goal[mask]
 
+            ##process scene
             if self.normalize_scene:
                 scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
-            scene = torch.Tensor(scene).to(self.device)
-            scene_goal = torch.Tensor(scene_goal).to(self.device)
-            loss_1, loss_2 = self.val_batch(scene, scene_goal)
-            val_loss += loss_1
-            test_loss += loss_2
+
+            ## Augment scene to batch of scenes
+            batch_scene.append(scene)
+            batch_split.append(int(scene.shape[1]))
+            batch_scene_goal.append(scene_goal)
+
+            if ((scene_i + 1) % self.batch_size == 0) or ((scene_i + 1) == len(scenes)):
+                ## Construct Batch
+                batch_scene = np.concatenate(batch_scene, axis=1)
+                batch_scene_goal = np.concatenate(batch_scene_goal, axis=0)
+                batch_split = np.cumsum(batch_split)
+                
+                batch_scene = torch.Tensor(batch_scene).to(self.device)
+                batch_scene_goal = torch.Tensor(batch_scene_goal).to(self.device)
+                batch_split = torch.Tensor(batch_split).to(self.device).long()
+                
+                loss_val_batch, loss_test_batch = self.val_batch(batch_scene, batch_scene_goal, batch_split)
+                val_loss += loss_val_batch
+                test_loss += loss_test_batch
+
+                ## Reset Batch
+                batch_scene = []
+                batch_scene_goal = []
+                batch_split = [0]
+
         eval_time = time.time() - eval_start
 
         self.log.info({
@@ -180,47 +227,108 @@ class Trainer(object):
             'time': round(eval_time, 1),
         })
 
-    def train_batch(self, xy, goals):
+    def train_batch(self, batch_scene, batch_scene_goal, batch_split):
+        """Training of B batches in parallel, B : batch_size
+
+        Parameters
+        ----------
+        batch_scene : Tensor [seq_length, num_tracks, 2]
+            Tensor of batch of scenes.
+        batch_scene_goal : Tensor [num_tracks, 2]
+            Tensor of goals of each track in batch
+        batch_split : Tensor [batch_size + 1]
+            Tensor defining the split of the batch.
+            Required to identify the tracks of to the same scene
+
+        Returns
+        -------
+        loss : scalar
+            Training loss of the batch
+        """
+
         ## If observation dropout active
         if self.obs_dropout:
             self.start_length = random.randint(0, self.obs_length - 2)
 
-        observed = xy[self.start_length:self.obs_length].clone()
-        prediction_truth = xy[self.obs_length:self.seq_length-1].clone()  ## CLONE
-        targets = xy[self.obs_length:self.seq_length] - xy[self.obs_length-1:self.seq_length-1]
+        observed = batch_scene[self.start_length:self.obs_length].clone()
+        prediction_truth = batch_scene[self.obs_length:self.seq_length-1].clone()
+        targets = batch_scene[self.obs_length:self.seq_length] - batch_scene[self.obs_length-1:self.seq_length-1]
 
-        rel_outputs, outputs = self.model(observed, goals, prediction_truth)
+        rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
-        ## Loss wrt primary only
-        nan_list = torch.isnan(xy[self.obs_length:self.seq_length]).view(-1)
-        loss = self.criterion(rel_outputs[-self.pred_length:], targets, nan_list) * self.loss_multiplier
+        ## Loss wrt primary tracks of each scene only
+        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
 
+        self.optimizer.zero_grad()
         loss.backward()
+        self.optimizer.step()
 
-        return loss.item(), outputs.detach()
+        return loss.item()
 
-    def val_batch(self, xy, goals):
+    def val_batch(self, batch_scene, batch_scene_goal, batch_split):
+        """Validation of B batches in parallel, B : batch_size
+
+        Parameters
+        ----------
+        batch_scene : Tensor [seq_length, num_tracks, 2]
+            Tensor of batch of scenes.
+        batch_scene_goal : Tensor [num_tracks, 2]
+            Tensor of goals of each track in batch
+        batch_split : Tensor [batch_size + 1]
+            Tensor defining the split of the batch.
+            Required to identify the tracks of to the same scene
+
+        Returns
+        -------
+        loss : scalar
+            Validation loss of the batch when groundtruth of neighbours
+            is provided
+        loss_test : scalar
+            Validation loss of the batch when groundtruth of neighbours
+            is not provided (evaluation scenario)
+        """
+
         if self.obs_dropout:
             self.start_length = 0
-        observed = xy[self.start_length:self.obs_length]
-        prediction_truth = xy[self.obs_length:self.seq_length-1].clone()  ## CLONE
+
+        observed = batch_scene[self.start_length:self.obs_length]
+        prediction_truth = batch_scene[self.obs_length:self.seq_length-1].clone()  ## CLONE
+        targets = batch_scene[self.obs_length:self.seq_length] - batch_scene[self.obs_length-1:self.seq_length-1]
         observed_test = observed.clone()
 
         with torch.no_grad():
-            ## GT of neighbours given (Better validation curve to monitor model)
-            rel_outputs, _ = self.model(observed, goals, prediction_truth)
-            nan_list = torch.isnan(xy[self.obs_length:self.seq_length]).view(-1)
-            targets = xy[self.obs_length:self.seq_length] - xy[self.obs_length-1:self.seq_length-1]
-            loss = self.criterion(rel_outputs[-self.pred_length:], targets, nan_list) * self.loss_multiplier
+            ## groundtruth of neighbours provided (Better validation curve to monitor model)
+            rel_outputs, _ = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
+            loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
 
-            ## GT of neighbours not Given
-            rel_outputs_test, _ = self.model(observed_test, goals, n_predict=self.pred_length)
-            loss_test = self.criterion(rel_outputs_test[-self.pred_length:], targets, nan_list) * self.loss_multiplier
+            ## groundtruth of neighbours not provided
+            rel_outputs_test, _ = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
+            loss_test = self.criterion(rel_outputs_test[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
 
         return loss.item(), loss_test.item()
 
 def prepare_data(path, subset='/train/', sample=1.0, goals=True):
-    """ Prepares the train/val scenes and corresponding goals """
+    """ Prepares the train/val scenes and corresponding goals 
+    
+    Parameters
+    ----------
+    subset: String ['/train/', '/val/']
+        Determines the subset of data to be processed
+    sample: Float (0.0, 1.0]
+        Determines the ratio of data to be sampled
+    goals: Bool
+        If true, the goals of each track are extracted
+        The corresponding goal file must be present in the 'goal_files' folder
+        The name of the goal file must be the same as the name of the training file
+
+    Returns
+    -------
+    all_scenes: List
+        List of all processed scenes
+    all_goals: Dictionary
+        Dictionary of goals corresponding to each dataset file.
+        None if 'goals' argument is False.
+    """
 
     ## read goal files
     all_goals = {}
@@ -234,7 +342,7 @@ def prepare_data(path, subset='/train/', sample=1.0, goals=True):
         ## Necessary modification of train scene to add filename
         scene = [(file, s_id, s) for s_id, s in reader.scenes(sample=sample)]
         if goals:
-            goal_dict = pickle.load(open('dest_new/' + subset + file +'.pkl', "rb"))
+            goal_dict = pickle.load(open('goal_files/' + subset + file +'.pkl', "rb"))
             ## Get goals corresponding to train scene
             all_goals[file] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scene}
         all_scenes += scene
@@ -248,24 +356,22 @@ def main(epochs=50):
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
     parser.add_argument('--step_size', default=15, type=int,
-                        help='step_size of scheduler')
+                        help='step_size of lr scheduler')
     parser.add_argument('--save_every', default=1, type=int,
-                        help='frequency of saving model')
+                        help='frequency of saving model (in terms of epochs)')
     parser.add_argument('--obs_length', default=9, type=int,
                         help='observation length')
     parser.add_argument('--pred_length', default=12, type=int,
                         help='prediction length')
-    parser.add_argument('--batch_size', default=1, type=int,
-                        help='number of epochs')
+    parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
-                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 's_att', 'nn_tag',
-                                 'nmmp'),
-                        help='type of LSTM to train')
+                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp'),
+                        help='type of interaction encoder')
     parser.add_argument('--norm_pool', action='store_true',
-                        help='normalize_pool (along direction of movement)')
+                        help='normalize the scene along direction of movement')
     parser.add_argument('--front', action='store_true',
                         help='Front pooling (only consider pedestrian in front along direction of movement)')
     parser.add_argument('-o', '--output', default=None,
@@ -273,17 +379,17 @@ def main(epochs=50):
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
     parser.add_argument('--augment', action='store_true',
-                        help='augment scenes')
+                        help='augment scenes (rotation augmentation)')
     parser.add_argument('--normalize_scene', action='store_true',
-                        help='augment scenes')
+                        help='rotate scene so primary pedestrian moves northwards at end of oservation')
     parser.add_argument('--path', default='trajdata',
                         help='glob expression for data files')
     parser.add_argument('--goal_path', default=None,
                         help='glob expression for goal files')
-    parser.add_argument('--loss', default='L2',
-                        help='loss function')
+    parser.add_argument('--loss', default='L2', choices=('L2', 'pred'),
+                        help='loss objective to train the model')
     parser.add_argument('--goals', action='store_true',
-                        help='to use goals')
+                        help='flag to use goals')
 
     pretrain = parser.add_argument_group('pretraining')
     pretrain.add_argument('--load-state', default=None,
@@ -305,47 +411,49 @@ def main(epochs=50):
 
     hyperparameters = parser.add_argument_group('hyperparameters')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,
-                                 help='RNN hidden dimension')
+                                 help='LSTM hidden dimension')
     hyperparameters.add_argument('--coordinate-embedding-dim', type=int, default=64,
                                  help='coordinate embedding dimension')
     hyperparameters.add_argument('--cell_side', type=float, default=0.6,
                                  help='cell size of real world')
     hyperparameters.add_argument('--n', type=int, default=16,
                                  help='number of cells per side')
-    hyperparameters.add_argument('--layer_dims', type=int, nargs='*',
-                                 help='interaction module layer dims for gridbased pooling')
+    hyperparameters.add_argument('--layer_dims', type=int, nargs='*', default=[512],
+                                 help='interaction module layer dims (for gridbased pooling)')
     hyperparameters.add_argument('--pool_dim', type=int, default=256,
-                                 help='pooling dimension')
+                                 help='output dimension of pooling/interaction vector')
     hyperparameters.add_argument('--embedding_arch', default='two_layer',
-                                 help='interaction arch')
+                                 help='interaction encoding arch for gridbased pooling')
     hyperparameters.add_argument('--goal_dim', type=int, default=64,
                                  help='goal dimension')
     hyperparameters.add_argument('--spatial_dim', type=int, default=32,
-                                 help='attention mlp spatial dimension')
+                                 help='attentionmlp spatial dimension')
     hyperparameters.add_argument('--vel_dim', type=int, default=32,
-                                 help='attention mlp vel dimension')
+                                 help='attentionmlp vel dimension')
     hyperparameters.add_argument('--pool_constant', default=0, type=int,
-                                 help='background of pooling grid')
+                                 help='background value of gridbased pooling')
     hyperparameters.add_argument('--sample', default=1.0, type=float,
                                  help='sample ratio of train/val scenes')
     hyperparameters.add_argument('--norm', default=0, type=int,
                                  help='normalization scheme for grid-based')
     hyperparameters.add_argument('--no_vel', action='store_true',
-                                 help='dont consider velocity in nn')
+                                 help='flag to not consider velocity in nn')
     hyperparameters.add_argument('--neigh', default=4, type=int,
-                                 help='neighbours to consider in DirectConcat')
+                                 help='number of neighbours to consider in DirectConcat')
     hyperparameters.add_argument('--mp_iters', default=5, type=int,
                                  help='message passing iters in NMMP')
-    hyperparameters.add_argument('--start_length', default=0, type=int,
-                                 help='prediction length')
     hyperparameters.add_argument('--obs_dropout', action='store_true',
-                                 help='obs length dropout')
+                                 help='obs length dropout (regularization)')
+    hyperparameters.add_argument('--start_length', default=0, type=int,
+                                 help='start length during obs dropout')
     args = parser.parse_args()
 
+    ## Fixed set of scenes if sampling
     if args.sample < 1.0:
         torch.manual_seed("080819")
         random.seed(1)
 
+    ## Define location to save trained model
     if not os.path.exists('OUTPUT_BLOCK/{}'.format(args.path)):
         os.makedirs('OUTPUT_BLOCK/{}'.format(args.path))
     if args.goals:
@@ -371,6 +479,7 @@ def main(epochs=50):
     })
 
     # refactor args for --load-state
+    # loading a previously saved model
     args.load_state_strict = True
     if args.nonstrict_load_state:
         args.load_state = args.nonstrict_load_state
@@ -391,7 +500,7 @@ def main(epochs=50):
     ## pretrained pool model (if any)
     pretrained_pool = None
 
-    # create model (Various interaction/pooling modules)
+    # create interaction/pooling modules
     pool = None
     if args.type == 'hiddenstatemlp':
         pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim,
@@ -409,8 +518,6 @@ def main(epochs=50):
         pool = NN_LSTM(n=args.neigh, hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
     elif args.type == 'traj_pool':
         pool = TrajectronPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
-    elif args.type == 's_att':
-        pool = SAttention(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
     elif args.type == 's_att_fast':
         pool = SAttention_fast(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
     elif args.type != 'vanilla':
@@ -420,22 +527,15 @@ def main(epochs=50):
                                 constant=args.pool_constant, pretrained_pool_encoder=pretrained_pool,
                                 norm=args.norm, layer_dims=args.layer_dims)
 
+    # create forecasting model
     model = LSTM(pool=pool,
                  embedding_dim=args.coordinate_embedding_dim,
                  hidden_dim=args.hidden_dim,
                  goal_flag=args.goals,
                  goal_dim=args.goal_dim)
 
-    # optimizer
-    if args.finetune == 0:
-        print("NO Finetune")
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    else:
-        print("Finetune") ## Can Finetune other components as well
-        params = list([param for name, param in model.named_parameters() if 'pool' in name]) ##pretrained_model
-        base_params = list([param for name, param in model.named_parameters() if 'pool' not in name])
-        optimizer = torch.optim.Adam([{'params': base_params}, {'params': params, 'lr': (args.lr/args.finetune)}], lr=args.lr, weight_decay=1e-4)
-
+    # optimizer and schedular
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
     lr_scheduler = None
     if args.step_size is not None:
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.step_size)
@@ -451,15 +551,9 @@ def main(epochs=50):
         pretrained_state_dict = checkpoint['state_dict']
         model.load_state_dict(pretrained_state_dict, strict=args.load_state_strict)
 
-        ## Partial Dict Loading
-        # partial_pretrained_state_dict = {k: v for k, v in pretrained_state_dict.items() if not (('encoder' in k) or ('decoder' in k))}
-        # state = model.state_dict()
-        # state.update(partial_pretrained_state_dict)
-        # model.load_state_dict(state)
-
         if args.load_full_state:
         # load optimizers from last training
-        # useful to continue training
+        # useful to continue model training
             print("Loading Optimizer Dict")
             optimizer = torch.optim.Adam(model.parameters(), lr=args.lr) # , weight_decay=1e-4
             optimizer.load_state_dict(checkpoint['optimizer'])

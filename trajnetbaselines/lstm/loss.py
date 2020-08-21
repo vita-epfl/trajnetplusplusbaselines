@@ -8,10 +8,9 @@ class PredictionLoss(torch.nn.Module):
 
     p(x) = 0.2 * N(x|mu, 3.0)  +  0.8 * N(x|mu, sigma)
     """
-    def __init__(self, size_average=True, reduce=True, background_rate=0.2):
+    def __init__(self, keep_batch_dim=False, background_rate=0.2):
         super(PredictionLoss, self).__init__()
-        self.size_average = size_average
-        self.reduce = reduce
+        self.keep_batch_dim = keep_batch_dim
         self.background_rate = background_rate
 
     @staticmethod
@@ -43,9 +42,23 @@ class PredictionLoss(torch.nn.Module):
 
         return numerator / denominator
 
-    def forward(self, inputs, targets, nan_list=None):
-        inputs = inputs[:, 0].clone()
-        targets = targets[:, 0].clone()
+    def forward(self, inputs, targets, batch_split):
+        
+        pred_length, batch_size = targets.size(0), batch_split[:-1].size(0)
+        ## Extract primary pedestrians
+        # [pred_length, num_tracks, 2] --> [pred_length, batch_size, 2]
+        targets = targets.transpose(0, 1)
+        targets = targets[batch_split[:-1]]
+        targets = targets.transpose(0, 1)
+
+        # [pred_length, num_tracks, 5] --> [pred_length, batch_size, 5]
+        inputs = inputs.transpose(0, 1)
+        inputs = inputs[batch_split[:-1]]
+        inputs = inputs.transpose(0, 1)
+
+        ## Loss calculation
+        inputs = inputs.reshape(-1, 5)
+        targets = targets.reshape(-1, 2)
         inputs_bg = inputs.clone()
         inputs_bg[:, 2] = 3.0  # sigma_x
         inputs_bg[:, 3] = 3.0  # sigma_y
@@ -56,44 +69,42 @@ class PredictionLoss(torch.nn.Module):
             self.background_rate * self.gaussian_2d(inputs_bg, targets) +
             (0.99 - self.background_rate) * self.gaussian_2d(inputs, targets)
         )
-        if not self.reduce:
-            return values
-        if self.size_average:
-            return torch.mean(values)
-        return torch.sum(values)
 
+        ## Used in variety loss (SGAN)
+        if self.keep_batch_dim:
+            values = values.reshape(pred_length, batch_size)
+            return values.mean(dim=0)
+        
+        return torch.mean(values)
 
 class L2Loss(torch.nn.Module):
     """L2 Loss (deterministic version of PredictionLoss)
 
     This Loss penalizes only the primary trajectories
     """
-    def __init__(self, pos_weight=1):
+    def __init__(self, keep_batch_dim=False):
         super(L2Loss, self).__init__()
-        self.loss = torch.nn.MSELoss()
-        self.pos_weight = pos_weight
+        self.loss = torch.nn.MSELoss(reduction='none')
+        self.keep_batch_dim = keep_batch_dim
 
-    def forward(self, inputs, targets, nan_list=None):
-        loss = self.loss(inputs[:, 0, :2], targets[:, 0])
-        return loss
+    def forward(self, inputs, targets, batch_split):
+        ## Extract primary pedestrians
+        # [pred_length, num_tracks, 2] --> [pred_length, batch_size, 2]
+        targets = targets.transpose(0, 1)
+        targets = targets[batch_split[:-1]]
+        targets = targets.transpose(0, 1)
+        # [pred_length, num_tracks, 5] --> [pred_length, batch_size, 5]
+        inputs = inputs.transpose(0, 1)
+        inputs = inputs[batch_split[:-1]]
+        inputs = inputs.transpose(0, 1)
 
+        loss = self.loss(inputs[:, :, :2], targets)
 
-class L2Loss_ALL(torch.nn.Module):
-    """L2 Loss (deterministic version of PredictionLoss)
-
-    This Loss penalizes all the predicted trajectories
-    """
-    def __init__(self):
-        super(L2Loss_ALL, self).__init__()
-        self.loss = torch.nn.MSELoss()
-
-    def forward(self, inputs, targets, nan_list):
-        inputs = inputs[:, :, :2]
-        targets = targets.reshape(-1)
-        inputs = inputs.reshape(-1)
-        targets = targets[~nan_list]
-        inputs = inputs[~nan_list]
-        return self.loss(inputs, targets)
+        ## Used in variety loss (SGAN)
+        if self.keep_batch_dim:
+            return loss.mean(dim=0).mean(dim=1)
+        
+        return torch.mean(loss)
 
 def bce_loss(input_, target):
     """
@@ -139,18 +150,3 @@ def gan_d_loss(scores_real, scores_fake):
     loss_real = bce_loss(scores_real, y_real)
     loss_fake = bce_loss(scores_fake, y_fake)
     return loss_real + loss_fake
-
-
-def variety_loss(inputs, target, pred_length=12):
-    """Variety Loss defined according to Social GAN
-
-    Variety loss calculated over the multiple primary trajectory predictions
-    """
-    criterion = torch.nn.MSELoss()
-    min_loss_value = 1e10
-    for sample in inputs:
-        tmp_loss = criterion(sample[-pred_length:, 0, :2], target[:, 0]) * 100
-        if tmp_loss.detach() < min_loss_value:
-            loss = tmp_loss
-            min_loss_value = tmp_loss.detach()
-    return loss

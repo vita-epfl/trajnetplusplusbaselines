@@ -178,13 +178,13 @@ def main():
 
     ## Final Destination Dictionaries
     dest_dicts = [
-        'dest_new/biwi_hotel.pkl',
-        # 'dest_new/crowds_zara01.pkl',
-        # 'dest_new/crowds_zara03.pkl',
-        # 'dest_new/crowds_students001.pkl',
-        # 'dest_new/crowds_students003.pkl',
-        # 'dest_new/lcas.pkl',
-        # 'dest_new/wildtrack.pkl',   
+        'goal_files/biwi_hotel.pkl',
+        # 'goal_files/crowds_zara01.pkl',
+        # 'goal_files/crowds_zara03.pkl',
+        # 'goal_files/crowds_students001.pkl',
+        # 'goal_files/crowds_students003.pkl',
+        # 'goal_files/lcas.pkl',
+        # 'goal_files/wildtrack.pkl',   
     ]
 
     ## Selected Interaction Scenes for Fitting and Visualizing Simulator Parameters
