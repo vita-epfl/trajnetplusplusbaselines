@@ -39,14 +39,16 @@ def main():
                         help='labels of models')
     parser.add_argument('--normalize_scene', action='store_true',
                         help='augment scenes')
-    parser.add_argument('--goal_path', default=None,
-                        help='pkl goal file')
+    parser.add_argument('--goals', action='store_true',
+                        help='Considers goals during prediction')
     parser.add_argument('--unimodal', action='store_true',
                         help='provide unimodal evaluation')
     parser.add_argument('--topk', action='store_true',
                         help='provide topk evaluation')
     parser.add_argument('--multimodal', action='store_true',
                         help='provide multimodal nll evaluation')
+    parser.add_argument('--modes', default=1, type=int,
+                        help='number of modes to predict')
     args = parser.parse_args()
 
     scipy.seterr('ignore')
@@ -58,8 +60,10 @@ def main():
     args.path = args.path + 'test_pred/'
 
     if (not args.unimodal) and (not args.topk) and (not args.multimodal):
-        print("Specify which evaluation metrics to compute")
-        exit()
+        args.unimodal = True # Compute unimodal metrics by default
+
+    if args.multimodal:
+        args.modes = 20
 
     ## Writes to Test_pred
     ## Does this overwrite existing predictions? No. ###
@@ -105,9 +109,11 @@ def main():
             reader = trajnetplusplustools.Reader(args.path.replace('_pred', '') + dataset + '.ndjson', scene_type='paths')
             ## Necessary modification of train scene to add filename (for goals)
             scenes = [(dataset, s_id, s) for s_id, s in reader.scenes()]
-            ## Add goals
-            if args.goal_path is not None:
-                goal_dict = pickle.load(open('dest_new/test_private/' + dataset +'.pkl', "rb"))
+            ## Consider goals
+            ## Goal file must be present in 'goal_files/test_private' folder 
+            ## Goal file must have the same name as corresponding test file 
+            if args.goals:
+                goal_dict = pickle.load(open('goal_files/test_private/' + dataset +'.pkl', "rb"))
                 all_goals[dataset] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scenes}
 
             reader_gt = trajnetplusplustools.Reader(args.path.replace('_pred', '_private') + dataset + '.ndjson', scene_type='paths')
@@ -116,7 +122,7 @@ def main():
 
             for i, (filename, scene_id, paths) in enumerate(scenes):
                 if i % 100 == 0:
-                    print(i)
+                    print("Scenes evaluated: ", '{}/{}'.format(i, len(scenes_gt)))
                 ground_truth = scenes_gt[i]
 
                 ## Convert numpy array to Track Rows ##
@@ -126,8 +132,8 @@ def main():
                 first_frame = observed_path[args.obs_length-1].frame + frame_diff
                 ped_id = observed_path[0].pedestrian
 
-                goals = get_goals(paths, all_goals, filename, scene_id)
-                predictions = predictor(paths, goals, n_predict=args.pred_length, obs_length=args.obs_length, args=args)
+                goals = get_goals(paths, all_goals, filename, scene_id) ## Zeros if no goals utilized
+                predictions = predictor(paths, goals, n_predict=args.pred_length, obs_length=args.obs_length, modes=args.modes, args=args)
 
                 if args.unimodal: ## Unimodal
                     ## ADE / FDE
@@ -195,8 +201,8 @@ def main():
 
             print('ADE: ', average)
             print('FDE: ', final)
-            print("Col-I: ", gt_col)
-            print("Col-II: ", pred_col)
+            print("Col-I: ", pred_col)
+            print("Col-II: ", gt_col)
 
         if args.topk:
             topk_average /= total_scenes
