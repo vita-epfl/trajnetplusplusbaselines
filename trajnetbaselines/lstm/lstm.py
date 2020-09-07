@@ -92,6 +92,8 @@ class LSTM(torch.nn.Module):
             with respect to the current position
         """
         num_tracks = len(obs2)
+        batch_size = len(batch_split) - 1
+
         # mask for pedestrians absent from scene (partial trajectories)
         # consider only the hidden states of pedestrains present in scene
         track_mask = (torch.isnan(obs1[:, 0]) + torch.isnan(obs2[:, 0])) == 0
@@ -104,7 +106,6 @@ class LSTM(torch.nn.Module):
 
         ## Mask current velocity & embed
         curr_velocity = obs2 - obs1
-        curr_velocity = curr_velocity[track_mask]
         input_emb = self.input_embedding(curr_velocity)
 
         ## Mask Goal direction & embed
@@ -113,35 +114,15 @@ class LSTM(torch.nn.Module):
             norm_factors = (torch.norm(obs2 - goals, dim=1))
             goal_direction = (obs2 - goals) / norm_factors.unsqueeze(1)
             goal_direction[norm_factors == 0] = torch.tensor([0., 0.], device=obs1.device)
-            goal_direction = goal_direction[track_mask]
             goal_emb = self.goal_embedding(goal_direction)
             input_emb = torch.cat([input_emb, goal_emb], dim=1)
 
         ## Mask & Pool per scene
         if self.pool is not None:
-            hidden_states_to_pool = torch.stack(hidden_cell_state[0]).clone() # detach?
-            batch_pool = []
-            ## Iterate over scenes
-            for (start, end) in zip(batch_split[:-1], batch_split[1:]):
-                ## Mask for the scene
-                scene_track_mask = track_mask[start:end]
-                ## Get observations and hidden-state for the scene
-                prev_position = obs1[start:end][scene_track_mask]
-                curr_position = obs2[start:end][scene_track_mask]
-                curr_hidden_state = hidden_states_to_pool[start:end][scene_track_mask]
-
-                # LSTM-Based Interaction Encoders. Provide track_mask to the interaction encoder LSTMs
-                if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention_fast'}:
-                    ## Everyone absent by default
-                    interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                    ## Only those visible in current scene are present
-                    interaction_track_mask[start:end] = track_mask[start:end]
-                    self.pool.track_mask = interaction_track_mask
-
-                pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
-                batch_pool.append(pool_sample)
-
-            pooled = torch.cat(batch_pool)
+            prev_position = obs1.reshape(batch_size, num_tracks // batch_size, 2)
+            curr_position = obs2.reshape(batch_size, num_tracks // batch_size, 2)
+            pooled = self.pool(None, prev_position, curr_position)
+            pooled = pooled.reshape(-1, self.pool.out_dim)
             if self.pool_to_input:
                 input_emb = torch.cat([input_emb, pooled], dim=1)
             else:
@@ -205,10 +186,6 @@ class LSTM(torch.nn.Module):
             [torch.zeros(self.hidden_dim, device=observed.device) for _ in range(num_tracks)],
             [torch.zeros(self.hidden_dim, device=observed.device) for _ in range(num_tracks)],
         )
-
-        ## LSTM-Based Interaction Encoders. Initialze Hdden state ## TODO
-        if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention', 'SAttention_fast'}:
-            self.pool.reset(num_tracks, device=observed.device)
 
         # list of predictions
         normals = []  # predicted normal parameters for both phases

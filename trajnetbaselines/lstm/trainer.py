@@ -16,10 +16,7 @@ import trajnetplusplustools
 from .. import augmentation
 from .loss import PredictionLoss, L2Loss
 from .lstm import LSTM, LSTMPredictor, drop_distant
-from .gridbased_pooling import GridBasedPooling
-from .non_gridbased_pooling import NN_Pooling, HiddenStateMLPPooling, AttentionMLPPooling, DirectionalMLPPooling
-from .non_gridbased_pooling import NN_LSTM, TrajectronPooling, SAttention_fast
-from .more_non_gridbased_pooling import NMMP
+from .non_gridbased_pooling import NN_Pooling
 
 from .. import __version__ as VERSION
 
@@ -102,15 +99,15 @@ class Trainer(object):
             ## make new scene
             scene = trajnetplusplustools.Reader.paths_to_xy(paths)
 
+            ## Ignore scenes with incomplete trajectories
+            # if np.isnan(scene).any():
+            #     continue
+
             ## get goals
             if goals is not None:
                 scene_goal = np.array(goals[filename][scene_id])
             else:
                 scene_goal = np.array([[0, 0] for path in paths])
-
-            ## Drop Distant
-            scene, mask = drop_distant(scene)
-            scene_goal = scene_goal[mask]
 
             ##process scene
             if self.normalize_scene:
@@ -185,9 +182,9 @@ class Trainer(object):
             else:
                 scene_goal = np.array([[0, 0] for path in paths])
 
-            ## Drop Distant
-            scene, mask = drop_distant(scene)
-            scene_goal = scene_goal[mask]
+            ## Ignore scenes with incomplete trajectories
+            # if np.isnan(scene).any():
+            #     continue
 
             ##process scene
             if self.normalize_scene:
@@ -367,8 +364,7 @@ def main(epochs=50):
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
     parser.add_argument('--type', default='vanilla',
-                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
-                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp'),
+                        choices=('vanilla', 'nn'),
                         help='type of interaction encoder')
     parser.add_argument('--norm_pool', action='store_true',
                         help='normalize the scene along direction of movement')
@@ -457,9 +453,9 @@ def main(epochs=50):
     if not os.path.exists('OUTPUT_BLOCK/{}'.format(args.path)):
         os.makedirs('OUTPUT_BLOCK/{}'.format(args.path))
     if args.goals:
-        args.output = 'OUTPUT_BLOCK/{}/lstm_goals_{}_{}.pkl'.format(args.path, args.type, args.output)
+        args.output = 'OUTPUT_BLOCK/{}/parallel_lstm_goals_{}_{}.pkl'.format(args.path, args.type, args.output)
     else:
-        args.output = 'OUTPUT_BLOCK/{}/lstm_{}_{}.pkl'.format(args.path, args.type, args.output)
+        args.output = 'OUTPUT_BLOCK/{}/parallel_lstm_{}_{}.pkl'.format(args.path, args.type, args.output)
 
     # configure logging
     from pythonjsonlogger import jsonlogger
@@ -502,30 +498,8 @@ def main(epochs=50):
 
     # create interaction/pooling modules
     pool = None
-    if args.type == 'hiddenstatemlp':
-        pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim,
-                                     mlp_dim_vel=args.vel_dim)
-    elif args.type == 'nmmp':
-        pool = NMMP(hidden_dim=args.hidden_dim, out_dim=args.pool_dim, k=args.mp_iters)
-    elif args.type == 'attentionmlp':
-        pool = AttentionMLPPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim,
-                                   mlp_dim_spatial=args.spatial_dim, mlp_dim_vel=args.vel_dim)
-    elif args.type == 'directionalmlp':
-        pool = DirectionalMLPPooling(out_dim=args.pool_dim)
-    elif args.type == 'nn':
-        pool = NN_Pooling(n=args.neigh, out_dim=args.pool_dim, no_vel=args.no_vel)
-    elif args.type == 'nn_lstm':
-        pool = NN_LSTM(n=args.neigh, hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
-    elif args.type == 'traj_pool':
-        pool = TrajectronPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
-    elif args.type == 's_att_fast':
-        pool = SAttention_fast(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
-    elif args.type != 'vanilla':
-        pool = GridBasedPooling(type_=args.type, hidden_dim=args.hidden_dim,
-                                cell_side=args.cell_side, n=args.n, front=args.front,
-                                out_dim=args.pool_dim, embedding_arch=args.embedding_arch,
-                                constant=args.pool_constant, pretrained_pool_encoder=pretrained_pool,
-                                norm=args.norm, layer_dims=args.layer_dims)
+    if args.type == 'nn':
+        pool = NN_Pooling(n=args.neigh, out_dim=args.pool_dim)
 
     # create forecasting model
     model = LSTM(pool=pool,
