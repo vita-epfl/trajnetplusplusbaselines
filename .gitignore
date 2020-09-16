@@ -1,6 +1,8 @@
 data/
 dest/
 dest_new/
+aicrowd_submissions/
+goal_files/
 
 DATA_BLOCK/
 output/
@@ -14,6 +16,7 @@ checkpoints
 Python-RVO2-master/
 dest_new/
 evaluator/old_table/
+evaluator/nll.py
 	
 *.txt
 *.png
