@@ -1,23 +1,16 @@
-Link to the Challenge: `Trajnet++ Challenge <https://www.aicrowd.com/challenges/trajnet-a-trajectory-forecasting-challenge>`_
 
-Starter Guide (NEW): `Introducing Trajnet++ Framework <https://thedebugger811.github.io/posts/2020/03/intro_trajnetpp/>`_
+Faster Implementation for LSTMs
+===============================
 
-Data Setup
-==========
+Allows for faster training and testing under following two constraints (in data):
 
-Data Directory Setup
---------------------
+- Number of pedestrians per scene is fixed
+- The pedestrians must be present at all times in the scene
 
-All Datasets are stored in DATA_BLOCK
+Link to synthetic data (satisfying the two constraints): TBA Soon.
 
-All Models after training are stored in OUTPUT_BLOCK: ``mkdir OUTPUT_BLOCK``
+Curently, this implementation supports only nearest neighbour (NN) interaction pooling.
 
-Data Conversion
----------------
-
-For data conversion, refer to trajnetplusplusdataset.
-
-After conversion, copy the converted dataset to DATA_BLOCK
 
 Training LSTMs
 ==============
@@ -25,11 +18,6 @@ Training LSTMs
 The training script and its help menu:
 ``python -m trajnetbaselines.lstm.trainer --help``
 
-Training GANs
-==============
-
-The training script and its help menu:
-``python -m trajnetbaselines.sgan.trainer --help``
 
 Evaluation
 ==========
