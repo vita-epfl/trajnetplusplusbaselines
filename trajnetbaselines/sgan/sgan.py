@@ -356,7 +356,7 @@ class LSTMGenerator(torch.nn.Module):
         assert ((prediction_truth is None) + (n_predict is None)) == 1
         if n_predict is not None:
             # -1 because one prediction is done by the encoder already
-            prediction_truth = [None for _ in range(n_predict - 1)]
+            prediction_truth = [None for _ in range(n_predict)]
 
         # initialize: Because of tracks with different lengths and the masked
         # update, the hidden state for every LSTM needs to be a separate object
