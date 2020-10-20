@@ -130,7 +130,7 @@ class SGAN(torch.nn.Module):
                 break
 
         ## Get real scores and fake scores from discriminator
-        if self.use_d:
+        if self.use_d and (prediction_truth is not None):
             scores_real = self.discrimator(observed, prediction_truth, goals, batch_split)
             scores_fake = self.discrimator(observed, pred_scene[-pred_length:], goals, batch_split)
             return rel_pred_list, pred_list, scores_real, scores_fake
