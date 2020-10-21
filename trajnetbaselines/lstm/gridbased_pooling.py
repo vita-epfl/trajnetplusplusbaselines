@@ -62,6 +62,10 @@ class GridBasedPooling(torch.nn.Module):
             ## Encode hidden-dim into 16-dim vector (faster computation)
             self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, 16)
             self.pooling_dim = 16
+        if self.type_ == 'dir_social':
+            ## Encode hidden-dim into 16-dim vector (faster computation)
+            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, 16)
+            self.pooling_dim = 18
 
         ## Final Representation Size
         if out_dim is None:
@@ -146,6 +150,8 @@ class GridBasedPooling(torch.nn.Module):
             grid = self.directional(obs1, obs2)
         elif self.type_ == 'social':
             grid = self.social(hidden_state, obs1, obs2)
+        elif self.type_ == 'dir_social':
+            grid = self.dir_social(hidden_state, obs1, obs2)
 
         ## Forward Grid
         return self.forward_grid(grid)
@@ -192,6 +198,34 @@ class GridBasedPooling(torch.nn.Module):
         
         ## Generate Occupancy Map
         return self.occupancy(obs2, hidden_state_grid, past_obs=obs1)
+
+    def dir_social(self, hidden_state, obs1, obs2):
+        ## Makes the Directional + Social Grid
+
+        num_tracks = obs2.size(0)
+
+        ## if only primary pedestrian present
+        if num_tracks == 1:
+            return self.occupancy(obs2, None)
+
+        ## Generate values to input in directional grid tensor (relative velocities in this case) 
+        vel = obs2 - obs1
+        unfolded = vel.unsqueeze(0).repeat(vel.size(0), 1, 1)
+        ## [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        relative = unfolded - vel.unsqueeze(1)
+        ## Deleting Diagonal (Ped wrt itself)
+        ## [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks-1, 2]
+        relative = relative[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
+
+        ## Generate values to input in hiddenstate grid tensor (compressed hidden-states in this case) 
+        ## [num_tracks, hidden_dim] --> [num_tracks, num_tracks-1, pooling_dim]
+        hidden_state_grid = hidden_state.repeat(num_tracks, 1).view(num_tracks, num_tracks, -1)
+        hidden_state_grid = hidden_state_grid[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, -1)
+        hidden_state_grid = self.hidden_dim_encoding(hidden_state_grid)
+
+        dir_social_rep = torch.cat([relative, hidden_state_grid], dim=2)
+        ## Generate Occupancy Map
+        return self.occupancy(obs2, dir_social_rep, past_obs=obs1)
 
     @staticmethod
     def normalize(relative, obs, past_obs):
