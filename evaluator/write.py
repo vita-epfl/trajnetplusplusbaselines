@@ -8,13 +8,22 @@ import numpy as np
 import trajnetplusplustools
 import trajnetbaselines
 
-def get_goals(paths, goal_dict, filename, scene_id):
-    ## get goals
-    if len(goal_dict):
-        scene_goal = np.array(goal_dict[filename][scene_id])
+## Parallel Compute
+import multiprocessing
+from joblib import Parallel, delayed
+from tqdm import tqdm
+
+def process_scene(predictor, model_name, paths, scene_goal, args):
+    ## For each scene, get predictions
+    if model_name == 'sf_opt':
+        predictions = predictor(paths, sf_params=[0.5, 5.0, 0.3], n_predict=args.pred_length, obs_length=args.obs_length) ## optimal sf_params (no collision constraint) [0.5, 1.0, 0.1],
+    elif model_name == 'orca_opt':
+        predictions = predictor(paths, orca_params=[0.4, 1.0, 0.3], n_predict=args.pred_length, obs_length=args.obs_length) ## optimal orca_params (no collision constraint) [0.25, 1.0, 0.3]
+    elif model_name in {'sf', 'orca', 'kf'}:
+        predictions = predictor(paths, n_predict=args.pred_length, obs_length=args.obs_length, args=args)
     else:
-        scene_goal = np.array([[0, 0] for path in paths])
-    return scene_goal
+        predictions = predictor(paths, scene_goal, n_predict=args.pred_length, obs_length=args.obs_length, modes=args.modes, args=args)
+    return predictions
 
 def main(args=None):
     ## List of .json file inside the args.path (waiting to be predicted by the testing model)
@@ -54,17 +63,6 @@ def main(args=None):
             name = dataset.replace(args.path.replace('_pred', '') + 'test/', '') + '.ndjson'
             print('NAME: ', name)
 
-            # Read Scenes from 'test' folder
-            reader = trajnetplusplustools.Reader(args.path.replace('_pred', '') + dataset + '.ndjson', scene_type='paths')
-            ## Necessary modification of train scene to add filename (for goals)
-            scenes = [(dataset, s_id, s) for s_id, s in reader.scenes()]
-            ## Consider goals
-            ## Goal file must be present in 'goal_files/test_private' folder 
-            ## Goal file must have the same name as corresponding test file 
-            if args.goals:
-                goal_dict = pickle.load(open('goal_files/test_private/' + dataset +'.pkl', "rb"))
-                all_goals[dataset] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scenes}
-
             # Loading the APPROPRIATE model
             ## Keep Adding Different Model Architectures to this List
             print("Model Name: ", model_name)
@@ -91,6 +89,25 @@ def main(args=None):
                 print("Model Architecture not recognized")
                 raise ValueError
 
+            # Read Scenes from 'test' folder
+            reader = trajnetplusplustools.Reader(args.path.replace('_pred', '') + dataset + '.ndjson', scene_type='paths')
+            ## Necessary modification of train scene to add filename (for goals)
+            scenes = [(dataset, s_id, s) for s_id, s in reader.scenes()]
+
+            ## Consider goals
+            ## Goal file must be present in 'goal_files/test_private' folder
+            ## Goal file must have the same name as corresponding test file
+            if predictor.model.goal_flag:
+                print("Loading Test Goals file")
+                goal_dict = pickle.load(open('goal_files/test_private/' + dataset +'.pkl', "rb"))
+                all_goals[dataset] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scenes}
+
+            ## Get Goals
+            if predictor.model.goal_flag:
+                scene_goals = [np.array(all_goals[filename][scene_id]) for filename, scene_id, _ in scenes]
+            else:
+                scene_goals = [np.zeros((len(paths), 2)) for _, scene_id, paths in scenes]
+
             # Get the model prediction and write them in corresponding test_pred file
             # VERY IMPORTANT: Prediction Format
             # The predictor function should output a dictionary. The keys of the dictionary should correspond to the prediction modes.
@@ -100,8 +117,14 @@ def main(args=None):
             # Shape of primary_prediction: Tensor of Shape (Prediction length, 2)
             # Shape of Neighbour_prediction: Tensor of Shape (Prediction length, n_tracks - 1, 2).
             # (See LSTMPredictor.py for more details)
+            scenes = tqdm(scenes)
             with open(args.path + '{}/{}'.format(model_name, name), "a") as myfile:
-                for filename, scene_id, paths in scenes:
+                ## Get all predictions in parallel. Faster!
+                pred_list = Parallel(n_jobs=12)(delayed(process_scene)(predictor, model_name, paths, scene_goal, args)
+                                                for (_, _, paths), scene_goal in zip(scenes, scene_goals))
+
+                ## Write All Predictions
+                for (predictions, (_, scene_id, paths)) in zip(pred_list, scenes):
                     ## Extract 1) first_frame, 2) frame_diff 3) ped_ids for writing predictions
                     observed_path = paths[0]
                     frame_diff = observed_path[1].frame - observed_path[0].frame
@@ -111,20 +134,10 @@ def main(args=None):
                     for j, _ in enumerate(paths[1:]): ## Only need neighbour ids
                         ped_id_.append(paths[j+1][0].pedestrian)
 
-                    ## For each scene, get predictions
-                    if model_name == 'sf_opt':
-                        predictions = predictor(paths, sf_params=[0.5, 5.0, 0.3], n_predict=args.pred_length, obs_length=args.obs_length) ## optimal sf_params (no collision constraint) [0.5, 1.0, 0.1],
-                    elif model_name == 'orca_opt':
-                        predictions = predictor(paths, orca_params=[0.4, 1.0, 0.3], n_predict=args.pred_length, obs_length=args.obs_length) ## optimal orca_params (no collision constraint) [0.25, 1.0, 0.3]
-                    elif model_name in {'sf', 'orca', 'kf'}:
-                        predictions = predictor(paths, n_predict=args.pred_length, obs_length=args.obs_length, args=args)
-                    else:
-                        goals = get_goals(paths, all_goals, filename, scene_id) ## Zeros if no goals utilized
-                        predictions = predictor(paths, goals, n_predict=args.pred_length, obs_length=args.obs_length, modes=args.modes, args=args)
-
                     ## Write SceneRow
                     scenerow = trajnetplusplustools.SceneRow(scene_id, ped_id, observed_path[0].frame, 
-                                                             observed_path[0].frame + seq_length - 1, 2.5, 0)
+                                                             observed_path[0].frame + (seq_length - 1) * frame_diff, 2.5, 0)
+                    # scenerow = trajnetplusplustools.SceneRow(scenerow.scene, scenerow.pedestrian, scenerow.start, scenerow.end, 2.5, 0)
                     myfile.write(trajnetplusplustools.writers.trajnet(scenerow))
                     myfile.write('\n')
 

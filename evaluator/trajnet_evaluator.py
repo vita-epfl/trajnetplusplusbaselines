@@ -326,8 +326,6 @@ def main():
                         help='consider kalman in evaluation')
     parser.add_argument('--normalize_scene', action='store_true',
                         help='augment scenes')
-    parser.add_argument('--goals', action='store_true',
-                        help='Considers goals during prediction')
     parser.add_argument('--modes', default=1, type=int,
                         help='number of modes to predict')
     args = parser.parse_args()
