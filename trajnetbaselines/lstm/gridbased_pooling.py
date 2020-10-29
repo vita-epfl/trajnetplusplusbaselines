@@ -64,8 +64,8 @@ class GridBasedPooling(torch.nn.Module):
             self.pooling_dim = 16
         if self.type_ == 'dir_social':
             ## Encode hidden-dim into 16-dim vector (faster computation)
-            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, 16)
-            self.pooling_dim = 18
+            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, 4)
+            self.pooling_dim = 6
 
         ## Final Representation Size
         if out_dim is None:
