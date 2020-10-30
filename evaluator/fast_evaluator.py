@@ -64,6 +64,9 @@ def main():
     if (not args.unimodal) and (not args.topk) and (not args.multimodal):
         args.unimodal = True # Compute unimodal metrics by default
 
+    if args.topk:
+        args.modes = 3
+
     if args.multimodal:
         args.modes = 20
 
@@ -79,8 +82,10 @@ def main():
         print("Model Name: ", model_name)
         if 'sgan' in model_name:
             predictor = trajnetbaselines.sgan.SGANPredictor.load(model)
+            goal_flag = predictor.model.generator.goal_flag
         else:
             predictor = trajnetbaselines.lstm.LSTMPredictor.load(model)
+            goal_flag = predictor.model.goal_flag
 
         # On CPU
         device = torch.device('cpu')
@@ -122,12 +127,12 @@ def main():
             ## Consider goals
             ## Goal file must be present in 'goal_files/test_private' folder 
             ## Goal file must have the same name as corresponding test file 
-            if predictor.model.goal_flag:
+            if goal_flag:
                 goal_dict = pickle.load(open('goal_files/test_private/' + dataset +'.pkl', "rb"))
                 all_goals[dataset] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scenes}
 
             ## Get Goals
-            if predictor.model.goal_flag:
+            if goal_flag:
                 scene_goals = [np.array(all_goals[filename][scene_id]) for filename, scene_id, _ in scenes]
             else:
                 scene_goals = [np.zeros((len(paths), 2)) for _, scene_id, paths in scenes]

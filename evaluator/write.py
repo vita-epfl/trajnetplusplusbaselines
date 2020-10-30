@@ -66,6 +66,7 @@ def main(args=None):
             # Loading the APPROPRIATE model
             ## Keep Adding Different Model Architectures to this List
             print("Model Name: ", model_name)
+            goal_flag = False
             if model_name == 'kf':
                 print("Kalman")
                 predictor = trajnetbaselines.classical.kalman.predict
@@ -80,11 +81,13 @@ def main(args=None):
                 predictor = trajnetbaselines.sgan.SGANPredictor.load(model)
                 device = torch.device('cpu')
                 predictor.model.to(device)
+                goal_flag = predictor.model.generator.goal_flag
             elif 'lstm' in model_name:
                 print("LSTM")
                 predictor = trajnetbaselines.lstm.LSTMPredictor.load(model)
                 device = torch.device('cpu')
                 predictor.model.to(device)
+                goal_flag = predictor.model.goal_flag
             else:
                 print("Model Architecture not recognized")
                 raise ValueError
@@ -97,13 +100,13 @@ def main(args=None):
             ## Consider goals
             ## Goal file must be present in 'goal_files/test_private' folder
             ## Goal file must have the same name as corresponding test file
-            if predictor.model.goal_flag:
+            if goal_flag:
                 print("Loading Test Goals file")
                 goal_dict = pickle.load(open('goal_files/test_private/' + dataset +'.pkl', "rb"))
                 all_goals[dataset] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scenes}
 
             ## Get Goals
-            if predictor.model.goal_flag:
+            if goal_flag:
                 scene_goals = [np.array(all_goals[filename][scene_id]) for filename, scene_id, _ in scenes]
             else:
                 scene_goals = [np.zeros((len(paths), 2)) for _, scene_id, paths in scenes]
