@@ -70,6 +70,13 @@ def main():
     if args.multimodal:
         args.modes = 20
 
+    enable_col1 = True
+    ## drop pedestrians that appear post observation
+    def drop_post_obs(ground_truth, obs_length):
+        obs_end_frame = ground_truth[0][obs_length].frame
+        ground_truth = [track for track in ground_truth if track[0].frame < obs_end_frame]
+        return ground_truth
+
     ## Writes to Test_pred
     ## Does this overwrite existing predictions? No. ###
     datasets = sorted([f.split('.')[-2] for f in os.listdir(args.path.replace('_pred', '')) if not f.startswith('.') and f.endswith('.ndjson')])
@@ -185,14 +192,19 @@ def main():
                     average += average_l2
                     final += final_l2
 
+                    ground_truth = drop_post_obs(ground_truth, args.obs_length)
                     ## Collision Metrics
                     for j in range(1, len(ground_truth)):
                         if trajnetplusplustools.metrics.collision(primary_tracks, ground_truth[j], n_predictions=args.pred_length):
                             gt_col += 1
                             break
 
-                    # ## neighbours (if not empty) [Col-I]
-                    if neigh_predictions.shape[1]:
+                    num_gt_neigh = len(ground_truth) - 1
+                    num_predicted_neigh = neigh_predictions.shape[1]
+                    if num_gt_neigh != num_predicted_neigh:
+                        enable_col1 = False
+                    # [Col-I] only if neighs in gt = neighs in prediction
+                    if enable_col1:
                         neigh_scenes += 1
                         for n in range(neigh_predictions.shape[1]):
                             neigh = neigh_predictions[:, n]
@@ -220,7 +232,7 @@ def main():
             average /= total_scenes
             final /= total_scenes
             gt_col /= (total_scenes * 0.01)
-            if neigh_scenes == 0:
+            if not enable_col1:
                 pred_col = -1
             else:
                 pred_col /= (neigh_scenes * 0.01)

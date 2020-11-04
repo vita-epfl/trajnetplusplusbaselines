@@ -284,10 +284,6 @@ class LSTMPredictor(object):
             xy = trajnetplusplustools.Reader.paths_to_xy(paths)
             batch_split = [0, xy.shape[1]]
 
-            ## Drop Distant (for real data)
-            # xy, mask = drop_distant(xy, r=15.0)
-            # scene_goal = scene_goal[mask]
-
             if args.normalize_scene:
                 xy, rotation, center, scene_goal = center_scene(xy, obs_length, goals=scene_goal)
             
