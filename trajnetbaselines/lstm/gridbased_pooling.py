@@ -16,10 +16,9 @@ class GridBasedPooling(torch.nn.Module):
     def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
                  type_='occupancy', pool_size=1, blur_size=1, front=False,
                  embedding_arch='one_layer', pretrained_pool_encoder=None,
-                 constant=0, norm=0, layer_dims=None):
+                 constant=0, norm=0, layer_dims=None, latent_dim=16):
         """
         Pools in a grid of size 'n * cell_side' centred at the ped location
-
         cell_side: Scalar
             size of each cell in real world
         n: Scalar
@@ -60,12 +59,13 @@ class GridBasedPooling(torch.nn.Module):
             self.pooling_dim = 2
         if self.type_ == 'social':
             ## Encode hidden-dim into 16-dim vector (faster computation)
-            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, 16)
-            self.pooling_dim = 16
+            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, latent_dim)
+            self.pooling_dim = latent_dim
         if self.type_ == 'dir_social':
             ## Encode hidden-dim into 16-dim vector (faster computation)
-            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, 4)
-            self.pooling_dim = 6
+            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, latent_dim)
+            self.pooling_dim = latent_dim + 2
+            print("POOLING DIM: ", self.pooling_dim)
 
         ## Final Representation Size
         if out_dim is None:
@@ -99,7 +99,6 @@ class GridBasedPooling(torch.nn.Module):
         ----------
         grid: [num_tracks, self.pooling_dim, self.n, self.n]
             Generated Grid
-
         Returns
         -------
         interactor_vector: Tensor [num_tracks, self.out_dim]
@@ -224,6 +223,7 @@ class GridBasedPooling(torch.nn.Module):
         hidden_state_grid = self.hidden_dim_encoding(hidden_state_grid)
 
         dir_social_rep = torch.cat([relative, hidden_state_grid], dim=2)
+
         ## Generate Occupancy Map
         return self.occupancy(obs2, dir_social_rep, past_obs=obs1)
 
@@ -243,7 +243,6 @@ class GridBasedPooling(torch.nn.Module):
     def occupancy(self, obs, other_values=None, past_obs=None):
         """Returns the occupancy map filled with respective attributes.
         A different occupancy map with respect to each pedestrian
-
         Parameters
         ----------
         obs: Tensor [num_tracks, 2]
@@ -254,7 +253,6 @@ class GridBasedPooling(torch.nn.Module):
         past_obs: Tensor [num_tracks, 2]
             Previous x-y positions of all pedestrians, used to construct occupancy map.
             Useful for normalizing the grid tensor.
-
         Returns
         -------
         grid: Tensor [num_tracks, self.pooling_dim, self.n, self.n]

@@ -446,6 +446,8 @@ def main(epochs=50):
                                  help='obs length dropout (regularization)')
     hyperparameters.add_argument('--start_length', default=0, type=int,
                                  help='start length during obs dropout')
+    hyperparameters.add_argument('--latent_dim', type=int, default=16,
+                                 help='Social latent dimension')
     args = parser.parse_args()
 
     ## Fixed set of scenes if sampling
@@ -525,7 +527,7 @@ def main(epochs=50):
                                 cell_side=args.cell_side, n=args.n, front=args.front,
                                 out_dim=args.pool_dim, embedding_arch=args.embedding_arch,
                                 constant=args.pool_constant, pretrained_pool_encoder=pretrained_pool,
-                                norm=args.norm, layer_dims=args.layer_dims)
+                                norm=args.norm, layer_dims=args.layer_dims, latent_dim=args.latent_dim)
 
     # create forecasting model
     model = LSTM(pool=pool,
