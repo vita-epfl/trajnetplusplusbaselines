@@ -447,7 +447,7 @@ def main(epochs=50):
                         help='initial learning rate')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
-                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp'),
+                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social'),
                         help='type of interaction encoder')
     parser.add_argument('--norm_pool', action='store_true',
                         help='normalize the scene along direction of movement')
