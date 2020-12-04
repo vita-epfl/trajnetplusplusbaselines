@@ -282,6 +282,7 @@ class LSTMPredictor(object):
         # self.model.train()
         with torch.no_grad():
             xy = trajnetplusplustools.Reader.paths_to_xy(paths)
+            # xy = augmentation.add_noise(xy, thresh=args.thresh, ped=args.ped_type)
             batch_split = [0, xy.shape[1]]
 
             ## Drop Distant (for real data)

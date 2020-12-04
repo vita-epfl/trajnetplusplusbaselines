@@ -28,7 +28,8 @@ from .utils import center_scene, random_rotation
 class Trainer(object):
     def __init__(self, model=None, criterion='L2', optimizer=None, lr_scheduler=None,
                  device=None, batch_size=32, obs_length=9, pred_length=12, augment=False,
-                 normalize_scene=False, save_every=1, start_length=0, obs_dropout=False):
+                 normalize_scene=False, save_every=1, start_length=0, obs_dropout=False,
+                 augment_noise=False):
         self.model = model if model is not None else LSTM()
         if criterion == 'L2':
             self.criterion = L2Loss()
@@ -54,6 +55,7 @@ class Trainer(object):
         self.seq_length = self.obs_length+self.pred_length
 
         self.augment = augment
+        self.augment_noise = augment_noise
         self.normalize_scene = normalize_scene
 
         self.start_length = start_length
@@ -117,7 +119,8 @@ class Trainer(object):
                 scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
             if self.augment:
                 scene, scene_goal = random_rotation(scene, goals=scene_goal)
-                # scene = augmentation.add_noise(scene, thresh=0.01)
+            if self.augment_noise:
+                scene = augmentation.add_noise(scene, thresh=0.02, ped='neigh')
 
             ## Augment scene to batch of scenes
             batch_scene.append(scene)
@@ -257,13 +260,16 @@ class Trainer(object):
         rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
         ## Loss wrt primary tracks of each scene only
-        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
+        l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
+        loss = l2_loss
+        # col_loss = 1.0 * self.criterion.col_loss(outputs[-self.pred_length:, 0:1], outputs[-self.pred_length:, 1:])
+        # loss = l2_loss + col_loss
 
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-        return loss.item()
+        return l2_loss.item()
 
     def val_batch(self, batch_scene, batch_scene_goal, batch_split):
         """Validation of B batches in parallel, B : batch_size
@@ -448,6 +454,8 @@ def main(epochs=50):
                                  help='start length during obs dropout')
     hyperparameters.add_argument('--latent_dim', type=int, default=16,
                                  help='Social latent dimension')
+    hyperparameters.add_argument('--augment_noise', action='store_true',
+                                 help='flag to augment_noise for robustness')
     args = parser.parse_args()
 
     ## Fixed set of scenes if sampling
@@ -567,7 +575,8 @@ def main(epochs=50):
     trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device,
                       criterion=args.loss, batch_size=args.batch_size, obs_length=args.obs_length,
                       pred_length=args.pred_length, augment=args.augment, normalize_scene=args.normalize_scene,
-                      save_every=args.save_every, start_length=args.start_length, obs_dropout=args.obs_dropout)
+                      save_every=args.save_every, start_length=args.start_length, obs_dropout=args.obs_dropout,
+                      augment_noise=args.augment_noise)
     trainer.loop(train_scenes, val_scenes, train_goals, val_goals, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 

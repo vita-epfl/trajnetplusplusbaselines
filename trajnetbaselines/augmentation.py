@@ -76,6 +76,12 @@ def drop_unobserved(xy, obs_length=9):
 def neigh_nan(xy):
     return numpy.isnan(xy).all()
 
-def add_noise(observation, thresh=0.005, obs_length=9):
-    observation[:obs_length] += numpy.random.uniform(-thresh, thresh, observation[:obs_length].shape)
+def add_noise(observation, thresh=0.005, obs_length=9, ped='primary'):
+    if ped=='primary':
+        observation[:obs_length, 0] += numpy.random.uniform(-thresh, thresh, observation[:obs_length, 0].shape)
+    elif ped=='neigh':
+        observation[:obs_length, 1:] += numpy.random.uniform(-thresh, thresh, observation[:obs_length, 1:].shape)
+    else:
+        raise ValueError
+
     return observation

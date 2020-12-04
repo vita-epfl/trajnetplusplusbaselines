@@ -51,6 +51,10 @@ def main():
     parser.add_argument('--scene_type', default=0, type=int,
                         choices=(0, 1, 2, 3, 4),
                         help='type of scene to evaluate')
+    parser.add_argument('--thresh', default=0.0, type=float,
+                        help='noise thresh')
+    parser.add_argument('--ped_type', default='primary',
+                        help='type of ped to add noise to')
     args = parser.parse_args()
 
     scipy.seterr('ignore')
@@ -133,7 +137,7 @@ def main():
                 scene_goals = [np.zeros((len(paths), 2)) for _, scene_id, paths in scenes]
 
             # print("Getting Predictions")
-            # scenes = tqdm(scenes)
+            scenes = tqdm(scenes)
             ## Get all predictions in parallel. Faster!
             pred_list = Parallel(n_jobs=12)(delayed(process_scene)(predictor, model_name, paths, scene_goal, args)
                                             for (_, _, paths), scene_goal in zip(scenes, scene_goals))
@@ -144,7 +148,7 @@ def main():
             total_scenes += len(scenes_gt)
 
             # print("Evaluating Predictions")
-            # scenes = tqdm(scenes)
+            scenes = tqdm(scenes)
             for (predictions, (_, scene_id, paths), ground_truth) in zip(pred_list, scenes, scenes_gt):
 
                 ## Extract 1) first_frame, 2) frame_diff 3) ped_ids for writing predictions
