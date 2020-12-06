@@ -42,6 +42,24 @@ class PredictionLoss(torch.nn.Module):
 
         return numerator / denominator
 
+    def col_loss(self, primary, neighbours, batch_split, gamma=2.0):
+        """
+        primary: Tensor [pred_length, 1, 2]
+        neighbours: Tensor [pred_length, num_neighbours, 2]
+        """
+
+        neighbours[neighbours != neighbours] = -1000
+        exponential_loss = 0.0
+        for (start, end) in zip(batch_split[:-1], batch_split[1:]):
+            batch_primary = primary[:, start:start+1]
+            batch_neigh = neighbours[:, start:end]
+            distance_to_neigh = torch.norm(batch_neigh - batch_primary, dim=2)
+            mask_far = (distance_to_neigh < 0.25).detach()
+            distance_to_neigh = -gamma * distance_to_neigh * mask_far
+            exponential_loss += distance_to_neigh.exp().sum()
+            # print(exponential_loss)
+        return exponential_loss.sum()
+
     def forward(self, inputs, targets, batch_split):
         
         pred_length, batch_size = targets.size(0), batch_split[:-1].size(0)
@@ -86,6 +104,24 @@ class L2Loss(torch.nn.Module):
         super(L2Loss, self).__init__()
         self.loss = torch.nn.MSELoss(reduction='none')
         self.keep_batch_dim = keep_batch_dim
+
+    def col_loss(self, primary, neighbours, batch_split, gamma=2.0):
+        """
+        primary: Tensor [pred_length, 1, 2]
+        neighbours: Tensor [pred_length, num_neighbours, 2]
+        """
+
+        neighbours[neighbours != neighbours] = -1000
+        exponential_loss = 0.0
+        for (start, end) in zip(batch_split[:-1], batch_split[1:]):
+            batch_primary = primary[:, start:start+1]
+            batch_neigh = neighbours[:, start:end]
+            distance_to_neigh = torch.norm(batch_neigh - batch_primary, dim=2)
+            mask_far = (distance_to_neigh < 0.25).detach()
+            distance_to_neigh = -gamma * distance_to_neigh * mask_far
+            exponential_loss += distance_to_neigh.exp().sum()
+            # print(exponential_loss)
+        return exponential_loss.sum()
 
     def forward(self, inputs, targets, batch_split):
         ## Extract primary pedestrians
@@ -150,3 +186,11 @@ def gan_d_loss(scores_real, scores_fake):
     loss_real = bce_loss(scores_real, y_real)
     loss_fake = bce_loss(scores_fake, y_fake)
     return loss_real + loss_fake
+
+
+## Test
+# l2_loss = L2Loss()
+# primary_ped = torch.tensor([[[0., 0], [1, 0], [2, 0]]])
+# neighbours = torch.tensor([[[2.2, 0], [2.2, 0], [2.2, 0]], [[3.2, 0], [3.2, 0], [3.2, 0]]])
+
+# l2_loss.col_loss(primary_ped, neighbours)

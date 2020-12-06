@@ -29,7 +29,7 @@ class Trainer(object):
     def __init__(self, model=None, criterion='L2', optimizer=None, lr_scheduler=None,
                  device=None, batch_size=32, obs_length=9, pred_length=12, augment=False,
                  normalize_scene=False, save_every=1, start_length=0, obs_dropout=False,
-                 augment_noise=False):
+                 augment_noise=False, col_weight=0.0, col_gamma=2.0):
         self.model = model if model is not None else LSTM()
         if criterion == 'L2':
             self.criterion = L2Loss()
@@ -60,6 +60,10 @@ class Trainer(object):
 
         self.start_length = start_length
         self.obs_dropout = obs_dropout
+
+        self.col_weight = col_weight
+        self.col_gamma = col_gamma
+        print("Col Weight, Col Gamma: ", self.col_weight, self.col_gamma)
 
     def loop(self, train_scenes, val_scenes, train_goals, val_goals, out, epochs=35, start_epoch=0):
         for epoch in range(start_epoch, start_epoch + epochs):
@@ -260,10 +264,12 @@ class Trainer(object):
         rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
         ## Loss wrt primary tracks of each scene only
+        # l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
+        # loss = l2_loss
         l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
-        loss = l2_loss
-        # col_loss = 1.0 * self.criterion.col_loss(outputs[-self.pred_length:, 0:1], outputs[-self.pred_length:, 1:])
-        # loss = l2_loss + col_loss
+        col_loss = self.col_weight * self.criterion.col_loss(outputs[-self.pred_length:], batch_scene[-self.pred_length:], batch_split, self.col_gamma)
+        loss = l2_loss + col_loss
+
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -456,6 +462,10 @@ def main(epochs=50):
                                  help='Social latent dimension')
     hyperparameters.add_argument('--augment_noise', action='store_true',
                                  help='flag to augment_noise for robustness')
+    hyperparameters.add_argument('--col_weight', default=0., type=float,
+                                 help='collision loss weight')
+    hyperparameters.add_argument('--col_gamma', default=2.0, type=float,
+                                 help='collision gamma weight')
     args = parser.parse_args()
 
     ## Fixed set of scenes if sampling
@@ -576,7 +586,7 @@ def main(epochs=50):
                       criterion=args.loss, batch_size=args.batch_size, obs_length=args.obs_length,
                       pred_length=args.pred_length, augment=args.augment, normalize_scene=args.normalize_scene,
                       save_every=args.save_every, start_length=args.start_length, obs_dropout=args.obs_dropout,
-                      augment_noise=args.augment_noise)
+                      augment_noise=args.augment_noise, col_weight=args.col_weight, col_gamma=args.col_gamma)
     trainer.loop(train_scenes, val_scenes, train_goals, val_goals, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 
