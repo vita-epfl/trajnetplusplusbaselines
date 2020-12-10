@@ -91,6 +91,8 @@ class GridBasedPooling(torch.nn.Module):
             self.embedding = self.three_layer(input_dim, layer_dims)
         elif self.embedding_arch == 'conv_two_layer':
             self.embedding = self.conv_two_layer(input_dim, layer_dims)
+        elif self.embedding_arch == 'lstm_layer':
+            self.embedding = self.lstm_layer(hidden_dim)
 
     def forward_grid(self, grid):
         """ Encodes the generated grid tensor
@@ -136,7 +138,10 @@ class GridBasedPooling(torch.nn.Module):
                 grid = (grid - mean) / std
 
         ## Embed grid
-        if self.embedding:
+        if self.embedding_arch == 'lstm_layer':
+            return self.lstm_forward(grid)
+
+        elif self.embedding:
             return self.embedding(grid)
 
         return grid
@@ -357,6 +362,49 @@ class GridBasedPooling(torch.nn.Module):
             torch.nn.ReLU(),
             torch.nn.Linear(layer_dims[0], self.out_dim),
             torch.nn.ReLU(),)
+
+    def reset(self, num_tracks, device):
+        self.hidden_cell_state = (
+            [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
+            [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
+        )
+
+    def lstm_layer(self, hidden_dim):
+        self.hidden_dim = hidden_dim
+        self.pool_lstm = torch.nn.LSTMCell(self.out_dim, self.hidden_dim)
+        self.hidden2pool = torch.nn.Linear(self.hidden_dim, self.out_dim)
+        self.track_mask = None
+        return torch.nn.Sequential(
+                         torch.nn.Linear(self.n * self.n * self.pooling_dim, self.out_dim),
+                         torch.nn.ReLU(),)
+
+    def lstm_forward(self, grid):
+
+        grid_embedding = self.embedding(grid)
+
+        num_tracks = grid.size(0)
+        ## If only primary pedestrian of the scene present
+        if torch.sum(self.track_mask).item() == 1:
+            return torch.zeros(num_tracks, self.out_dim, device=grid.device)
+
+        hidden_cell_stacked = [
+            torch.stack([h for m, h in zip(self.track_mask, self.hidden_cell_state[0]) if m], dim=0),
+            torch.stack([c for m, c in zip(self.track_mask, self.hidden_cell_state[1]) if m], dim=0),
+        ]
+
+        ## Update interaction-encoder LSTM
+        hidden_cell_stacked = self.pool_lstm(grid_embedding, hidden_cell_stacked)
+        interaction_vector = self.hidden2pool(hidden_cell_stacked[0])
+
+        ## Save hidden-cell-states
+        mask_index = [i for i, m in enumerate(self.track_mask) if m]
+        for i, h, c in zip(mask_index,
+                           hidden_cell_stacked[0],
+                           hidden_cell_stacked[1]):
+            self.hidden_cell_state[0][i] = h
+            self.hidden_cell_state[1][i] = c
+
+        return interaction_vector
 
     def make_grid(self, obs):
     ## Make the grids for all time-steps together
