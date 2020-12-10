@@ -9,6 +9,7 @@ from .modules import Hidden2Normal, InputEmbedding
 
 from .. import augmentation
 from .utils import center_scene
+from .lrp_linear_layer import *
 
 NAN = float('nan')
 
@@ -66,6 +67,52 @@ class LSTM(torch.nn.Module):
         # Predict the parameters of a multivariate normal:
         # mu_vel_x, mu_vel_y, sigma_vel_x, sigma_vel_y, rho
         self.hidden2normal = Hidden2Normal(self.hidden_dim)
+
+    def init_lrp(self):
+        """
+        Load trained model weights.
+        """
+
+        d = self.hidden_dim
+
+        self.Wxh_Left_E  = self.encoder.weight_ih.double()  # shape 4d*e
+        self.bxh_Left_E  = self.encoder.bias_ih.double() # shape 4d 
+        self.Whh_Left_E  = self.encoder.weight_hh.double()  # shape 4d*d
+        self.bhh_Left_E  = self.encoder.bias_hh.double()  # shape 4d 
+
+        self.Wxh_Left_D  = self.decoder.weight_ih.double()  # shape 4d*e
+        self.bxh_Left_D  = self.decoder.bias_ih.double() # shape 4d 
+        self.Whh_Left_D  = self.decoder.weight_hh.double()  # shape 4d*d
+        self.bhh_Left_D  = self.decoder.bias_hh.double()  # shape 4d 
+
+        self.Why_Left  = self.hidden2normal.linear.weight.double() # shape C*d
+        self.bhy_Left  = self.hidden2normal.linear.bias.double()  # shape C
+
+    def init_lrp_new_scene(self):
+        """
+        Load trained model from file.
+        """
+
+        self.T = 19
+        # self.T = 8
+        # self.T = 1
+    
+        # initialize
+        d = self.hidden_dim
+        T = self.T
+
+        E = self.encoder.weight_ih.shape[1]
+        self.x              = torch.zeros((T, E), device=self.encoder.weight_ih.device).double()
+
+        self.h_Left         = torch.zeros((T+1, d), device=self.encoder.weight_ih.device).double()
+        self.c_Left         = torch.zeros((T+1, d), device=self.encoder.weight_ih.device).double()
+
+        self.gates_xh_Left  = torch.zeros((T, 4*d), device=self.encoder.weight_ih.device).double() 
+        self.gates_hh_Left  = torch.zeros((T, 4*d), device=self.encoder.weight_ih.device).double() 
+        self.gates_pre_Left = torch.zeros((T, 4*d), device=self.encoder.weight_ih.device).double()  # gates pre-activation
+        self.gates_Left     = torch.zeros((T, 4*d), device=self.encoder.weight_ih.device).double()  # gates activation
+
+        self.time_step = 0
 
     def step(self, lstm, hidden_cell_state, obs1, obs2, goals, batch_split):
         """Do one step of prediction: two inputs to one normal prediction.
@@ -154,9 +201,43 @@ class LSTM(torch.nn.Module):
             else:
                 hidden_cell_stacked[0] += pooled
 
+        ## LRP LSTM STEP #########################################################################
+        # if self.time_step == 0:
+        t = self.time_step
+        # print('t: ', self.time_step)
+        atol = 1e-8
+        ## Note: Pytorch ORDER !!!
+        # W_i|W_f|W_g|W_o
+        # gate indices (assuming the gate ordering in the LSTM weights is i,g,f,o):
+        d = self.hidden_dim
+        idx  = np.hstack((np.arange(0,2*d), np.arange(3*d,4*d))).astype(int) # indices of gates i,f,o together
+        idx_i, idx_g, idx_f, idx_o = np.arange(0,d), np.arange(2*d,3*d), np.arange(d,2*d), np.arange(3*d,4*d) # indices of gates i,g,f,o separately
+        self.Wxh_Left = self.Wxh_Left_E if t < 8 else self.Wxh_Left_D
+        self.Whh_Left = self.Whh_Left_E if t < 8 else self.Whh_Left_D
+        self.bxh_Left = self.bxh_Left_E if t < 8 else self.bxh_Left_D
+        self.bhh_Left = self.bhh_Left_E if t < 8 else self.bhh_Left_D
+
+        self.x[t] = input_emb[0]
+        self.gates_xh_Left[t]     = torch.matmul(self.Wxh_Left, self.x[t]) 
+        self.gates_hh_Left[t]     = torch.matmul(self.Whh_Left, self.h_Left[t-1]) 
+        self.gates_pre_Left[t]    = self.gates_xh_Left[t] + self.gates_hh_Left[t] + self.bxh_Left + self.bhh_Left
+        self.gates_Left[t,idx]    = 1.0/(1.0 + torch.exp(-self.gates_pre_Left[t,idx]))
+        self.gates_Left[t,idx_g]  = torch.tanh(self.gates_pre_Left[t,idx_g]) 
+        self.c_Left[t]            = self.gates_Left[t,idx_f]*self.c_Left[t-1] + self.gates_Left[t,idx_i]*self.gates_Left[t,idx_g]
+        self.h_Left[t]            = self.gates_Left[t,idx_o]*torch.tanh(self.c_Left[t])
+        
+        self.y_Left  = torch.matmul(self.Why_Left,  self.h_Left[t]) + self.bhy_Left
+        self.s       = self.y_Left
+        self.time_step += 1
+        ##########################################################################################
+
         # LSTM step
         hidden_cell_stacked = lstm(input_emb, hidden_cell_stacked)
         normal_masked = self.hidden2normal(hidden_cell_stacked[0])
+        # assert torch.all(torch.isclose(hidden_cell_stacked[0][0].double(), self.h_Left[t], atol=atol))
+        # assert torch.all(torch.isclose(hidden_cell_stacked[1][0].double(), self.c_Left[t], atol=atol))
+        # assert torch.all(torch.isclose(normal_masked[0][:2].double(), self.s[:2], atol=atol))
+
 
         # unmask [Update hidden-states and next velocities of pedestrians]
         normal = torch.full((track_mask.size(0), 5), NAN, device=obs1.device)
@@ -170,6 +251,42 @@ class LSTM(torch.nn.Module):
             normal[i] = n
 
         return hidden_cell_state, normal
+
+    def lrp(self, LRP_class=0, eps=0.001, bias_factor=0.0, debug=False):
+        
+        T = self.T
+        d = self.hidden_dim
+        # initialize
+        Rx       = torch.zeros_like(self.x)
+        
+        Rh_Left  = torch.zeros((self.T+1, d), device=self.encoder.weight_ih.device)
+        Rc_Left  = torch.zeros((self.T+1, d), device=self.encoder.weight_ih.device)
+        Rg_Left  = torch.zeros((self.T, d), device=self.encoder.weight_ih.device) # gate g only
+
+        Rout_mask            = torch.zeros((5))
+        Rout_mask[LRP_class] = 1.0  
+
+        # format reminder: lrp_linear(hin, w, b, hout, Rout, bias_nb_units, eps, bias_factor)
+        Rh_Left[T-1]  = lrp_linear(self.h_Left[T-1],  self.Why_Left.T , self.bhy_Left, self.s, self.s*Rout_mask, 128, eps, bias_factor, debug=debug)
+
+        d = self.hidden_dim
+        e = self.encoder.weight_ih.shape[1]
+        idx  = np.hstack((np.arange(0,2*d), np.arange(3*d,4*d))).astype(int) # indices of gates i,f,o together
+        idx_i, idx_g, idx_f, idx_o = np.arange(0,d), np.arange(2*d,3*d), np.arange(d,2*d), np.arange(3*d,4*d) # indices of gates i,g,f,o separately
+        
+        for t in reversed(range(T)):
+            self.Wxh_Left = self.Wxh_Left_E if t < 8 else self.Wxh_Left_D
+            self.Whh_Left = self.Whh_Left_E if t < 8 else self.Whh_Left_D
+            self.bxh_Left = self.bxh_Left_E if t < 8 else self.bxh_Left_D
+            self.bhh_Left = self.bhh_Left_E if t < 8 else self.bhh_Left_D
+
+            Rc_Left[t]   += Rh_Left[t]
+            Rc_Left[t-1]  = lrp_linear(self.gates_Left[t,idx_f]*self.c_Left[t-1],         torch.eye(d), torch.zeros((d)), self.c_Left[t], Rc_Left[t], 2*d, eps, bias_factor, debug=debug)
+            Rg_Left[t]    = lrp_linear(self.gates_Left[t,idx_i]*self.gates_Left[t,idx_g], torch.eye(d), torch.zeros((d)), self.c_Left[t], Rc_Left[t], 2*d, eps, bias_factor, debug=debug)
+            Rx[t]         = lrp_linear(self.x[t],        self.Wxh_Left[idx_g].T, self.bxh_Left[idx_g]+self.bhh_Left[idx_g], self.gates_pre_Left[t,idx_g], Rg_Left[t], d+e, eps, bias_factor, debug=debug)
+            Rh_Left[t-1]  = lrp_linear(self.h_Left[t-1], self.Whh_Left[idx_g].T, self.bxh_Left[idx_g]+self.bhh_Left[idx_g], self.gates_pre_Left[t,idx_g], Rg_Left[t], d+e, eps, bias_factor, debug=debug)
+  
+        return Rx, Rh_Left[-1].sum()+Rc_Left[-1].sum()
 
     def forward(self, observed, goals, batch_split, prediction_truth=None, n_predict=None):
         """Forecast the entire sequence 
@@ -260,6 +377,13 @@ class LSTM(torch.nn.Module):
             normals.append(normal)
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
+        Rx, Rh = self.lrp(LRP_class=0, bias_factor=1.0, debug=True, eps=0.001)
+        R_tot = Rx.sum() + Rh.sum()          # sum of all "input" relevances
+        print(R_tot)    
+        print("Sanity check passed? ", R_tot, self.s)
+        import pdb
+        pdb.set_trace()
+
         # Pred_scene: Tensor [seq_length, num_tracks, 2]
         #    Absolute positions of all pedestrians
         # Rel_pred_scene: Tensor [seq_length, num_tracks, 5]
@@ -292,6 +416,8 @@ class LSTMPredictor(object):
         self.model.eval()
         # self.model.train()
         with torch.no_grad():
+            self.model.init_lrp()
+            self.model.init_lrp_new_scene()
             xy = trajnetplusplustools.Reader.paths_to_xy(paths)
             # xy = augmentation.add_noise(xy, thresh=args.thresh, ped=args.ped_type)
             batch_split = [0, xy.shape[1]]
