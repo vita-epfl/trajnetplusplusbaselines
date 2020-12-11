@@ -88,6 +88,9 @@ class LSTM(torch.nn.Module):
         self.Why_Left  = self.hidden2normal.linear.weight.double() # shape C*d
         self.bhy_Left  = self.hidden2normal.linear.bias.double()  # shape C
 
+        self.W_pool = self.pool.embedding[0].weight.double()
+        self.b_pool = self.pool.embedding[0].bias.double()
+
     def init_lrp_new_scene(self):
         """
         Load trained model from file.
@@ -111,6 +114,9 @@ class LSTM(torch.nn.Module):
         self.gates_hh_Left  = torch.zeros((T, 4*d), device=self.encoder.weight_ih.device).double() 
         self.gates_pre_Left = torch.zeros((T, 4*d), device=self.encoder.weight_ih.device).double()  # gates pre-activation
         self.gates_Left     = torch.zeros((T, 4*d), device=self.encoder.weight_ih.device).double()  # gates activation
+
+        self.pre_pool       = torch.zeros((T, self.pool.n * self.pool.n * self.pool.pooling_dim), device=self.encoder.weight_ih.device).double() 
+        self.post_pool      = torch.zeros((T, self.pool.out_dim), device=self.encoder.weight_ih.device).double() 
 
         self.time_step = 0
 
@@ -217,6 +223,15 @@ class LSTM(torch.nn.Module):
         self.bxh_Left = self.bxh_Left_E if t < 8 else self.bxh_Left_D
         self.bhh_Left = self.bhh_Left_E if t < 8 else self.bhh_Left_D
 
+        ## Check Pooling
+        grid = self.pool.directional(prev_position, curr_position)
+        grid = grid.view(len(curr_position), -1)
+        self.pre_pool[t] = grid[0].double()
+        # pool_manual = self.pool.embedding(grid)
+        self.post_pool[t] = torch.matmul(self.W_pool, self.pre_pool[t]) + self.b_pool
+        # relu = torch.nn.ReLU()
+        # assert torch.all(torch.isclose(batch_pool[0][0].double(), relu(self.post_pool[t]), atol=atol))
+
         self.x[t] = input_emb[0]
         self.gates_xh_Left[t]     = torch.matmul(self.Wxh_Left, self.x[t]) 
         self.gates_hh_Left[t]     = torch.matmul(self.Whh_Left, self.h_Left[t-1]) 
@@ -258,6 +273,9 @@ class LSTM(torch.nn.Module):
         d = self.hidden_dim
         # initialize
         Rx       = torch.zeros_like(self.x)
+        Rp       = torch.zeros((self.T, self.pool.out_dim), device=self.encoder.weight_ih.device)
+        Rv       = torch.zeros((self.T, self.embedding_dim), device=self.encoder.weight_ih.device)
+        Rgrid    = torch.zeros((self.T, self.pool.n * self.pool.n * self.pool.pooling_dim), device=self.encoder.weight_ih.device)
         
         Rh_Left  = torch.zeros((self.T+1, d), device=self.encoder.weight_ih.device)
         Rc_Left  = torch.zeros((self.T+1, d), device=self.encoder.weight_ih.device)
@@ -285,8 +303,14 @@ class LSTM(torch.nn.Module):
             Rg_Left[t]    = lrp_linear(self.gates_Left[t,idx_i]*self.gates_Left[t,idx_g], torch.eye(d), torch.zeros((d)), self.c_Left[t], Rc_Left[t], 2*d, eps, bias_factor, debug=debug)
             Rx[t]         = lrp_linear(self.x[t],        self.Wxh_Left[idx_g].T, self.bxh_Left[idx_g]+self.bhh_Left[idx_g], self.gates_pre_Left[t,idx_g], Rg_Left[t], d+e, eps, bias_factor, debug=debug)
             Rh_Left[t-1]  = lrp_linear(self.h_Left[t-1], self.Whh_Left[idx_g].T, self.bxh_Left[idx_g]+self.bhh_Left[idx_g], self.gates_pre_Left[t,idx_g], Rg_Left[t], d+e, eps, bias_factor, debug=debug)
-  
-        return Rx, Rh_Left[-1].sum()+Rc_Left[-1].sum()
+            
+            Rv[t]         = Rx[t, :self.embedding_dim]
+            Rp[t]         = Rx[t, self.embedding_dim:]
+
+            # format reminder: lrp_linear(hin, w, b, hout, Rout, bias_nb_units, eps, bias_factor)
+            Rgrid[t]  = lrp_linear(self.pre_pool[t],  self.W_pool.T, self.b_pool, self.post_pool[t], Rp[t], self.pool.n * self.pool.n * self.pool.pooling_dim, eps, bias_factor, debug=debug)
+
+        return Rx, Rh_Left[-1].sum()+Rc_Left[-1].sum(), Rgrid, Rv
 
     def forward(self, observed, goals, batch_split, prediction_truth=None, n_predict=None):
         """Forecast the entire sequence 
@@ -377,8 +401,9 @@ class LSTM(torch.nn.Module):
             normals.append(normal)
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
-        Rx, Rh = self.lrp(LRP_class=0, bias_factor=1.0, debug=True, eps=0.001)
-        R_tot = Rx.sum() + Rh.sum()          # sum of all "input" relevances
+        Rx, Rh, Rp, Rv = self.lrp(LRP_class=0, bias_factor=1.0, debug=True, eps=0.001)
+        R_tot = Rp.sum() + Rv.sum() + Rh.sum()          # sum of all "input" relevances
+        # R_tot = Rx.sum() + Rh.sum()          # sum of all "input" relevances
         print(R_tot)    
         print("Sanity check passed? ", R_tot, self.s)
         import pdb
