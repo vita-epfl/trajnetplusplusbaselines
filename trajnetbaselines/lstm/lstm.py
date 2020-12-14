@@ -8,10 +8,11 @@ import trajnetplusplustools
 from .modules import Hidden2Normal, InputEmbedding
 
 from .. import augmentation
-from .utils import center_scene
+from .utils import center_scene, visualize_scene, visualize_grid, visualize_lrp
 from .lrp_linear_layer import *
 
 NAN = float('nan')
+TIME_STEPS = 19
 
 def drop_distant(xy, r=6.0):
     """
@@ -96,9 +97,10 @@ class LSTM(torch.nn.Module):
         Load trained model from file.
         """
 
-        self.T = 19
+        # self.T = 19
         # self.T = 8
         # self.T = 1
+        self.T = TIME_STEPS
     
         # initialize
         d = self.hidden_dim
@@ -117,6 +119,8 @@ class LSTM(torch.nn.Module):
 
         self.pre_pool       = torch.zeros((T, self.pool.n * self.pool.n * self.pool.pooling_dim), device=self.encoder.weight_ih.device).double() 
         self.post_pool      = torch.zeros((T, self.pool.out_dim), device=self.encoder.weight_ih.device).double() 
+
+        self.s              = torch.zeros((T, 5), device=self.encoder.weight_ih.device).double()  # gates activation
 
         self.time_step = 0
 
@@ -208,42 +212,42 @@ class LSTM(torch.nn.Module):
                 hidden_cell_stacked[0] += pooled
 
         ## LRP LSTM STEP #########################################################################
-        # if self.time_step == 0:
-        t = self.time_step
-        # print('t: ', self.time_step)
-        atol = 1e-8
-        ## Note: Pytorch ORDER !!!
-        # W_i|W_f|W_g|W_o
-        # gate indices (assuming the gate ordering in the LSTM weights is i,g,f,o):
-        d = self.hidden_dim
-        idx  = np.hstack((np.arange(0,2*d), np.arange(3*d,4*d))).astype(int) # indices of gates i,f,o together
-        idx_i, idx_g, idx_f, idx_o = np.arange(0,d), np.arange(2*d,3*d), np.arange(d,2*d), np.arange(3*d,4*d) # indices of gates i,g,f,o separately
-        self.Wxh_Left = self.Wxh_Left_E if t < 8 else self.Wxh_Left_D
-        self.Whh_Left = self.Whh_Left_E if t < 8 else self.Whh_Left_D
-        self.bxh_Left = self.bxh_Left_E if t < 8 else self.bxh_Left_D
-        self.bhh_Left = self.bhh_Left_E if t < 8 else self.bhh_Left_D
+        if self.time_step < self.T:
+            t = self.time_step
+            # print('t: ', self.time_step)
+            atol = 1e-8
+            ## Note: Pytorch ORDER !!!
+            # W_i|W_f|W_g|W_o
+            # gate indices (assuming the gate ordering in the LSTM weights is i,g,f,o):
+            d = self.hidden_dim
+            idx  = np.hstack((np.arange(0,2*d), np.arange(3*d,4*d))).astype(int) # indices of gates i,f,o together
+            idx_i, idx_g, idx_f, idx_o = np.arange(0,d), np.arange(2*d,3*d), np.arange(d,2*d), np.arange(3*d,4*d) # indices of gates i,g,f,o separately
+            self.Wxh_Left = self.Wxh_Left_E if t < 8 else self.Wxh_Left_D
+            self.Whh_Left = self.Whh_Left_E if t < 8 else self.Whh_Left_D
+            self.bxh_Left = self.bxh_Left_E if t < 8 else self.bxh_Left_D
+            self.bhh_Left = self.bhh_Left_E if t < 8 else self.bhh_Left_D
 
-        ## Check Pooling
-        grid = self.pool.directional(prev_position, curr_position)
-        grid = grid.view(len(curr_position), -1)
-        self.pre_pool[t] = grid[0].double()
-        # pool_manual = self.pool.embedding(grid)
-        self.post_pool[t] = torch.matmul(self.W_pool, self.pre_pool[t]) + self.b_pool
-        # relu = torch.nn.ReLU()
-        # assert torch.all(torch.isclose(batch_pool[0][0].double(), relu(self.post_pool[t]), atol=atol))
+            ## Check Pooling
+            grid = self.pool.directional(prev_position, curr_position)
+            # visualize_grid(grid[0])
+            grid = grid.view(len(curr_position), -1)
+            self.pre_pool[t] = grid[0].double()
+            # pool_manual = self.pool.embedding(grid)
+            self.post_pool[t] = torch.matmul(self.W_pool, self.pre_pool[t]) + self.b_pool
+            # relu = torch.nn.ReLU()
+            # assert torch.all(torch.isclose(batch_pool[0][0].double(), relu(self.post_pool[t]), atol=atol))
 
-        self.x[t] = input_emb[0]
-        self.gates_xh_Left[t]     = torch.matmul(self.Wxh_Left, self.x[t]) 
-        self.gates_hh_Left[t]     = torch.matmul(self.Whh_Left, self.h_Left[t-1]) 
-        self.gates_pre_Left[t]    = self.gates_xh_Left[t] + self.gates_hh_Left[t] + self.bxh_Left + self.bhh_Left
-        self.gates_Left[t,idx]    = 1.0/(1.0 + torch.exp(-self.gates_pre_Left[t,idx]))
-        self.gates_Left[t,idx_g]  = torch.tanh(self.gates_pre_Left[t,idx_g]) 
-        self.c_Left[t]            = self.gates_Left[t,idx_f]*self.c_Left[t-1] + self.gates_Left[t,idx_i]*self.gates_Left[t,idx_g]
-        self.h_Left[t]            = self.gates_Left[t,idx_o]*torch.tanh(self.c_Left[t])
-        
-        self.y_Left  = torch.matmul(self.Why_Left,  self.h_Left[t]) + self.bhy_Left
-        self.s       = self.y_Left
-        self.time_step += 1
+            self.x[t] = input_emb[0]
+            self.gates_xh_Left[t]     = torch.matmul(self.Wxh_Left, self.x[t]) 
+            self.gates_hh_Left[t]     = torch.matmul(self.Whh_Left, self.h_Left[t-1]) 
+            self.gates_pre_Left[t]    = self.gates_xh_Left[t] + self.gates_hh_Left[t] + self.bxh_Left + self.bhh_Left
+            self.gates_Left[t,idx]    = 1.0/(1.0 + torch.exp(-self.gates_pre_Left[t,idx]))
+            self.gates_Left[t,idx_g]  = torch.tanh(self.gates_pre_Left[t,idx_g]) 
+            self.c_Left[t]            = self.gates_Left[t,idx_f]*self.c_Left[t-1] + self.gates_Left[t,idx_i]*self.gates_Left[t,idx_g]
+            self.h_Left[t]            = self.gates_Left[t,idx_o]*torch.tanh(self.c_Left[t])
+            
+            self.s[t]  = torch.matmul(self.Why_Left,  self.h_Left[t]) + self.bhy_Left # self.y_Left 
+            self.time_step += 1
         ##########################################################################################
 
         # LSTM step
@@ -267,25 +271,26 @@ class LSTM(torch.nn.Module):
 
         return hidden_cell_state, normal
 
-    def lrp(self, LRP_class=0, eps=0.001, bias_factor=0.0, debug=False):
+    def lrp(self, timestep, LRP_class=0, eps=0.001, bias_factor=0.0, debug=False):
         
-        T = self.T
+        # T = self.T
+        T = timestep
         d = self.hidden_dim
         # initialize
         Rx       = torch.zeros_like(self.x)
-        Rp       = torch.zeros((self.T, self.pool.out_dim), device=self.encoder.weight_ih.device)
-        Rv       = torch.zeros((self.T, self.embedding_dim), device=self.encoder.weight_ih.device)
-        Rgrid    = torch.zeros((self.T, self.pool.n * self.pool.n * self.pool.pooling_dim), device=self.encoder.weight_ih.device)
+        Rp       = torch.zeros((T, self.pool.out_dim), device=self.encoder.weight_ih.device)
+        Rv       = torch.zeros((T, self.embedding_dim), device=self.encoder.weight_ih.device)
+        Rgrid    = torch.zeros((T, self.pool.n * self.pool.n * self.pool.pooling_dim), device=self.encoder.weight_ih.device)
         
-        Rh_Left  = torch.zeros((self.T+1, d), device=self.encoder.weight_ih.device)
-        Rc_Left  = torch.zeros((self.T+1, d), device=self.encoder.weight_ih.device)
-        Rg_Left  = torch.zeros((self.T, d), device=self.encoder.weight_ih.device) # gate g only
+        Rh_Left  = torch.zeros((T+1, d), device=self.encoder.weight_ih.device)
+        Rc_Left  = torch.zeros((T+1, d), device=self.encoder.weight_ih.device)
+        Rg_Left  = torch.zeros((T, d), device=self.encoder.weight_ih.device) # gate g only
 
         Rout_mask            = torch.zeros((5))
         Rout_mask[LRP_class] = 1.0  
 
         # format reminder: lrp_linear(hin, w, b, hout, Rout, bias_nb_units, eps, bias_factor)
-        Rh_Left[T-1]  = lrp_linear(self.h_Left[T-1],  self.Why_Left.T , self.bhy_Left, self.s, self.s*Rout_mask, 128, eps, bias_factor, debug=debug)
+        Rh_Left[T-1]  = lrp_linear(self.h_Left[T-1],  self.Why_Left.T , self.bhy_Left, self.s[timestep], self.s[timestep]*Rout_mask, 128, eps, bias_factor, debug=debug)
 
         d = self.hidden_dim
         e = self.encoder.weight_ih.shape[1]
@@ -369,6 +374,9 @@ class LSTM(torch.nn.Module):
         if len(observed) == 2:
             positions = [observed[-1]]
 
+        positions.append(observed[0])  # no sampling, just mean
+        positions.append(observed[1])  # no sampling, just mean
+
         # encoder
         for obs1, obs2 in zip(observed[:-1], observed[1:]):
             ##LSTM Step
@@ -376,6 +384,7 @@ class LSTM(torch.nn.Module):
 
             # concat predictions
             normals.append(normal)
+
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
         # initialize predictions with last position to form velocity
@@ -401,13 +410,7 @@ class LSTM(torch.nn.Module):
             normals.append(normal)
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
-        Rx, Rh, Rp, Rv = self.lrp(LRP_class=0, bias_factor=1.0, debug=True, eps=0.001)
-        R_tot = Rp.sum() + Rv.sum() + Rh.sum()          # sum of all "input" relevances
-        # R_tot = Rx.sum() + Rh.sum()          # sum of all "input" relevances
-        print(R_tot)    
-        print("Sanity check passed? ", R_tot, self.s)
-        import pdb
-        pdb.set_trace()
+        vel_weights, neigh_weights = self.calculate_lrp_scores_all()
 
         # Pred_scene: Tensor [seq_length, num_tracks, 2]
         #    Absolute positions of all pedestrians
@@ -416,7 +419,62 @@ class LSTM(torch.nn.Module):
         rel_pred_scene = torch.stack(normals, dim=0)
         pred_scene = torch.stack(positions, dim=0)
 
-        return rel_pred_scene, pred_scene
+        return rel_pred_scene, pred_scene, vel_weights, neigh_weights
+
+    def calculate_lrp_scores_all(self):
+        overall_vel_weights = []
+        overall_neigh_weights = []
+
+        for t in range(7, TIME_STEPS):
+            Rx_x, Rh_x, Rp_x, Rv_x = self.lrp(t, LRP_class=0, bias_factor=0.0, debug=False, eps=0.001)
+            Rx_y, Rh_y, Rp_y, Rv_y = self.lrp(t, LRP_class=1, bias_factor=0.0, debug=False, eps=0.001)
+
+            # R_tot = Rp.sum() + Rv.sum() + Rh.sum()          # sum of all "input" relevances
+            # R_tot = Rx.sum() + Rh.sum()          # sum of all "input" relevances
+            # print(R_tot)    
+            # print("Sanity check passed? ", R_tot, self.s)
+            vel_weights, neigh_weights = self.get_scores(Rp_x + Rp_y, Rv_x + Rv_y)
+            overall_vel_weights.append(vel_weights.copy())
+            overall_neigh_weights.append(neigh_weights.copy())
+
+            # import pdb
+            # pdb.set_trace()
+        return overall_vel_weights, overall_neigh_weights
+
+    def get_scores(self, Rp, Rv):
+        # print("Going to print scores")
+
+        # print("Importance on velocity")
+        vel_weights = [0.0]
+        for t, vel_embed in enumerate(Rv):
+            # print("Time Step: ", t+2, torch.mean(vel_embed))
+            vel_weights.append(torch.mean(vel_embed).item())
+
+        # print("Importance on Pooling")
+        # for t, pool_embed in enumerate(Rp):
+        #     non_zeros = torch.sum(pool_embed != 0)
+        #     print("Non Zero: ", non_zeros)
+        #     print("Time Step: ", t+2, torch.sum(pool_embed)/2)
+        # import pdb
+        # pdb.set_trace()
+        Rp_last_step = Rp[-1].reshape(-1, self.pool.n * self.pool.n)
+        neigh_weights = []
+        for id_, neigh_grid in enumerate(Rp_last_step):
+            # non_zeros = torch.sum(pool_embed != 0)
+            # print("Non Zero: ", non_zeros)
+            # print("ID: ", id_, torch.sum(neigh_grid)/2)
+            neigh_weights.append((torch.sum(neigh_grid)/2).item())
+        neigh_weights = np.abs(np.array(neigh_weights))
+        neigh_weights = (neigh_weights - np.min(neigh_weights)) / (np.max(neigh_weights) + np.min(neigh_weights) + 0.001) + 0.3
+        neigh_weights = np.clip(neigh_weights, 0.0, 1.0)
+        # print("NW: ", neigh_weights)
+        # import pdb
+        # pdb.set_trace()
+        vel_weights.append(0.)
+        vel_weights = np.array(vel_weights)
+        vel_weights = (vel_weights - np.min(vel_weights)) / (np.max(vel_weights) - np.min(vel_weights)) + 0.3
+        return vel_weights, neigh_weights
+
 
 class LSTMPredictor(object):
     def __init__(self, model):
@@ -447,9 +505,13 @@ class LSTMPredictor(object):
             # xy = augmentation.add_noise(xy, thresh=args.thresh, ped=args.ped_type)
             batch_split = [0, xy.shape[1]]
 
+
             ## Drop Distant (for real data)
-            # xy, mask = drop_distant(xy, r=15.0)
+            # xy, mask = drop_distant(xy, r=3.0)
             # scene_goal = scene_goal[mask]
+
+            visualize_scene(xy)
+            print("Observed Scene")
 
             if args.normalize_scene:
                 xy, rotation, center, scene_goal = center_scene(xy, obs_length, goals=scene_goal)
@@ -461,8 +523,18 @@ class LSTMPredictor(object):
             multimodal_outputs = {}
             for num_p in range(modes):
                 # _, output_scenes = self.model(xy[start_length:obs_length], scene_goal, batch_split, xy[obs_length:-1].clone())
-                _, output_scenes = self.model(xy[start_length:obs_length], scene_goal, batch_split, n_predict=n_predict)
+                _, output_scenes, vel_weights, neigh_weights = self.model(xy[start_length:obs_length], scene_goal, batch_split, n_predict=n_predict)
                 output_scenes = output_scenes.numpy()
+                # output_scenes, _ = drop_distant(output_scenes, r=2.0)
+                visualize_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS)
+                # print("Weight: ", vel_weights)
+                # output_scenes, _ = drop_distant(output_scenes, r=2.0)
+                # # import pdb
+                # # pdb.set_trace()                
+                # visualize_scene(output_scenes[:TIME_STEPS+2], weights=vel_weights, pool_weight=neigh_weights)
+                # print("Predicted Scene")
+                import pdb
+                pdb.set_trace()
                 if args.normalize_scene:
                     output_scenes = augmentation.inverse_scene(output_scenes, rotation, center)
                 output_primary = output_scenes[-n_predict:, 0]

@@ -141,7 +141,7 @@ def main():
             # print("Getting Predictions")
             scenes = tqdm(scenes)
             ## Get all predictions in parallel. Faster!
-            pred_list = Parallel(n_jobs=12)(delayed(process_scene)(predictor, model_name, paths, scene_goal, args)
+            pred_list = Parallel(n_jobs=1)(delayed(process_scene)(predictor, model_name, paths, scene_goal, args)
                                             for (_, _, paths), scene_goal in zip(scenes, scene_goals))
 
             ## GT Scenes
