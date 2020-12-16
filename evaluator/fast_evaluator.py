@@ -139,11 +139,12 @@ def main():
                 scene_goals = [np.zeros((len(paths), 2)) for _, scene_id, paths in scenes]
 
             # print("Getting Predictions")
-            scenes = tqdm(scenes)
+            # scenes = tqdm(scenes)
             ## Get all predictions in parallel. Faster!
             pred_list = Parallel(n_jobs=1)(delayed(process_scene)(predictor, model_name, paths, scene_goal, args)
-                                            for (_, _, paths), scene_goal in zip(scenes, scene_goals))
-
+                                            for (_, _, paths), scene_goal in zip(scenes[19:], scene_goals[19:]))
+            import pdb
+            pdb.set_trace()
             ## GT Scenes
             reader_gt = trajnetplusplustools.Reader(args.path.replace('_pred', '_private') + dataset + '.ndjson', scene_type='paths')
             scenes_gt = [s for s_id, s in reader_gt.scenes() if s_id in filtered_scene_ids]

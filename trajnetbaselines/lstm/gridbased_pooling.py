@@ -424,3 +424,45 @@ class GridBasedPooling(torch.nn.Module):
             elif self.type_ == 'directional':
                 grid.append(self.directional(obs1, obs2))
         return grid
+
+    def occupancy_neigh_map(self, obs):
+        """Returns the occupancy map filled with respective attributes.
+        A different occupancy map with respect to each pedestrian
+        Parameters
+        ----------
+        obs: Tensor [num_tracks, 2]
+            Current x-y positions of all pedestrians, used to construct occupancy map.
+        other_values: Tensor [num_tracks, num_tracks-1,  2]
+            Attributes (self.pooling_dim) of the neighbours relative to pedestrians, to be filled in the occupancy map
+            e.g. Relative velocities of pedestrians
+        Returns
+        -------
+        grid: Tensor [num_tracks, self.pooling_dim, self.n, self.n]
+        """
+        num_tracks = obs.size(0)
+
+        ##mask unseen
+        mask = torch.isnan(obs).any(dim=1)
+        obs[mask] = 0
+
+        ## if only primary pedestrian present
+        if num_tracks == 1:
+            return self.constant*torch.ones(1, self.pooling_dim, self.n, self.n, device=obs.device)
+
+        ## Get relative position
+        ## [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        unfolded = obs.unsqueeze(0).repeat(obs.size(0), 1, 1)
+        relative = unfolded - obs.unsqueeze(1)
+        ## Deleting Diagonal (Ped wrt itself)
+        ## [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks-1, 2]
+        relative = relative[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
+
+        oij = (relative / (self.cell_side / self.pool_size) + self.n * self.pool_size / 2)
+
+        range_violations = torch.sum((oij < 0) + (oij >= self.n * self.pool_size), dim=2)
+        range_mask = range_violations == 0
+
+        oij[~range_mask] = 0
+        oij = oij.long()
+
+        return range_mask, oij

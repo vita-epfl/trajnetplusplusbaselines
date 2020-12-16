@@ -5,6 +5,12 @@ import numpy
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
+from matplotlib import pyplot as plt
+from matplotlib.animation import FuncAnimation
+plt.style.use('seaborn-pastel')
+
+from celluloid import Camera
+
 import trajnetplusplustools
 from trajnetplusplustools import show
 
@@ -64,43 +70,64 @@ def center_scene(xy, obs_length=9, ped_id=0, goals=None):
         return xy, rotation, center, goals[0]
     return xy, rotation, center
 
-def visualize_scene(scene, goal=None, weights=None, pool_weight=None):
+def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True):
     # print("Primary: ", scene[0, 0], scene[8, 0])
-    for t in range(scene.shape[1]):
+    # print("pool weights: ", pool_weight)
+
+    for t in reversed(range(scene.shape[1])):
         path = scene[:, t]
-        color = 'r' if t == 0 else 'b'
+        color = 'b' if t == 0 else 'orange'
+        plt.plot(path[:-1, 0], path[:-1, 1], c=color)
+
         if t == 0 and weights is not None:
-            # import pdb
-            # pdb.set_trace()
-            plt.plot(path[:, 0], path[:, 1], c=color)
-            plt.scatter(path[:, 0], path[:, 1], c=weights, cmap='Greys', vmin=0.0, vmax=1.5)
+            # plt.plot(path[:, 0], path[:, 1], c=color)
+            pass
+            # plt.scatter(path[:-1, 0], path[:-1, 1], c=weights[:-1], cmap='Blues', vmin=0.0, vmax=1.5)
+            # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
+            # plt.scatter(path[:, 0], path[:, 1], c=color, alpha='Greys', vmin=0.0, vmax=1.5)
         elif t != 0 and pool_weight is not None:
-            # import pdb
-            # pdb.set_trace()
-            plt.plot(path[:, 0], path[:, 1], c=color, alpha=pool_weight[t-1])
-            plt.scatter(path[:, 0], path[:, 1], c=color, alpha=pool_weight[t-1], vmin=0.0, vmax=1.5)
+            # plt.plot(path[:, 0], path[:, 1], c=color)
+            plt.scatter(path[:-1, 0], path[:-1, 1], c=color, alpha=pool_weight[t-1], vmin=0.0, vmax=1.5)
+            # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
         else:
-            plt.plot(path[:, 0], path[:, 1], c=color)
-            plt.scatter(path[:, 0], path[:, 1], c=color)
+            # plt.plot(path[:, 0], path[:, 1], c=color)
+            plt.scatter(path[:-1, 0], path[:-1, 1], c=color)
+            # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
+        plt.arrow(path[-2, 0], path[-2, 1], path[-1, 0] - path[-2, 0], path[-1, 1] - path[-2, 1], width=0.05, color='g')
+
 
     if goal is not None:
         for t in range(goal.shape[0]):
             goal_t = goal[t]
             plt.scatter(goal_t[0], goal_t[1])
 
-
-    plt.show()
-    plt.close()
+    plt.gca().set_aspect('equal')
+    xmin = numpy.round(2 * numpy.nanmin(scene[:, :, 0])) * 0.5
+    xmax = numpy.round(2 * numpy.nanmax(scene[:, :, 0])) * 0.5
+    # xcent = 0.5*(xmin + xmax)
+    ymin = numpy.round(2 * numpy.nanmin(scene[:, :, 1])) * 0.5
+    ymax = numpy.round(2 * numpy.nanmax(scene[:, :, 1])) * 0.5
+    ycent = 0.5*(ymin + ymax)
+    length_plot = 0.5*(max(xmax - xmin, ymax - ymin) + 1)
+    plt.xticks(numpy.arange(xmin - 1, xmax + 2), fontsize=10)
+    # plt.gca().set_xticklabels(fontsize = 10, va='bottom', ha='left')
+    plt.yticks(numpy.arange(ymin - 1, ymax + 2), fontsize=10)
+    if show:
+        plt.show()
+        plt.close()
 
 def visualize_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS):
-    # print("Weight: ", vel_weights)
     for t in range(8, TIME_STEPS):
-        mask = drop_distant(output_scenes[t:t+1], r=3.0)
+        ## Neighbour weights arrange
+        # mask = drop_distant(output_scenes[t:t+1])
+        # mask = numpy.sort(mask[:len(neigh_weights[t-7])+1])
+        # p_weights = 0.0 * numpy.ones(output_scenes.shape[1])
+        # p_weights[mask[1:]] = neigh_weights[t-7]
         # import pdb
         # pdb.set_trace()
-        mask = numpy.sort(mask[:len(neigh_weights[t-7])+1])
-        curr_output_scenes = output_scenes[:, mask]
-        visualize_scene(curr_output_scenes[:t+2], weights=vel_weights[t-7], pool_weight=neigh_weights[t-7])
+        # visualize_scene(output_scenes[:t+2], weights=vel_weights[t-7], pool_weight=p_weights[1:])
+        print("Neigh Weights: ", neigh_weights[t-7])
+        visualize_scene(output_scenes[:t+2], weights=vel_weights[t-7], pool_weight=neigh_weights[t-7])
 
 def visualize_grid(grid):
     sum_grid = numpy.abs(grid.numpy().sum(axis=0))
@@ -134,3 +161,14 @@ def viz(groundtruth, prediction, visualize, output_file=None):
 
     with show.predicted_paths(gt_paths, pred_paths, pred_neigh_paths, output_file):
         pass
+
+def animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS):
+    fig = plt.figure()
+    camera = Camera(fig)
+    for t in range(8, TIME_STEPS):
+        visualize_scene(output_scenes[:t+2], weights=vel_weights[t-7], pool_weight=neigh_weights[t-7], show=False)
+        camera.snap()
+
+    animation = camera.animate()
+    animation.save('lrp_crowds_scene_check.mp4', fps=2, writer = 'ffmpeg')
+    plt.close()
