@@ -14,6 +14,7 @@ from celluloid import Camera
 import trajnetplusplustools
 from trajnetplusplustools import show
 
+import labellines
 
 def drop_distant(xy, r=6.0):
     """
@@ -77,17 +78,24 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     for t in reversed(range(scene.shape[1])):
         path = scene[:, t]
         color = 'b' if t == 0 else 'orange'
-        plt.plot(path[:-1, 0], path[:-1, 1], c=color)
+        linewidth = 3.0 if t == 0 else 2.0
+
+        plt.plot(path[:-1, 0], path[:-1, 1], c=color, linewidth=linewidth)
+
+        # dict_map = {4: 'N4', 7: 'N3', 8: 'N2', 9: 'N1'}
 
         if t == 0 and weights is not None:
             # plt.plot(path[:, 0], path[:, 1], c=color)
             pass
-            # plt.scatter(path[:-1, 0], path[:-1, 1], c=weights[:-1], cmap='Blues', vmin=0.0, vmax=1.5)
+            # plt.scatter(path[:-1, 0], path[:-1, 1], c=weights[:-2], cmap='Blues', vmin=0.0, vmax=1.5)
             # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
             # plt.scatter(path[:, 0], path[:, 1], c=color, alpha='Greys', vmin=0.0, vmax=1.5)
         elif t != 0 and pool_weight is not None:
-            # plt.plot(path[:, 0], path[:, 1], c=color)
-            plt.scatter(path[:-1, 0], path[:-1, 1], c=color, alpha=pool_weight[t-1], vmin=0.0, vmax=1.5)
+            # if t in {4, 7, 8, 9}:
+            # plt.plot(path[:, 0], path[:, 1], label='N{} = {}'.format(t, numpy.round(pool_weight[t-1], 2)))
+            # else:
+                # plt.plot(path[:, 0], path[:, 1])
+            plt.scatter(path[:-1, 0], path[:-1, 1], color=color, alpha=pool_weight[t-1], vmin=0.0, vmax=1.5, s=60.0)
             # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
         else:
             # plt.plot(path[:, 0], path[:, 1], c=color)
@@ -95,11 +103,20 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
             # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
         plt.arrow(path[-2, 0], path[-2, 1], path[-1, 0] - path[-2, 0], path[-1, 1] - path[-2, 1], width=0.05, color='g')
 
+    dict_map = {4: 'N4', 7: 'N3', 8: 'N2', 9: 'N1'}
+    for t in reversed(range(scene.shape[1])):
+        path = scene[:, t]
+        if t in {4, 7, 8, 9}:
+            print(t)
+            plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
+
 
     if goal is not None:
         for t in range(goal.shape[0]):
             goal_t = goal[t]
             plt.scatter(goal_t[0], goal_t[1])
+
+    # labellines.labelLines(plt.gca().get_lines())
 
     plt.gca().set_aspect('equal')
     xmin = numpy.round(2 * numpy.nanmin(scene[:, :, 0])) * 0.5
@@ -112,6 +129,7 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     plt.xticks(numpy.arange(xmin - 1, xmax + 2), fontsize=10)
     # plt.gca().set_xticklabels(fontsize = 10, va='bottom', ha='left')
     plt.yticks(numpy.arange(ymin - 1, ymax + 2), fontsize=10)
+    plt.legend(loc=4)
     if show:
         plt.show()
         plt.close()
