@@ -103,20 +103,26 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
             # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
         plt.arrow(path[-2, 0], path[-2, 1], path[-1, 0] - path[-2, 0], path[-1, 1] - path[-2, 1], width=0.05, color='g')
 
-    dict_map = {4: 'N4', 7: 'N3', 8: 'N2', 9: 'N1'}
-    for t in reversed(range(scene.shape[1])):
-        path = scene[:, t]
-        if t in {4, 7, 8, 9}:
-            print(t)
-            plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
+    ## Crowds Zara Scene 19
+    # dict_map = {4: 'N4', 7: 'N3', 8: 'N2', 9: 'N1'}
+    # for t in reversed(range(scene.shape[1])):
+    #     path = scene[:, t]
+    #     if t in {4, 7, 8, 9}:
+    #         print(t)
+    #         plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
 
+    ## Crowds Zara Scene 0
+    # dict_map = {1: 'N1', 2: 'N2'}
+    # for t in reversed(range(scene.shape[1])):
+    #     path = scene[:, t]
+    #     if t in {1, 2}:
+    #         print(t)
+    #         plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
 
     if goal is not None:
         for t in range(goal.shape[0]):
             goal_t = goal[t]
             plt.scatter(goal_t[0], goal_t[1])
-
-    # labellines.labelLines(plt.gca().get_lines())
 
     plt.gca().set_aspect('equal')
     xmin = numpy.round(2 * numpy.nanmin(scene[:, :, 0])) * 0.5
@@ -124,6 +130,19 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     # xcent = 0.5*(xmin + xmax)
     ymin = numpy.round(2 * numpy.nanmin(scene[:, :, 1])) * 0.5
     ymax = numpy.round(2 * numpy.nanmax(scene[:, :, 1])) * 0.5
+
+    ## Crowds Zara Scene 19
+    # xmin = -4
+    # xmax = 5
+    # ymin = -4
+    # ymax = 0
+
+    ## Crowds Zara Scene 0 (TBD)
+    # xmin = -4
+    # xmax = 5
+    # ymin = -4
+    # ymax = 0
+
     ycent = 0.5*(ymin + ymax)
     length_plot = 0.5*(max(xmax - xmin, ymax - ymin) + 1)
     plt.xticks(numpy.arange(xmin - 1, xmax + 2), fontsize=10)
