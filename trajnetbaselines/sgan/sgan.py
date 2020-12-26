@@ -122,7 +122,7 @@ class SGAN(torch.nn.Module):
         pred_list = []
         for _ in range(self.k):
             # print("k:", k)
-            rel_pred_scene, pred_scene = self.generator(observed, goals, batch_split, prediction_truth, n_predict)
+            rel_pred_scene, pred_scene = self.generator(observed.clone(), goals, batch_split, prediction_truth, n_predict)
             rel_pred_list.append(rel_pred_scene)
             pred_list.append(pred_scene)
 
@@ -131,8 +131,8 @@ class SGAN(torch.nn.Module):
 
         ## Get real scores and fake scores from discriminator
         if self.use_d:
-            scores_real = self.discrimator(observed, prediction_truth, goals, batch_split)
-            scores_fake = self.discrimator(observed, pred_scene[-pred_length:], goals, batch_split)
+            scores_real = self.discrimator(observed.clone(), prediction_truth, goals, batch_split)
+            scores_fake = self.discrimator(observed.clone(), pred_scene[-pred_length:], goals, batch_split)
             return rel_pred_list, pred_list, scores_real, scores_fake
 
         return rel_pred_list, pred_list, None, None
