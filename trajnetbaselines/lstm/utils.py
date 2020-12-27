@@ -148,7 +148,7 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     plt.xticks(numpy.arange(xmin - 1, xmax + 2), fontsize=10)
     # plt.gca().set_xticklabels(fontsize = 10, va='bottom', ha='left')
     plt.yticks(numpy.arange(ymin - 1, ymax + 2), fontsize=10)
-    plt.legend(loc=4)
+    # plt.legend(loc=4)
     if show:
         plt.show()
         plt.close()
@@ -199,7 +199,7 @@ def viz(groundtruth, prediction, visualize, output_file=None):
     with show.predicted_paths(gt_paths, pred_paths, pred_neigh_paths, output_file):
         pass
 
-def animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS):
+def animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS, scene_id=0, pool_type='directional'):
     fig = plt.figure()
     camera = Camera(fig)
     for t in range(8, TIME_STEPS):
@@ -207,5 +207,5 @@ def animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS):
         camera.snap()
 
     animation = camera.animate()
-    animation.save('lrp_crowds_scene_check.mp4', fps=2, writer = 'ffmpeg')
+    animation.save('anims/lrp_crowds_{}_scene{}_check.mp4'.format(pool_type, scene_id), fps=2, writer = 'ffmpeg')
     plt.close()

@@ -17,9 +17,9 @@ import multiprocessing
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
-def process_scene(predictor, model_name, paths, scene_goal, args):
+def process_scene(predictor, model_name, paths, scene_goal, scene_id, args):
     ## For each scene, get predictions
-    predictions = predictor(paths, scene_goal, n_predict=args.pred_length, obs_length=args.obs_length, modes=args.modes, args=args)
+    predictions = predictor(paths, scene_goal, n_predict=args.pred_length, obs_length=args.obs_length, modes=args.modes, scene_id=scene_id, args=args)
     return predictions
 
 def main():
@@ -141,10 +141,11 @@ def main():
             # print("Getting Predictions")
             # scenes = tqdm(scenes)
             ## Get all predictions in parallel. Faster!
-            pred_list = Parallel(n_jobs=1)(delayed(process_scene)(predictor, model_name, paths, scene_goal, args)
-                                            for (_, _, paths), scene_goal in zip(scenes[19:], scene_goals[19:]))
-            import pdb
-            pdb.set_trace()
+            pred_list = Parallel(n_jobs=1)(delayed(process_scene)(predictor, model_name, paths, scene_goal, scene_id, args)
+                                            for (_, scene_id, paths), scene_goal in zip(scenes[0:200], scene_goals[0:200]))
+            # import pdb
+            # pdb.set_trace()
+            exit()
             ## GT Scenes
             reader_gt = trajnetplusplustools.Reader(args.path.replace('_pred', '_private') + dataset + '.ndjson', scene_type='paths')
             scenes_gt = [s for s_id, s in reader_gt.scenes() if s_id in filtered_scene_ids]

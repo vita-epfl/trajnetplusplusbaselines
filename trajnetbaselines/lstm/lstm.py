@@ -248,9 +248,12 @@ class LSTM(torch.nn.Module):
             rg_mk, ps = self.pool.occupancy_neigh_map(curr_position)
             self.range_mask[t] = rg_mk
             self.occupancy_mapping[t] = ps 
-            grid = self.pool.directional(prev_position, curr_position)
-            # grid = self.pool.occupancies(prev_position, curr_position)
-            # grid = self.pool.social(curr_hidden_state, prev_position, curr_position)
+            if self.pool.type_ == 'directional':
+                grid = self.pool.directional(prev_position, curr_position)
+            elif self.pool.type_ == 'occupancy':
+                grid = self.pool.occupancies(prev_position, curr_position)
+            elif self.pool.type_ == 'social':
+                grid = self.pool.social(curr_hidden_state, prev_position, curr_position)
 
             grid = grid.view(len(curr_position), -1)
             self.pre_pool[t] = grid[0]
@@ -531,7 +534,7 @@ class LSTMPredictor(object):
             return torch.load(f)
 
 
-    def __call__(self, paths, scene_goal, n_predict=12, modes=1, predict_all=True, obs_length=9, start_length=0, args=None):
+    def __call__(self, paths, scene_goal, n_predict=12, modes=1, predict_all=True, obs_length=9, start_length=0, scene_id=0, args=None):
         self.model.eval()
         # self.model.train()
         with torch.no_grad():
@@ -563,8 +566,8 @@ class LSTMPredictor(object):
                 output_scenes = output_scenes.numpy()
 
                 # visualize_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS)
-                animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS)
-                exit()              
+                animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS, scene_id, self.model.pool.type_)
+                # exit()              
                 # import pdb
                 # pdb.set_trace()
                 if args.normalize_scene:
