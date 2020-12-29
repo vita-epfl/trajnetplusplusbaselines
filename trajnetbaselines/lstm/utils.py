@@ -137,8 +137,8 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     # ymin = -4
     # ymax = 0
 
-    ## Crowds Zara Scene 0 (TBD)
-    # xmin = -4
+    ## Crowds Zara Scene 0
+    # xmin = -2
     # xmax = 5
     # ymin = -4
     # ymax = 0
@@ -148,7 +148,7 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     plt.xticks(numpy.arange(xmin - 1, xmax + 2), fontsize=10)
     # plt.gca().set_xticklabels(fontsize = 10, va='bottom', ha='left')
     plt.yticks(numpy.arange(ymin - 1, ymax + 2), fontsize=10)
-    # plt.legend(loc=4)
+    plt.legend(loc=4)
     if show:
         plt.show()
         plt.close()
