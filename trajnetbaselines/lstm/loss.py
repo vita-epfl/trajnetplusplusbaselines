@@ -44,6 +44,8 @@ class PredictionLoss(torch.nn.Module):
 
     def col_loss(self, primary, neighbours, batch_split, gamma=2.0):
         """
+        Penalizes model when primary pedestrian prediction comes close
+        to the neighbour predictions
         primary: Tensor [pred_length, 1, 2]
         neighbours: Tensor [pred_length, num_neighbours, 2]
         """
@@ -57,7 +59,6 @@ class PredictionLoss(torch.nn.Module):
             mask_far = (distance_to_neigh < 0.25).detach()
             distance_to_neigh = -gamma * distance_to_neigh * mask_far
             exponential_loss += distance_to_neigh.exp().sum()
-            # print(exponential_loss)
         return exponential_loss.sum()
 
     def forward(self, inputs, targets, batch_split):
@@ -107,6 +108,8 @@ class L2Loss(torch.nn.Module):
 
     def col_loss(self, primary, neighbours, batch_split, gamma=2.0):
         """
+        Penalizes model when primary pedestrian prediction comes close
+        to the neighbour predictions
         primary: Tensor [pred_length, 1, 2]
         neighbours: Tensor [pred_length, num_neighbours, 2]
         """
@@ -120,7 +123,6 @@ class L2Loss(torch.nn.Module):
             mask_far = (distance_to_neigh < 0.25).detach()
             distance_to_neigh = -gamma * distance_to_neigh * mask_far
             exponential_loss += distance_to_neigh.exp().sum()
-            # print(exponential_loss)
         return exponential_loss.sum()
 
     def forward(self, inputs, targets, batch_split):
@@ -186,11 +188,3 @@ def gan_d_loss(scores_real, scores_fake):
     loss_real = bce_loss(scores_real, y_real)
     loss_fake = bce_loss(scores_fake, y_fake)
     return loss_real + loss_fake
-
-
-## Test
-# l2_loss = L2Loss()
-# primary_ped = torch.tensor([[[0., 0], [1, 0], [2, 0]]])
-# neighbours = torch.tensor([[[2.2, 0], [2.2, 0], [2.2, 0]], [[3.2, 0], [3.2, 0], [3.2, 0]]])
-
-# l2_loss.col_loss(primary_ped, neighbours)

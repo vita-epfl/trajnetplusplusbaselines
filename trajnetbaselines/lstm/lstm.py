@@ -130,21 +130,13 @@ class LSTM(torch.nn.Module):
                 curr_position = obs2[start:end][scene_track_mask]
                 curr_hidden_state = hidden_states_to_pool[start:end][scene_track_mask]
 
-                # LSTM-Based Interaction Encoders. Provide track_mask to the interaction encoder LSTMs
-                if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention_fast'}:
-                    ## Everyone absent by default
-                    interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                    ## Only those visible in current scene are present
-                    interaction_track_mask[start:end] = track_mask[start:end]
-                    self.pool.track_mask = interaction_track_mask
-                if self.pool.__class__.__name__ == 'GridBasedPooling':
-                    if self.pool.embedding_arch == 'lstm_layer':
-                        ## Everyone absent by default
-                        interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                        ## Only those visible in current scene are present
-                        interaction_track_mask[start:end] = track_mask[start:end]
-                        self.pool.track_mask = interaction_track_mask
+                ## Provide track_mask to the interaction encoders
+                ## Everyone absent by default. Only those visible in current scene are present
+                interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
+                interaction_track_mask[start:end] = track_mask[start:end]
+                self.pool.track_mask = interaction_track_mask
 
+                ## Pool
                 pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
                 batch_pool.append(pool_sample)
 
@@ -213,13 +205,8 @@ class LSTM(torch.nn.Module):
             [torch.zeros(self.hidden_dim, device=observed.device) for _ in range(num_tracks)],
         )
 
-        ## LSTM-Based Interaction Encoders. Initialze Hdden state ## TODO
-        if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention', 'SAttention_fast'}:
-            self.pool.reset(num_tracks, device=observed.device)
-
-        if self.pool.__class__.__name__ == 'GridBasedPooling':
-            if self.pool.embedding_arch == 'lstm_layer':
-                self.pool.reset(num_tracks, device=observed.device)
+        ## Reset LSTMs of Interaction Encoders.
+        self.pool.reset(num_tracks, device=observed.device)
 
         # list of predictions
         normals = []  # predicted normal parameters for both phases
@@ -295,10 +282,6 @@ class LSTMPredictor(object):
             xy = trajnetplusplustools.Reader.paths_to_xy(paths)
             # xy = augmentation.add_noise(xy, thresh=args.thresh, ped=args.ped_type)
             batch_split = [0, xy.shape[1]]
-
-            ## Drop Distant (for real data)
-            # xy, mask = drop_distant(xy, r=15.0)
-            # scene_goal = scene_goal[mask]
 
             if args.normalize_scene:
                 xy, rotation, center, scene_goal = center_scene(xy, obs_length, goals=scene_goal)

@@ -63,7 +63,6 @@ class Trainer(object):
 
         self.col_weight = col_weight
         self.col_gamma = col_gamma
-        print("Col Weight, Col Gamma: ", self.col_weight, self.col_gamma)
 
     def loop(self, train_scenes, val_scenes, train_goals, val_goals, out, epochs=35, start_epoch=0):
         for epoch in range(start_epoch, start_epoch + epochs):
@@ -264,11 +263,12 @@ class Trainer(object):
         rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
         ## Loss wrt primary tracks of each scene only
-        # l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
-        # loss = l2_loss
         l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
-        col_loss = self.col_weight * self.criterion.col_loss(outputs[-self.pred_length:], batch_scene[-self.pred_length:], batch_split, self.col_gamma)
-        loss = l2_loss + col_loss
+        loss = l2_loss
+        # Auxiliary collision loss
+        # l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
+        # col_loss = self.col_weight * self.criterion.col_loss(outputs[-self.pred_length:], batch_scene[-self.pred_length:], batch_split, self.col_gamma)
+        # loss = l2_loss + col_loss
 
 
         self.optimizer.zero_grad()
