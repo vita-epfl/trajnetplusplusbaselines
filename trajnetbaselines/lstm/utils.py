@@ -119,6 +119,15 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     #         print(t)
     #         plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
 
+    ## Crowds Zara Scene 164
+    dict_map = {4: 'N4', 8: 'N1', 9: 'N2', 10: 'N3'}
+    for t in reversed(range(scene.shape[1])):
+        path = scene[:, t]
+        if t in {4, 8, 9, 10}:
+            print(t)
+            print(pool_weight[t-1])
+            plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
+
     if goal is not None:
         for t in range(goal.shape[0]):
             goal_t = goal[t]
