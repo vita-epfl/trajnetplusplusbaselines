@@ -4,6 +4,8 @@ Converting external dataset into TrajNet++ format (NEW): `Tutorial <https://thed
 
 Starter Guide : `Introducing Trajnet++ Framework <https://thedebugger811.github.io/posts/2020/03/intro_trajnetpp/>`_
 
+.. image:: docs/train/LRP.gif
+
 Data Setup
 ==========
 
