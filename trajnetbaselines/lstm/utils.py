@@ -185,5 +185,5 @@ def animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS, scene_id=
         camera.snap()
 
     animation = camera.animate()
-    animation.save('anims/lrp_crowds_{}_scene{}_check.gif'.format(pool_type, scene_id), fps=2, writer = 'imagepick')
+    animation.save('anims/lrp_crowds_{}_scene{}_check.mp4'.format(pool_type, scene_id), fps=2, writer = 'ffmpeg')
     plt.close()
