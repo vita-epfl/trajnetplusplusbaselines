@@ -447,7 +447,7 @@ def main(epochs=50):
                         help='initial learning rate')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
-                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp'),
+                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social'),
                         help='type of interaction encoder')
     parser.add_argument('--norm_pool', action='store_true',
                         help='normalize the scene along direction of movement')
@@ -525,6 +525,8 @@ def main(epochs=50):
                                  help='obs length dropout (regularization)')
     hyperparameters.add_argument('--start_length', default=0, type=int,
                                  help='start length during obs dropout')
+    hyperparameters.add_argument('--latent_dim', type=int, default=16,
+                                 help='Social latent dimension')
 
     ## SGAN-Specific
     hyperparameters.add_argument('--k', type=int, default=3,
@@ -614,7 +616,7 @@ def main(epochs=50):
                                 cell_side=args.cell_side, n=args.n, front=args.front,
                                 out_dim=args.pool_dim, embedding_arch=args.embedding_arch,
                                 constant=args.pool_constant, pretrained_pool_encoder=pretrained_pool,
-                                norm=args.norm, layer_dims=args.layer_dims)
+                                norm=args.norm, layer_dims=args.layer_dims, latent_dim=args.latent_dim)
 
     # generator
     lstm_generator = LSTMGenerator(embedding_dim=args.coordinate_embedding_dim, hidden_dim=args.hidden_dim,

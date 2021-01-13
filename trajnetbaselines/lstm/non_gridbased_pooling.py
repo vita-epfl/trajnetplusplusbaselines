@@ -96,6 +96,9 @@ class NN_Pooling(torch.nn.Module):
             torch.nn.ReLU(),
         )
 
+    def reset(self, _, device):
+        self.track_mask = None
+
     def forward(self, _, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
 
@@ -181,6 +184,9 @@ class HiddenStateMLPPooling(torch.nn.Module):
             torch.nn.ReLU(),
         )
         self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
+
+    def reset(self, _, device):
+        self.track_mask = None
 
     def forward(self, hidden_states, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
@@ -270,6 +276,9 @@ class AttentionMLPPooling(torch.nn.Module):
 
         self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
 
+    def reset(self, _, device):
+        self.track_mask = None
+
     def forward(self, hidden_states, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
 
@@ -346,6 +355,9 @@ class DirectionalMLPPooling(torch.nn.Module):
             torch.nn.ReLU(),
         )
         self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
+
+    def reset(self, _, device):
+        self.track_mask = None
 
     def forward(self, _, obs1, obs2):
         # [num_tracks, 2] --> [num_tracks, num_tracks, 2]

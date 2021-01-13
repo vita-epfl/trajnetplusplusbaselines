@@ -16,21 +16,20 @@ class GridBasedPooling(torch.nn.Module):
     def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
                  type_='occupancy', pool_size=1, blur_size=1, front=False,
                  embedding_arch='one_layer', pretrained_pool_encoder=None,
-                 constant=0, norm=0, layer_dims=None):
+                 constant=0, norm=0, layer_dims=None, latent_dim=16):
         """
         Pools in a grid of size 'n * cell_side' centred at the ped location
-
         cell_side: Scalar
             size of each cell in real world
         n: Scalar
             number of cells along one dimension
         out_dim: Scalar
             dimension of resultant interaaction vector
-        type_: ('occupancy', 'directional', 'social')
+        type_: ('occupancy', 'directional', 'social', 'dir_social')
             type of grid-based pooling
         front: Bool 
             if True, pools neighbours only in the front of pedestrian
-        embedding_arch: ('one_layer', 'two_layer', 'three_layer')
+        embedding_arch: ('one_layer', 'two_layer', 'three_layer', 'lstm_layer')
             architecture to encoder grid tensor
         pretrained_pool_encoder: None
             autoencoder to reduce dimensionality of grid
@@ -59,9 +58,13 @@ class GridBasedPooling(torch.nn.Module):
         if self.type_ == 'directional':
             self.pooling_dim = 2
         if self.type_ == 'social':
-            ## Encode hidden-dim into 16-dim vector (faster computation)
-            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, 16)
-            self.pooling_dim = 16
+            ## Encode hidden-dim into latent-dim vector (faster computation)
+            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, latent_dim)
+            self.pooling_dim = latent_dim
+        if self.type_ == 'dir_social':
+            ## Encode hidden-dim into latent-dim vector (faster computation)
+            self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, latent_dim)
+            self.pooling_dim = latent_dim + 2
 
         ## Final Representation Size
         if out_dim is None:
@@ -85,8 +88,8 @@ class GridBasedPooling(torch.nn.Module):
             self.embedding = self.two_layer(input_dim, layer_dims)
         elif self.embedding_arch == 'three_layer':
             self.embedding = self.three_layer(input_dim, layer_dims)
-        elif self.embedding_arch == 'conv_two_layer':
-            self.embedding = self.conv_two_layer(input_dim, layer_dims)
+        elif self.embedding_arch == 'lstm_layer':
+            self.embedding = self.lstm_layer(hidden_dim)
 
     def forward_grid(self, grid):
         """ Encodes the generated grid tensor
@@ -95,7 +98,6 @@ class GridBasedPooling(torch.nn.Module):
         ----------
         grid: [num_tracks, self.pooling_dim, self.n, self.n]
             Generated Grid
-
         Returns
         -------
         interactor_vector: Tensor [num_tracks, self.out_dim]
@@ -113,27 +115,29 @@ class GridBasedPooling(torch.nn.Module):
             grid = self.pretrained_model(grid)
 
         ## Normalize Grid (if necessary)
-        if self.embedding_arch not in {'conv_two_layer'}:
-            grid = grid.view(num_tracks, -1)
-            ## Normalization schemes
-            if self.norm == 1:
-                # "Global Norm"
-                mean, std = grid.mean(), grid.std()
-                std[std == 0] = 0.09
-                grid = (grid - mean) / std
-            elif self.norm == 2:
-                # "Feature Norm"
-                mean, std = grid.mean(dim=0, keepdim=True), grid.std(dim=0, keepdim=True)
-                std[std == 0] = 0.1
-                grid = (grid - mean) / std
-            elif self.norm == 3:
-                # "Sample Norm"
-                mean, std = grid.mean(dim=1, keepdim=True), grid.std(dim=1, keepdim=True)
-                std[std == 0] = 0.1
-                grid = (grid - mean) / std
+        grid = grid.view(num_tracks, -1)
+        ## Normalization schemes
+        if self.norm == 1:
+            # "Global Norm"
+            mean, std = grid.mean(), grid.std()
+            std[std == 0] = 0.09
+            grid = (grid - mean) / std
+        elif self.norm == 2:
+            # "Feature Norm"
+            mean, std = grid.mean(dim=0, keepdim=True), grid.std(dim=0, keepdim=True)
+            std[std == 0] = 0.1
+            grid = (grid - mean) / std
+        elif self.norm == 3:
+            # "Sample Norm"
+            mean, std = grid.mean(dim=1, keepdim=True), grid.std(dim=1, keepdim=True)
+            std[std == 0] = 0.1
+            grid = (grid - mean) / std
 
         ## Embed grid
-        if self.embedding:
+        if self.embedding_arch == 'lstm_layer':
+            return self.lstm_forward(grid)
+
+        elif self.embedding:
             return self.embedding(grid)
 
         return grid
@@ -146,6 +150,8 @@ class GridBasedPooling(torch.nn.Module):
             grid = self.directional(obs1, obs2)
         elif self.type_ == 'social':
             grid = self.social(hidden_state, obs1, obs2)
+        elif self.type_ == 'dir_social':
+            grid = self.dir_social(hidden_state, obs1, obs2)
 
         ## Forward Grid
         return self.forward_grid(grid)
@@ -193,6 +199,35 @@ class GridBasedPooling(torch.nn.Module):
         ## Generate Occupancy Map
         return self.occupancy(obs2, hidden_state_grid, past_obs=obs1)
 
+    def dir_social(self, hidden_state, obs1, obs2):
+        ## Makes the Directional + Social Grid
+
+        num_tracks = obs2.size(0)
+
+        ## if only primary pedestrian present
+        if num_tracks == 1:
+            return self.occupancy(obs2, None)
+
+        ## Generate values to input in directional grid tensor (relative velocities in this case) 
+        vel = obs2 - obs1
+        unfolded = vel.unsqueeze(0).repeat(vel.size(0), 1, 1)
+        ## [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        relative = unfolded - vel.unsqueeze(1)
+        ## Deleting Diagonal (Ped wrt itself)
+        ## [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks-1, 2]
+        relative = relative[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
+
+        ## Generate values to input in hiddenstate grid tensor (compressed hidden-states in this case) 
+        ## [num_tracks, hidden_dim] --> [num_tracks, num_tracks-1, pooling_dim]
+        hidden_state_grid = hidden_state.repeat(num_tracks, 1).view(num_tracks, num_tracks, -1)
+        hidden_state_grid = hidden_state_grid[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, -1)
+        hidden_state_grid = self.hidden_dim_encoding(hidden_state_grid)
+
+        dir_social_rep = torch.cat([relative, hidden_state_grid], dim=2)
+
+        ## Generate Occupancy Map
+        return self.occupancy(obs2, dir_social_rep, past_obs=obs1)
+
     @staticmethod
     def normalize(relative, obs, past_obs):
         ## Normalize pooling grid along direction of pedestrian motion
@@ -209,7 +244,6 @@ class GridBasedPooling(torch.nn.Module):
     def occupancy(self, obs, other_values=None, past_obs=None):
         """Returns the occupancy map filled with respective attributes.
         A different occupancy map with respect to each pedestrian
-
         Parameters
         ----------
         obs: Tensor [num_tracks, 2]
@@ -220,7 +254,6 @@ class GridBasedPooling(torch.nn.Module):
         past_obs: Tensor [num_tracks, 2]
             Previous x-y positions of all pedestrians, used to construct occupancy map.
             Useful for normalizing the grid tensor.
-
         Returns
         -------
         grid: Tensor [num_tracks, self.pooling_dim, self.n, self.n]
@@ -314,20 +347,54 @@ class GridBasedPooling(torch.nn.Module):
             torch.nn.Linear(layer_dims[1], self.out_dim),
             torch.nn.ReLU(),)
 
-    ## Default Layer Dims: 1024
-    def conv_two_layer(self, input_dim=None, layer_dims=None):
-        ## Similar to twoLayer. Will be removed in future version
-        if input_dim is None:
-            input_dim = self.n * self.n * self.pooling_dim
+    def lstm_layer(self, hidden_dim):
+        self.hidden_dim = hidden_dim
+        self.pool_lstm = torch.nn.LSTMCell(self.out_dim, self.hidden_dim)
+        self.hidden2pool = torch.nn.Linear(self.hidden_dim, self.out_dim)
         return torch.nn.Sequential(
-            torch.nn.Flatten(),
-            torch.nn.Linear(input_dim, layer_dims[0]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(layer_dims[0], self.out_dim),
-            torch.nn.ReLU(),)
+                         torch.nn.Linear(self.n * self.n * self.pooling_dim, self.out_dim),
+                         torch.nn.ReLU(),)
+
+    def reset(self, num_tracks, device):
+        self.track_mask = None
+        if self.embedding_arch == 'lstm_layer':
+            self.hidden_cell_state = (
+                [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
+                [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
+            )
+
+    def lstm_forward(self, grid):
+        """ Forward process for LSTM-based grid encoding"""
+        grid_embedding = self.embedding(grid)
+
+        num_tracks = grid.size(0)
+        ## If only primary pedestrian of the scene present
+        if torch.sum(self.track_mask).item() == 1:
+            return torch.zeros(num_tracks, self.out_dim, device=grid.device)
+
+        hidden_cell_stacked = [
+            torch.stack([h for m, h in zip(self.track_mask, self.hidden_cell_state[0]) if m], dim=0),
+            torch.stack([c for m, c in zip(self.track_mask, self.hidden_cell_state[1]) if m], dim=0),
+        ]
+
+        ## Update interaction-encoder LSTM
+        hidden_cell_stacked = self.pool_lstm(grid_embedding, hidden_cell_stacked)
+        interaction_vector = self.hidden2pool(hidden_cell_stacked[0])
+
+        ## Save hidden-cell-states
+        mask_index = [i for i, m in enumerate(self.track_mask) if m]
+        for i, h, c in zip(mask_index,
+                           hidden_cell_stacked[0],
+                           hidden_cell_stacked[1]):
+            self.hidden_cell_state[0][i] = h
+            self.hidden_cell_state[1][i] = c
+
+        return interaction_vector
 
     def make_grid(self, obs):
-    ## Make the grids for all time-steps together
+        """ Make the grids for all time-steps together 
+            Only supports Occupancy and Directional pooling
+        """
         if obs.ndim == 2:
             obs = obs.unsqueeze(0)
         timesteps = obs.size(0)

@@ -270,7 +270,6 @@ class TrajnetEvaluator:
         ground_truth = [track for track in ground_truth if track[0].frame < obs_end_frame]
         return ground_truth
 
-
 def collision_test(list_sub, name, args):
     """ Simple Collision Test """
     submit_datasets = [args.path + name + '/' + f for f in list_sub if 'collision_test.ndjson' in f]

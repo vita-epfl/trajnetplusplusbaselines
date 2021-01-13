@@ -51,6 +51,11 @@ def main():
     parser.add_argument('--scene_type', default=0, type=int,
                         choices=(0, 1, 2, 3, 4),
                         help='type of scene to evaluate')
+    parser.add_argument('--thresh', default=0.0, type=float,
+                        help='noise thresh')
+    parser.add_argument('--ped_type', default='primary',
+                        help='type of ped to add noise to')
+
     args = parser.parse_args()
 
     scipy.seterr('ignore')
@@ -237,10 +242,10 @@ def main():
             else:
                 pred_col /= (neigh_scenes * 0.01)
 
-            print('ADE: ', average)
-            print('FDE: ', final)
-            print("Col-I: ", pred_col)
-            print("Col-II: ", gt_col)
+            print('ADE: ', np.round(average, 3))
+            print('FDE: ', np.round(final, 3))
+            print("Col-I: ", np.round(pred_col, 2))
+            print("Col-II: ", np.round(gt_col, 2))
 
         if args.topk:
             topk_average /= total_scenes
