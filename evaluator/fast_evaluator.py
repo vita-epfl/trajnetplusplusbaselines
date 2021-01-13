@@ -119,7 +119,7 @@ def main():
             name = dataset.replace(args.path.replace('_pred', '') + 'test/', '')
 
             # Copy file from test into test/train_pred folder
-            # print('processing ' + name)
+            print('processing ' + name)
             if 'collision_test' in name:
                 continue
 
@@ -236,7 +236,7 @@ def main():
             average /= total_scenes
             final /= total_scenes
             gt_col /= (total_scenes * 0.01)
-        if not enable_col1:                
+            if not enable_col1:
                 pred_col = -1
             else:
                 pred_col /= (neigh_scenes * 0.01)
