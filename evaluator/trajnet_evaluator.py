@@ -53,6 +53,8 @@ class TrajnetEvaluator:
         self.num_predictions = num_predictions
 
         self.pred_length = args.pred_length
+        self.obs_length = args.obs_length
+        self.enable_col1 = True
 
     def aggregate(self, name, disable_collision):
 
@@ -111,7 +113,7 @@ class TrajnetEvaluator:
             final_l2 = trajnetplusplustools.metrics.final_l2(ground_truth[0], primary_tracks)
 
             if not disable_collision:
-
+                ground_truth = self.drop_post_obs(ground_truth, self.obs_length)
                 ## Collisions in GT
                 # person_radius=0.1
                 for j in range(1, len(ground_truth)):
@@ -125,8 +127,19 @@ class TrajnetEvaluator:
 
 
                 ## Collision in Predictions
-                flat_neigh_list = [item for sublist in neighbours_tracks for item in sublist]
-                if len(flat_neigh_list):
+                # [Col-I] only if neighs in gt = neighs in prediction
+                num_gt_neigh = len(ground_truth) - 1
+                num_predicted_neigh = len(neighbours_tracks)
+                if num_gt_neigh != num_predicted_neigh:
+                    self.enable_col1 = False
+                    for key in score:
+                        score[key][4] = 0
+                        score[key][3] = 0
+                    for sub_key in sub_score:
+                        sub_score[sub_key][4] = 0
+                        sub_score[sub_key][3] = 0
+
+                if self.enable_col1:
                     for key in keys:
                         score[key][4] += 1
                         for j in range(len(neighbours_tracks)):
@@ -181,8 +194,8 @@ class TrajnetEvaluator:
 ##### --------------------------------------------------- Top 3 -------------------------------------------- ####
 
 ##### --------------------------------------------------- NLL -------------------------------------------- ####
-            if self.num_predictions > 48:
-                nll = trajnetplusplustools.metrics.nll(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length, n_samples=50)
+            if self.num_predictions > 18:
+                nll = trajnetplusplustools.metrics.nll(primary_tracks_all, ground_truth[0], n_predictions=self.pred_length, n_samples=20)
 
                 average_nll += nll
                 ##Key
@@ -252,6 +265,11 @@ class TrajnetEvaluator:
                self.lf, self.ca, self.grp, self.others, \
                self.topk_ade, self.topk_fde, self.overall_nll
 
+    ## drop pedestrians that appear post observation
+    def drop_post_obs(self, ground_truth, obs_length):
+        obs_end_frame = ground_truth[0][obs_length].frame
+        ground_truth = [track for track in ground_truth if track[0].frame < obs_end_frame]
+        return ground_truth
 
 def collision_test(list_sub, name, args):
     """ Simple Collision Test """
@@ -326,8 +344,6 @@ def main():
                         help='consider kalman in evaluation')
     parser.add_argument('--normalize_scene', action='store_true',
                         help='augment scenes')
-    parser.add_argument('--goals', action='store_true',
-                        help='Considers goals during prediction')
     parser.add_argument('--modes', default=1, type=int,
                         help='number of modes to predict')
     args = parser.parse_args()
