@@ -71,7 +71,7 @@ class LSTM(torch.nn.Module):
 
     def init_lrp(self):
         """
-        Load trained model weights.
+        Load trained model weights for LRP.
         """
 
         d = self.hidden_dim
@@ -100,7 +100,7 @@ class LSTM(torch.nn.Module):
 
     def init_lrp_new_scene(self):
         """
-        Load trained model from file.
+        Initialize relevant attributes for LRP.
         """
 
         self.T = TIME_STEPS
@@ -110,8 +110,11 @@ class LSTM(torch.nn.Module):
         T = self.T
 
         E = self.encoder.weight_ih.shape[1]
+
+        ## Input
         self.x              = torch.zeros((T, E), device=self.encoder.weight_ih.device) 
 
+        ## Sequence LSTM
         self.h_Left         = torch.zeros((T+1, d), device=self.encoder.weight_ih.device) 
         self.c_Left         = torch.zeros((T+1, d), device=self.encoder.weight_ih.device) 
 
@@ -120,6 +123,7 @@ class LSTM(torch.nn.Module):
         self.gates_pre_Left = torch.zeros((T, 4*d), device=self.encoder.weight_ih.device)   # gates pre-activation
         self.gates_Left     = torch.zeros((T, 4*d), device=self.encoder.weight_ih.device)   # gates activation
 
+        ## Interaction Encoder (Grid-Based)
         if self.pool.embedding_arch == 'one_layer':
             self.pre_pool       = torch.zeros((T, self.pool.n * self.pool.n * self.pool.pooling_dim), device=self.encoder.weight_ih.device)  
             self.post_pool      = torch.zeros((T, self.pool.out_dim), device=self.encoder.weight_ih.device)  
@@ -132,6 +136,7 @@ class LSTM(torch.nn.Module):
             self.pre_pool_2       = torch.zeros((T, self.b_pool_units_2), device=self.encoder.weight_ih.device)  
             self.post_pool_2      = torch.zeros((T, self.pool.out_dim), device=self.encoder.weight_ih.device)  
 
+        ## Output
         self.s              = torch.zeros((T, 5), device=self.encoder.weight_ih.device)   # gates activation
 
         ## Neighbour mapping
@@ -204,20 +209,11 @@ class LSTM(torch.nn.Module):
                 curr_position = obs2[start:end][scene_track_mask]
                 curr_hidden_state = hidden_states_to_pool[start:end][scene_track_mask]
 
-                # LSTM-Based Interaction Encoders. Provide track_mask to the interaction encoder LSTMs
-                if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention_fast'}:
-                    ## Everyone absent by default
-                    interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                    ## Only those visible in current scene are present
-                    interaction_track_mask[start:end] = track_mask[start:end]
-                    self.pool.track_mask = interaction_track_mask
-                if self.pool.__class__.__name__ == 'GridBasedPooling':
-                    if self.pool.embedding_arch == 'lstm_layer':
-                        ## Everyone absent by default
-                        interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                        ## Only those visible in current scene are present
-                        interaction_track_mask[start:end] = track_mask[start:end]
-                        self.pool.track_mask = interaction_track_mask
+                ## Provide track_mask to the interaction encoders
+                ## Everyone absent by default. Only those visible in current scene are present
+                interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
+                interaction_track_mask[start:end] = track_mask[start:end]
+                self.pool.track_mask = interaction_track_mask
 
                 pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
                 batch_pool.append(pool_sample)
@@ -228,7 +224,7 @@ class LSTM(torch.nn.Module):
             else:
                 hidden_cell_stacked[0] += pooled
 
-        ## LRP LSTM STEP #########################################################################
+        ## LRP LSTM STEP Forward Propagation ####################################################
         if self.time_step < self.T:
             t = self.time_step
             atol = 1e-8
@@ -243,7 +239,7 @@ class LSTM(torch.nn.Module):
             self.bxh_Left = self.bxh_Left_E if t < 8 else self.bxh_Left_D
             self.bhh_Left = self.bhh_Left_E if t < 8 else self.bhh_Left_D
 
-            ## Check Pooling
+            ## Pooling
             self.track_mask[t] = track_mask
             rg_mk, ps = self.pool.occupancy_neigh_map(curr_position)
             self.range_mask[t] = rg_mk
@@ -264,7 +260,6 @@ class LSTM(torch.nn.Module):
                 self.pre_pool_2[t] = self.relu(self.post_pool[t])
                 self.post_pool_2[t] = torch.matmul(self.W_pool_2, self.pre_pool_2[t]) + self.b_pool_2
                 # assert torch.all(torch.isclose(batch_pool[0][0] , self.relu(self.post_pool_2[t]), atol=atol))
-                # print("ASSERTED")
 
             self.x[t] = input_emb[0]
             self.gates_xh_Left[t]     = torch.matmul(self.Wxh_Left, self.x[t]) 
@@ -301,11 +296,12 @@ class LSTM(torch.nn.Module):
         return hidden_cell_state, normal
 
     def lrp(self, timestep, LRP_class=0, eps=0.001, bias_factor=0.0, debug=False):
-        
-        # T = self.T
+        """ Backward Relevance propagation """
+
         T = timestep + 1
         d = self.hidden_dim
-        # initialize
+
+        # initialize Relevances
         Rx       = torch.zeros_like(self.x)
         Rp       = torch.zeros((T, self.pool.out_dim), device=self.encoder.weight_ih.device)
 
@@ -330,6 +326,7 @@ class LSTM(torch.nn.Module):
         idx  = np.hstack((np.arange(0,2*d), np.arange(3*d,4*d))).astype(int) # indices of gates i,f,o together
         idx_i, idx_g, idx_f, idx_o = np.arange(0,d), np.arange(2*d,3*d), np.arange(d,2*d), np.arange(3*d,4*d) # indices of gates i,g,f,o separately
         
+        ## Backward Pass
         for t in reversed(range(T)):
             self.Wxh_Left = self.Wxh_Left_E if t < 8 else self.Wxh_Left_D
             self.Whh_Left = self.Whh_Left_E if t < 8 else self.Whh_Left_D
@@ -396,13 +393,8 @@ class LSTM(torch.nn.Module):
             [torch.zeros(self.hidden_dim, device=observed.device) for _ in range(num_tracks)],
         )
 
-        ## LSTM-Based Interaction Encoders. Initialze Hdden state ## TODO
-        if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention', 'SAttention_fast'}:
-            self.pool.reset(num_tracks, device=observed.device)
-
-        if self.pool.__class__.__name__ == 'GridBasedPooling':
-            if self.pool.embedding_arch == 'lstm_layer':
-                self.pool.reset(num_tracks, device=observed.device)
+        ## Reset LSTMs of Interaction encoders
+        self.pool.reset(num_tracks, device=observed.device)
 
         # list of predictions
         normals = []  # predicted normal parameters for both phases
@@ -463,14 +455,13 @@ class LSTM(torch.nn.Module):
         overall_neigh_weights = []
 
         for t in range(7, TIME_STEPS):
+            ## x and y coordinates
             Rx_x, Rh_x, Rp_x, Rv_x = self.lrp(t, LRP_class=0, bias_factor=0.0, debug=False, eps=0.001)
             Rx_y, Rh_y, Rp_y, Rv_y = self.lrp(t, LRP_class=1, bias_factor=0.0, debug=False, eps=0.001)
-            # import pdb
-            # pdb.set_trace()
-            # R_tot = Rp.sum() + Rv.sum() + Rh.sum()          # sum of all "input" relevances
-            # R_tot = Rx.sum() + Rh.sum()          # sum of all "input" relevances
-            # print(R_tot)    
-            # print("Sanity check passed? ", R_tot, self.s)
+            # R_tot = Rx_x.sum() + Rh_x.sum()      # sum of all "input" relevances
+            # print("Sanity check passed? ", R_tot, self.s[timestep][0])
+
+            ## Get relevance scores of inputs
             vel_weights, neigh_weights = self.get_scores(Rp_y + Rp_x, Rv_x + Rv_y, t)
             overall_vel_weights.append(vel_weights.copy())
             overall_neigh_weights.append(neigh_weights.copy())
@@ -479,28 +470,26 @@ class LSTM(torch.nn.Module):
 
     def get_scores(self, Rp, Rv, timestep):
 
-        ## Vel Weights
+        ## Past velocity Weights
         vel_weights = [0.0]
         for t, vel_embed in enumerate(Rv):
-            # print("Time Step: ", t+2, torch.mean(vel_embed))
             vel_weights.append(torch.mean(vel_embed).item())
-
         vel_weights.append(0.)
         vel_weights = np.array(vel_weights)
         vel_weights = (vel_weights - np.min(vel_weights)) / (np.max(vel_weights) - np.min(vel_weights)) + 0.3
 
-        ## Neigh Weights
+        ## Neighbour Weights
         Rp_last_step = Rp[-1].reshape(-1, self.pool.n, self.pool.n)
         neigh_weights = []
         occupancy_map = self.occupancy_mapping[timestep][0]
         range_mask = self.range_mask[timestep][0]
         track_mask = self.track_mask[timestep]
         range_mask_iter = 0
+        ## Mapping between neighbours and their respective grid positions
         for id_, visible in enumerate(track_mask[1:]):
             if not visible:
                 neigh_weights.append(0.)
                 continue
-
             if not range_mask[range_mask_iter]:
                 neigh_weights.append(0.)
             else:
@@ -541,16 +530,7 @@ class LSTMPredictor(object):
             self.model.init_lrp()
             self.model.init_lrp_new_scene()
             xy = trajnetplusplustools.Reader.paths_to_xy(paths)
-            # xy = augmentation.add_noise(xy, thresh=args.thresh, ped=args.ped_type)
             batch_split = [0, xy.shape[1]]
-
-
-            ## Drop Distant (for real data)
-            # xy, mask = drop_distant(xy, r=3.0)
-            # scene_goal = scene_goal[mask]
-
-            # visualize_scene(xy)
-            # print("Observed Scene")
 
             if args.normalize_scene:
                 xy, rotation, center, scene_goal = center_scene(xy, obs_length, goals=scene_goal)
@@ -566,10 +546,8 @@ class LSTMPredictor(object):
                 output_scenes = output_scenes.numpy()
 
                 # visualize_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS)
+                print("Scene ID: ", scene_id)
                 animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS, scene_id, self.model.pool.type_)
-                # exit()              
-                # import pdb
-                # pdb.set_trace()
                 if args.normalize_scene:
                     output_scenes = augmentation.inverse_scene(output_scenes, rotation, center)
                 output_primary = output_scenes[-n_predict:, 0]

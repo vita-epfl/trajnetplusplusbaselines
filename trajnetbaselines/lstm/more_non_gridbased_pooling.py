@@ -60,6 +60,9 @@ class NMMP(torch.nn.Module):
         refined_embeddings = self.edge_to_node_embedding(concat_nodes)
         return refined_embeddings
 
+    def reset(self, _, device):
+        self.track_mask = None
+
     def forward(self, hidden_states, _, obs2):
 
         ## If only primary present

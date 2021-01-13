@@ -25,11 +25,11 @@ class GridBasedPooling(torch.nn.Module):
             number of cells along one dimension
         out_dim: Scalar
             dimension of resultant interaaction vector
-        type_: ('occupancy', 'directional', 'social')
+        type_: ('occupancy', 'directional', 'social', 'dir_social')
             type of grid-based pooling
         front: Bool 
             if True, pools neighbours only in the front of pedestrian
-        embedding_arch: ('one_layer', 'two_layer', 'three_layer')
+        embedding_arch: ('one_layer', 'two_layer', 'three_layer', 'lstm_layer')
             architecture to encoder grid tensor
         pretrained_pool_encoder: None
             autoencoder to reduce dimensionality of grid
@@ -58,14 +58,13 @@ class GridBasedPooling(torch.nn.Module):
         if self.type_ == 'directional':
             self.pooling_dim = 2
         if self.type_ == 'social':
-            ## Encode hidden-dim into 16-dim vector (faster computation)
+            ## Encode hidden-dim into latent-dim vector (faster computation)
             self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, latent_dim)
             self.pooling_dim = latent_dim
         if self.type_ == 'dir_social':
-            ## Encode hidden-dim into 16-dim vector (faster computation)
+            ## Encode hidden-dim into latent-dim vector (faster computation)
             self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, latent_dim)
             self.pooling_dim = latent_dim + 2
-            print("POOLING DIM: ", self.pooling_dim)
 
         ## Final Representation Size
         if out_dim is None:
@@ -89,8 +88,6 @@ class GridBasedPooling(torch.nn.Module):
             self.embedding = self.two_layer(input_dim, layer_dims)
         elif self.embedding_arch == 'three_layer':
             self.embedding = self.three_layer(input_dim, layer_dims)
-        elif self.embedding_arch == 'conv_two_layer':
-            self.embedding = self.conv_two_layer(input_dim, layer_dims)
         elif self.embedding_arch == 'lstm_layer':
             self.embedding = self.lstm_layer(hidden_dim)
 
@@ -118,24 +115,23 @@ class GridBasedPooling(torch.nn.Module):
             grid = self.pretrained_model(grid)
 
         ## Normalize Grid (if necessary)
-        if self.embedding_arch not in {'conv_two_layer'}:
-            grid = grid.view(num_tracks, -1)
-            ## Normalization schemes
-            if self.norm == 1:
-                # "Global Norm"
-                mean, std = grid.mean(), grid.std()
-                std[std == 0] = 0.09
-                grid = (grid - mean) / std
-            elif self.norm == 2:
-                # "Feature Norm"
-                mean, std = grid.mean(dim=0, keepdim=True), grid.std(dim=0, keepdim=True)
-                std[std == 0] = 0.1
-                grid = (grid - mean) / std
-            elif self.norm == 3:
-                # "Sample Norm"
-                mean, std = grid.mean(dim=1, keepdim=True), grid.std(dim=1, keepdim=True)
-                std[std == 0] = 0.1
-                grid = (grid - mean) / std
+        grid = grid.view(num_tracks, -1)
+        ## Normalization schemes
+        if self.norm == 1:
+            # "Global Norm"
+            mean, std = grid.mean(), grid.std()
+            std[std == 0] = 0.09
+            grid = (grid - mean) / std
+        elif self.norm == 2:
+            # "Feature Norm"
+            mean, std = grid.mean(dim=0, keepdim=True), grid.std(dim=0, keepdim=True)
+            std[std == 0] = 0.1
+            grid = (grid - mean) / std
+        elif self.norm == 3:
+            # "Sample Norm"
+            mean, std = grid.mean(dim=1, keepdim=True), grid.std(dim=1, keepdim=True)
+            std[std == 0] = 0.1
+            grid = (grid - mean) / std
 
         ## Embed grid
         if self.embedding_arch == 'lstm_layer':
@@ -351,35 +347,24 @@ class GridBasedPooling(torch.nn.Module):
             torch.nn.Linear(layer_dims[1], self.out_dim),
             torch.nn.ReLU(),)
 
-    ## Default Layer Dims: 1024
-    def conv_two_layer(self, input_dim=None, layer_dims=None):
-        ## Similar to twoLayer. Will be removed in future version
-        if input_dim is None:
-            input_dim = self.n * self.n * self.pooling_dim
-        return torch.nn.Sequential(
-            torch.nn.Flatten(),
-            torch.nn.Linear(input_dim, layer_dims[0]),
-            torch.nn.ReLU(),
-            torch.nn.Linear(layer_dims[0], self.out_dim),
-            torch.nn.ReLU(),)
-
-    def reset(self, num_tracks, device):
-        self.hidden_cell_state = (
-            [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
-            [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
-        )
-
     def lstm_layer(self, hidden_dim):
         self.hidden_dim = hidden_dim
         self.pool_lstm = torch.nn.LSTMCell(self.out_dim, self.hidden_dim)
         self.hidden2pool = torch.nn.Linear(self.hidden_dim, self.out_dim)
-        self.track_mask = None
         return torch.nn.Sequential(
                          torch.nn.Linear(self.n * self.n * self.pooling_dim, self.out_dim),
                          torch.nn.ReLU(),)
 
-    def lstm_forward(self, grid):
+    def reset(self, num_tracks, device):
+        self.track_mask = None
+        if self.embedding_arch == 'lstm_layer':
+            self.hidden_cell_state = (
+                [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
+                [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
+            )
 
+    def lstm_forward(self, grid):
+        """ Forward process for LSTM-based grid encoding"""
         grid_embedding = self.embedding(grid)
 
         num_tracks = grid.size(0)
@@ -407,7 +392,9 @@ class GridBasedPooling(torch.nn.Module):
         return interaction_vector
 
     def make_grid(self, obs):
-    ## Make the grids for all time-steps together
+        """ Make the grids for all time-steps together 
+            Only supports Occupancy and Directional pooling
+        """
         if obs.ndim == 2:
             obs = obs.unsqueeze(0)
         timesteps = obs.size(0)

@@ -11,7 +11,6 @@ def one_cold(i, n):
 
 def front_ped(xy, other_xy, past_xy):
     """ Provides indices of neighbours in front of chosen pedestrian
-
     Parameters
     ----------
     xy :  Tensor [2,]
@@ -20,7 +19,6 @@ def front_ped(xy, other_xy, past_xy):
         x-y position of all neighbours of the chosen pedestrian at current time-step t
     past_xy :  Tensor [2,]
         x-y position of the chosen pedestrian at time t-1
-
     Returns
     -------
     angle_index : Bool Tensor [num_tracks,]
@@ -35,12 +33,10 @@ def front_ped(xy, other_xy, past_xy):
 # 
 def rel_obs(obs):
     """ Provides relative position of neighbours wrt one another
-
     Parameters
     ----------
     obs :  Tensor [num_tracks, 2]
         x-y positions of all agents
-
     Returns
     -------
     relative : Tensor [num_tracks, num_tracks, 2]
@@ -51,14 +47,12 @@ def rel_obs(obs):
 
 def rel_directional(obs1, obs2):
     """ Provides relative velocity of neighbours wrt one another
-
     Parameters
     ----------
     obs1 :  Tensor [num_tracks, 2]
         x-y positions of all agents at previous time-step t-1
     obs2 :  Tensor [num_tracks, 2]
         x-y positions of all agents at current time-step t
-
     Returns
     -------
     relative : Tensor [num_tracks, num_tracks, 2]
@@ -96,16 +90,17 @@ class NN_Pooling(torch.nn.Module):
             torch.nn.ReLU(),
         )
 
+    def reset(self, _, device):
+        self.track_mask = None
+
     def forward(self, _, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
-
         Parameters
         ----------
         obs1 :  Tensor [num_tracks, 2]
             x-y positions of all agents at previous time-step t-1
         obs2 :  Tensor [num_tracks, 2]
             x-y positions of all agents at current time-step t
-
         Returns
         -------
         interaction_vector : Tensor [num_tracks, self.out_dim]
@@ -182,9 +177,11 @@ class HiddenStateMLPPooling(torch.nn.Module):
         )
         self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
 
+    def reset(self, _, device):
+        self.track_mask = None
+
     def forward(self, hidden_states, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
-
         Parameters
         ----------
         obs1 :  Tensor [num_tracks, 2]
@@ -193,7 +190,6 @@ class HiddenStateMLPPooling(torch.nn.Module):
             x-y positions of all agents at current time-step t
         hidden_states :  Tensor [num_tracks, hidden_dim]
             LSTM hidden state of all agents at current time-step t
-
         Returns
         -------
         interaction_vector : Tensor [num_tracks, self.out_dim]
@@ -270,9 +266,11 @@ class AttentionMLPPooling(torch.nn.Module):
 
         self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
 
+    def reset(self, _, device):
+        self.track_mask = None
+
     def forward(self, hidden_states, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
-
         Parameters
         ----------
         obs1 :  Tensor [num_tracks, 2]
@@ -281,7 +279,6 @@ class AttentionMLPPooling(torch.nn.Module):
             x-y positions of all agents at current time-step t
         hidden_states :  Tensor [num_tracks, hidden_dim]
             LSTM hidden state of all agents at current time-step t
-
         Returns
         -------
         interaction_vector : Tensor [num_tracks, self.out_dim]
@@ -347,6 +344,9 @@ class DirectionalMLPPooling(torch.nn.Module):
         )
         self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
 
+    def reset(self, _, device):
+        self.track_mask = None
+
     def forward(self, _, obs1, obs2):
         # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
         relative_obs = rel_obs(obs2)
@@ -401,14 +401,12 @@ class NN_LSTM(torch.nn.Module):
 
     def forward(self, _, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
-
         Parameters
         ----------
         obs1 :  Tensor [num_tracks, 2]
             x-y positions of all agents at previous time-step t-1
         obs2 :  Tensor [num_tracks, 2]
             x-y positions of all agents at current time-step t
-
         Returns
         -------
         interaction_vector : Tensor [num_tracks, self.out_dim]
@@ -505,14 +503,12 @@ class TrajectronPooling(torch.nn.Module):
 
     def forward(self, _, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
-
         Parameters
         ----------
         obs1 :  Tensor [num_tracks, 2]
             x-y positions of all agents at previous time-step t-1
         obs2 :  Tensor [num_tracks, 2]
             x-y positions of all agents at current time-step t
-
         Returns
         -------
         interaction_vector : Tensor [num_tracks, self.out_dim]
@@ -602,7 +598,6 @@ class SAttention_fast(torch.nn.Module):
 
     def forward(self, hidden_state, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
-
         Parameters
         ----------
         obs1 :  Tensor [num_tracks, 2]
@@ -611,7 +606,6 @@ class SAttention_fast(torch.nn.Module):
             x-y positions of all agents at current time-step t
         hidden_states :  Tensor [num_tracks, hidden_dim]
             LSTM hidden state of all agents at current time-step t
-
         Returns
         -------
         interaction_vector : Tensor [num_tracks, self.out_dim]

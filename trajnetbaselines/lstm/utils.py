@@ -22,10 +22,6 @@ def drop_distant(xy, r=6.0):
     """
     distance_2 = numpy.sum(numpy.square(xy - xy[:, 0:1]), axis=2)
     mask = numpy.argsort(distance_2)[0]
-    # print("DIST")
-    # import pdb
-    # pdb.set_trace()
-    # mask = numpy.nanmin(distance_2, axis=0) < r**2
     return mask
 
 def random_rotation(xy, goals=None):
@@ -72,8 +68,6 @@ def center_scene(xy, obs_length=9, ped_id=0, goals=None):
     return xy, rotation, center
 
 def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True):
-    # print("Primary: ", scene[0, 0], scene[8, 0])
-    # print("pool weights: ", pool_weight)
 
     for t in reversed(range(scene.shape[1])):
         path = scene[:, t]
@@ -82,25 +76,14 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
 
         plt.plot(path[:-1, 0], path[:-1, 1], c=color, linewidth=linewidth)
 
-        # dict_map = {4: 'N4', 7: 'N3', 8: 'N2', 9: 'N1'}
-
         if t == 0 and weights is not None:
-            # plt.plot(path[:, 0], path[:, 1], c=color)
-            pass
+            ## Past velocity weights
             # plt.scatter(path[:-1, 0], path[:-1, 1], c=weights[:-2], cmap='Blues', vmin=0.0, vmax=1.5)
-            # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
-            # plt.scatter(path[:, 0], path[:, 1], c=color, alpha='Greys', vmin=0.0, vmax=1.5)
+            pass
         elif t != 0 and pool_weight is not None:
-            # if t in {4, 7, 8, 9}:
-            # plt.plot(path[:, 0], path[:, 1], label='N{} = {}'.format(t, numpy.round(pool_weight[t-1], 2)))
-            # else:
-                # plt.plot(path[:, 0], path[:, 1])
             plt.scatter(path[:-1, 0], path[:-1, 1], color=color, alpha=pool_weight[t-1], vmin=0.0, vmax=1.5, s=60.0)
-            # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
         else:
-            # plt.plot(path[:, 0], path[:, 1], c=color)
             plt.scatter(path[:-1, 0], path[:-1, 1], c=color)
-            # plt.plot(path[-2:, 0], path[-2:, 1], c='g')
         plt.arrow(path[-2, 0], path[-2, 1], path[-1, 0] - path[-2, 0], path[-1, 1] - path[-2, 1], width=0.05, color='g')
 
     ## Crowds Zara Scene 19
@@ -108,8 +91,8 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     # for t in reversed(range(scene.shape[1])):
     #     path = scene[:, t]
     #     if t in {4, 7, 8, 9}:
-    #         print(t)
     #         plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
+
 
     ## Crowds Zara Scene 0
     # dict_map = {1: 'N1', 2: 'N2'}
@@ -120,18 +103,13 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     #         plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
 
     ## Crowds Zara Scene 164
-    dict_map = {4: 'N4', 8: 'N1', 9: 'N2', 10: 'N3'}
-    for t in reversed(range(scene.shape[1])):
-        path = scene[:, t]
-        if t in {4, 8, 9, 10}:
-            print(t)
-            print(pool_weight[t-1])
-            plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
-
-    if goal is not None:
-        for t in range(goal.shape[0]):
-            goal_t = goal[t]
-            plt.scatter(goal_t[0], goal_t[1])
+    # dict_map = {4: 'N4', 8: 'N1', 9: 'N2', 10: 'N3'}
+    # for t in reversed(range(scene.shape[1])):
+    #     path = scene[:, t]
+    #     if t in {4, 8, 9, 10}:
+    #         print(t)
+    #         print(pool_weight[t-1])
+    #         plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
 
     plt.gca().set_aspect('equal')
     xmin = numpy.round(2 * numpy.nanmin(scene[:, :, 0])) * 0.5
@@ -164,15 +142,6 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
 
 def visualize_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS):
     for t in range(8, TIME_STEPS):
-        ## Neighbour weights arrange
-        # mask = drop_distant(output_scenes[t:t+1])
-        # mask = numpy.sort(mask[:len(neigh_weights[t-7])+1])
-        # p_weights = 0.0 * numpy.ones(output_scenes.shape[1])
-        # p_weights[mask[1:]] = neigh_weights[t-7]
-        # import pdb
-        # pdb.set_trace()
-        # visualize_scene(output_scenes[:t+2], weights=vel_weights[t-7], pool_weight=p_weights[1:])
-        print("Neigh Weights: ", neigh_weights[t-7])
         visualize_scene(output_scenes[:t+2], weights=vel_weights[t-7], pool_weight=neigh_weights[t-7])
 
 def visualize_grid(grid):
@@ -216,5 +185,5 @@ def animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS, scene_id=
         camera.snap()
 
     animation = camera.animate()
-    animation.save('anims/lrp_crowds_{}_scene{}_check.mp4'.format(pool_type, scene_id), fps=2, writer = 'ffmpeg')
+    animation.save('anims/lrp_crowds_{}_scene{}_check.gif'.format(pool_type, scene_id), fps=2, writer = 'imagepick')
     plt.close()
