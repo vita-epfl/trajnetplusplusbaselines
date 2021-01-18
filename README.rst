@@ -37,10 +37,12 @@ If you find this code useful in your research then please cite
 
 .. code-block::
 
-    @inproceedings{Kothari2020HumanTF,
+    @article{Kothari2020HumanTF,
       title={Human Trajectory Forecasting in Crowds: A Deep Learning Perspective},
-      author={Parth Kothari and Sven Kreiss and Alexandre Alahi},
-      year={2020}
+      author={Parth Kothari and S. Kreiss and Alexandre Alahi},
+      journal={ArXiv},
+      year={2020},
+      volume={abs/2007.03639}
     }
 
 
