@@ -86,7 +86,7 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
             plt.scatter(path[:-1, 0], path[:-1, 1], c=color)
         plt.arrow(path[-2, 0], path[-2, 1], path[-1, 0] - path[-2, 0], path[-1, 1] - path[-2, 1], width=0.05, color='g')
 
-    ## Crowds Zara Scene 19
+    ## Crowds Zara Scene ID 41
     # dict_map = {4: 'N4', 7: 'N3', 8: 'N2', 9: 'N1'}
     # for t in reversed(range(scene.shape[1])):
     #     path = scene[:, t]
@@ -94,7 +94,7 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     #         plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
 
 
-    ## Crowds Zara Scene 0
+    ## Crowds Zara Scene ID 2
     # dict_map = {1: 'N1', 2: 'N2'}
     # for t in reversed(range(scene.shape[1])):
     #     path = scene[:, t]
@@ -102,7 +102,7 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     #         print(t)
     #         plt.plot(0.5*(path[-3, 0] + path[-4, 0]), 0.5*(path[-3, 1] + path[-4, 1]), linestyle = 'None', marker='${}$'.format(dict_map[t]), markersize=15.0, color='r', label='${0:0.2f}$'.format(pool_weight[t-1]))
 
-    ## Crowds Zara Scene 164
+    ## Crowds Zara Scene ID 164
     # dict_map = {4: 'N4', 8: 'N1', 9: 'N2', 10: 'N3'}
     # for t in reversed(range(scene.shape[1])):
     #     path = scene[:, t]
@@ -118,13 +118,13 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     ymin = numpy.round(2 * numpy.nanmin(scene[:, :, 1])) * 0.5
     ymax = numpy.round(2 * numpy.nanmax(scene[:, :, 1])) * 0.5
 
-    ## Crowds Zara Scene 19
+    ## Crowds Zara Scene ID 41
     # xmin = -4
     # xmax = 5
     # ymin = -4
     # ymax = 0
 
-    ## Crowds Zara Scene 0
+    ## Crowds Zara Scene ID 2
     # xmin = -2
     # xmax = 5
     # ymin = -4

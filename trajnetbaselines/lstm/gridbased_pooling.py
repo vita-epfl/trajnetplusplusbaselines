@@ -434,7 +434,7 @@ class GridBasedPooling(torch.nn.Module):
 
         ## if only primary pedestrian present
         if num_tracks == 1:
-            return self.constant*torch.ones(1, self.pooling_dim, self.n, self.n, device=obs.device)
+            return torch.Tensor([], device=obs.device), torch.Tensor([], device=obs.device)
 
         ## Get relative position
         ## [num_tracks, 2] --> [num_tracks, num_tracks, 2]
