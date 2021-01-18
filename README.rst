@@ -6,6 +6,8 @@ Starter Guide : `Introducing Trajnet++ Framework <https://thedebugger811.github.
 
 .. image:: docs/train/LRP.gif
 
+Visualizations of the decision-making of interaction modules using layer-wise relevance propagation (LRP). The darker the yellow circles, the more is the weight provided by the primary pedestrian (blue) to the corresponding neighbour (yellow). Further details for explaining trajectory forecasting models using LRP can be found `here <https://github.com/vita-epfl/trajnetplusplusbaselines/tree/LRP>`_
+
 Data Setup
 ==========
 
