@@ -139,7 +139,7 @@ def main():
                 scene_goals = [np.zeros((len(paths), 2)) for _, scene_id, paths in scenes]
 
             print("Saving LRP GIFs")
-            ## Get all predictions in parallel. Faster!
+            ## Change Scene IDs to be saved as animations.
             pred_list = Parallel(n_jobs=1)(delayed(process_scene)(predictor, model_name, paths, scene_goal, scene_id, args)
                                             for (_, scene_id, paths), scene_goal in zip(scenes[19:20], scene_goals[19:20]))
 

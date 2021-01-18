@@ -135,7 +135,7 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     plt.xticks(numpy.arange(xmin - 1, xmax + 2), fontsize=10)
     # plt.gca().set_xticklabels(fontsize = 10, va='bottom', ha='left')
     plt.yticks(numpy.arange(ymin - 1, ymax + 2), fontsize=10)
-    plt.legend(loc=4)
+    # plt.legend(loc=4)
     if show:
         plt.show()
         plt.close()
@@ -185,5 +185,5 @@ def animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS, scene_id=
         camera.snap()
 
     animation = camera.animate()
-    animation.save('anims/lrp_crowds_{}_scene{}_check.mp4'.format(pool_type, scene_id), fps=2, writer = 'ffmpeg')
+    animation.save('anims/lrp_crowds_{}_scene{}.mp4'.format(pool_type, scene_id), fps=2, writer='ffmpeg')
     plt.close()
