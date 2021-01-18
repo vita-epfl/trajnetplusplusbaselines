@@ -1,9 +1,12 @@
 Explaining Trajectory Forecasting Models: Layer-wise Relevance Propagation
 =========================================================================
 
-.. image:: docs/train/LRP.gif
+.. image:: docs/train/LRP.png
 
-Visualizing the decision-making of directional pooling (D-Grid) using layer-wise relevance propagation. The darker the yellow circles, the more is the weight provided by the primary pedestrian (blue) to the corresponding neighbour (yellow). Our proposed directional pooling, driven by domain knowledge, outputs human-like trajectories with more intuitive focus on surrounding neighbours as compared to social pooling (S-Grid).
+Visualizing the decision-making of grid-based interaction modules using layer-wise relevance propagation. The darker the yellow circles, the more is the weight (also shown in the legend) provided by the primary pedestrian (blue) to the corresponding neighbour (yellow). Our proposed D-Grid, driven by domain knowledge, outputs more human-like trajectories with more intuitive focus on surrounding neighbours as compared to S-Grid.
+
+Curently, the implementation supports LRP visualization for grid-based interaction modules, and can easily be extended to non-grid-based modules. 
+
 
 Dependencies
 ============
@@ -20,9 +23,11 @@ Once an LSTM model is trained, use the following script for visualizing LRP:
 
 Animations are saved in the *anims* folder
 
-The script for generating the above animation (in anims folder):
+The script for generating the below animation:
 
 ``python -m evaluator.fast_evaluator --path crowds_zara02 --output lstm_directional_one_12_6.pkl``
+
+.. image:: docs/train/LRP.gif
 
 
 Citation
