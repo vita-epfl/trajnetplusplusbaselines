@@ -1,48 +1,29 @@
-Link to the Challenge: `Trajnet++ Challenge <https://www.aicrowd.com/challenges/trajnet-a-trajectory-forecasting-challenge>`_
+Explaining Trajectory Forecasting Models: Layer-wise Relevance Propagation
+=========================================================================
 
-Converting external dataset into TrajNet++ format (NEW): `Tutorial <https://thedebugger811.github.io/posts/2020/10/data_conversion/>`_
+.. image:: docs/train/LRP.gif
 
-Starter Guide : `Introducing Trajnet++ Framework <https://thedebugger811.github.io/posts/2020/03/intro_trajnetpp/>`_
+Visualizing the decision-making of directional pooling (D-Grid) using layer-wise relevance propagation. The darker the yellow circles, the more is the weight provided by the primary pedestrian (blue) to the corresponding neighbour (yellow). Our proposed directional pooling, driven by domain knowledge, outputs human-like trajectories with more intuitive focus on surrounding neighbours as compared to social pooling (S-Grid).
 
-Data Setup
-==========
+Dependencies
+============
 
-Data Directory Setup
---------------------
+1. Celluloid
 
-All Datasets are stored in DATA_BLOCK
 
-All Models after training are stored in OUTPUT_BLOCK: ``mkdir OUTPUT_BLOCK``
+Running LRP
+===========
 
-Data Conversion
----------------
+Once an LSTM model is trained, use the following script for visualizing LRP:
 
-For data conversion, refer to trajnetplusplusdataset.
+``python -m evaluator.fast_evaluator --path <dataset_name> --output <model_pkl_file>``
 
-After conversion, copy the converted dataset to DATA_BLOCK
+Animations are saved in the *anims* folder
 
-Training LSTMs
-==============
+The script for generating the above animation (in anims folder):
 
-The training script and its help menu:
-``python -m trajnetbaselines.lstm.trainer --help``
+``python -m evaluator.fast_evaluator --path crowds_zara02 --output lstm_directional_one_12_6.pkl``
 
-Training GANs
-==============
-
-The training script and its help menu:
-``python -m trajnetbaselines.sgan.trainer --help``
-
-Evaluation
-==========
-
-The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator --help``
-
-More details regarding TrajNet++ evaluator are provided `here <https://github.com/vita-epfl/trajnetplusplusbaselines/blob/master/evaluator/README.rst>`_
-
-Evaluation on datasplits is based on the following categorization:
-
-.. image:: docs/train/Categorize.png
 
 Citation
 ========
@@ -57,3 +38,8 @@ If you find this code useful in your research then please cite
       year={2020}
     }
 
+
+Acknowledgements
+================
+
+Our LRP code is inspired from `LRP for LSTM <https://github.com/ArrasL/LRP_for_LSTM>`_
