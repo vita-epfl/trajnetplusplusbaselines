@@ -1,38 +1,25 @@
-Link to the Challenge: `Trajnet++ Challenge <https://www.aicrowd.com/challenges/trajnet-a-trajectory-forecasting-challenge>`_
-
-Converting external dataset into TrajNet++ format (NEW): `Tutorial <https://thedebugger811.github.io/posts/2020/10/data_conversion/>`_
-
-Starter Guide : `Introducing Trajnet++ Framework <https://thedebugger811.github.io/posts/2020/03/intro_trajnetpp/>`_
-
-.. image:: docs/train/LRP.gif
-
-Visualizations of the decision-making of interaction modules using layer-wise relevance propagation (LRP). The darker the yellow circles, the more is the weight provided by the primary pedestrian (blue) to the corresponding neighbour (yellow). Further details for explaining trajectory forecasting models using LRP can be found `here <https://github.com/vita-epfl/trajnetplusplusbaselines/tree/LRP>`_
-
+              
 Data Setup
 ==========
 
-Data Directory Setup
---------------------
+The detailed step-by-step procedure for setting up the TrajNet++ framework can be found `here <https://thedebugger811.github.io/posts/2020/03/intro_trajnetpp/>`_
 
-All Datasets are stored in DATA_BLOCK
+Converting External Datasets
+----------------------------
 
-All Models after training are stored in OUTPUT_BLOCK: ``mkdir OUTPUT_BLOCK``
+To convert external datasets into the TrajNet++ framework, refer to this `guide <https://thedebugger811.github.io/posts/2020/10/data_conversion/>`_ 
 
-Data Conversion
----------------
+Training Models
+===============
 
-For data conversion, refer to trajnetplusplusdataset.
-
-After conversion, copy the converted dataset to DATA_BLOCK
-
-Training LSTMs
-==============
+LSTM
+----
 
 The training script and its help menu:
 ``python -m trajnetbaselines.lstm.trainer --help``
 
-Training GANs
-==============
+GAN
+---
 
 The training script and its help menu:
 ``python -m trajnetbaselines.sgan.trainer --help``
@@ -44,9 +31,46 @@ The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator
 
 More details regarding TrajNet++ evaluator are provided `here <https://github.com/vita-epfl/trajnetplusplusbaselines/blob/master/evaluator/README.rst>`_
 
-Evaluation on datasplits is based on the following categorization:
+Evaluation on datasplits is based on the following `categorization <https://github.com/vita-epfl/trajnetplusplusbaselines/blob/master/docs/train/Categorize.png>`_
 
-.. image:: docs/train/Categorize.png
+Results
+-------
+
+Unimodal Comparison of interaction encoder designs when forecasting 12 future time-steps, given the previous 9 time-steps, on interacting trajectories of TrajNet++ real world dataset. Errors reported are ADE / FDE in meters, collisions in mean % (std. dev. %) across 5 independent runs. Our goal is to reduce collisions in model predictions without compromising distance-based metrics.
+
++----------------+------------+-------------------+ 
+| Method         |   ADE/FDE  | Collisions        | 
++----------------+------------+-------------------+ 
+| LSTM           |  0.60/1.30 | 13.6 (0.2)        | 
++----------------+------------+-------------------+ 
+| S-LSTM         |  0.53/1.14 |  6.7 (0.2)        |  
++----------------+------------+-------------------+ 
+| S-Attn         |  0.56/1.21 |  9.0 (0.3)        |  
++----------------+------------+-------------------+ 
+| S-GAN          |  0.64/1.40 |  6.9 (0.5)        |   
++----------------+------------+-------------------+ 
+| D-LSTM (ours)  |  0.56/1.22 |  **5.4** **(0.3)**| 
++----------------+------------+-------------------+ 
+
+
+Interpreting Forecasting Models
+===============================
+
++-------------------------------------------------------------------------+
+|  .. figure:: docs/train/LRP.gif                                         |
+|                                                                         |
+|     Visualizations of the decision-making of social interaction modules |
+|     using layer-wise relevance propagation (LRP). The darker the yellow |
+|     circles, the more is the weight provided by the primary pedestrian  |
+|     (blue) to the corresponding neighbour (yellow).                     |
++-------------------------------------------------------------------------+
+
+Code implementation for explaining trajectory forecasting models using LRP can be found `here <https://github.com/vita-epfl/trajnetplusplusbaselines/tree/LRP>`_
+
+Benchmarking Models
+===================
+
+We host the `Trajnet++ Challenge <https://www.aicrowd.com/challenges/trajnet-a-trajectory-forecasting-challenge>`_ on AICrowd allowing researchers to objectively evaluate and benchmark trajectory forecasting models on interaction-centric data. We rely on the spirit of crowdsourcing, and encourage researchers to submit their sequences to our benchmark, so the quality of trajectory forecasting models can keep increasing in tackling more challenging scenarios.
 
 Citation
 ========
