@@ -88,7 +88,7 @@ def main():
             print("Saving LRP GIFs")
             ## Change Scene IDs to be saved as animations.
             pred_list = Parallel(n_jobs=1)(delayed(process_scene)(predictor, model_name, paths, scene_goal, scene_id, args)
-                                            for (_, scene_id, paths), scene_goal in zip(scenes[2:3], scene_goals[2:3]))
+                                            for (_, scene_id, paths), scene_goal in zip(scenes[41:42], scene_goals[41:42]))
 
 if __name__ == '__main__':
     main()

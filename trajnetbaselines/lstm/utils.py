@@ -136,6 +136,8 @@ def visualize_scene(scene, goal=None, weights=None, pool_weight=None, show=True)
     # plt.gca().set_xticklabels(fontsize = 10, va='bottom', ha='left')
     plt.yticks(numpy.arange(ymin - 1, ymax + 2), fontsize=10)
     # plt.legend(loc=4)
+    plt.tight_layout(pad=0.05)
+
     if show:
         plt.show()
         plt.close()
@@ -178,7 +180,7 @@ def viz(groundtruth, prediction, visualize, output_file=None):
         pass
 
 def animate_lrp(output_scenes, vel_weights, neigh_weights, TIME_STEPS, scene_id=0, pool_type='directional'):
-    fig = plt.figure()
+    fig = plt.figure() ## Scene 41: figsize=(7.5, 4)
     camera = Camera(fig)
     for t in range(8, TIME_STEPS):
         visualize_scene(output_scenes[:t+2], weights=vel_weights[t-7], pool_weight=neigh_weights[t-7], show=False)
