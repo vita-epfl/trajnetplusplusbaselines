@@ -363,11 +363,11 @@ def prepare_data(path, subset='/train/', sample=1.0, goals=True):
         return all_scenes, all_goals
     return all_scenes, None
 
-def main(epochs=50):
+def main(epochs=25):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
-    parser.add_argument('--step_size', default=15, type=int,
+    parser.add_argument('--step_size', default=10, type=int,
                         help='step_size of lr scheduler')
     parser.add_argument('--save_every', default=1, type=int,
                         help='frequency of saving model (in terms of epochs)')
@@ -375,34 +375,39 @@ def main(epochs=50):
                         help='observation length')
     parser.add_argument('--pred_length', default=12, type=int,
                         help='prediction length')
-    parser.add_argument('--batch_size', default=1, type=int)
+    parser.add_argument('--start_length', default=0, type=int,
+                        help='starting time step of encoding observation')
+    parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
-    parser.add_argument('--type', default='vanilla',
-                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
-                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social'),
-                        help='type of interaction encoder')
-    parser.add_argument('--norm_pool', action='store_true',
-                        help='normalize the scene along direction of movement')
-    parser.add_argument('--front', action='store_true',
-                        help='Front pooling (only consider pedestrian in front along direction of movement)')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
-    parser.add_argument('--augment', action='store_true',
-                        help='augment scenes (rotation augmentation)')
-    parser.add_argument('--normalize_scene', action='store_true',
-                        help='rotate scene so primary pedestrian moves northwards at end of oservation')
     parser.add_argument('--path', default='trajdata',
                         help='glob expression for data files')
-    parser.add_argument('--goal_path', default=None,
-                        help='glob expression for goal files')
-    parser.add_argument('--loss', default='L2', choices=('L2', 'pred'),
-                        help='loss objective to train the model')
     parser.add_argument('--goals', action='store_true',
-                        help='flag to use goals')
+                        help='flag to consider goals of pedestrians')
+    parser.add_argument('--loss', default='L2', choices=('L2', 'pred'),
+                        help='loss objective, L2 loss (L2) and Gaussian loss (pred)')
+    parser.add_argument('--type', default='vanilla',
+                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
+                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social'),
+                        help='type of interaction encoder')
+    parser.add_argument('--sample', default=1.0, type=float,
+                        help='sample ratio when loading train/val scenes')
 
+    ## Augmentations
+    parser.add_argument('--augment', action='store_true',
+                        help='perform rotation augmentation')
+    parser.add_argument('--normalize_scene', action='store_true',
+                        help='rotate scene so primary pedestrian moves northwards at end of observation')
+    parser.add_argument('--augment_noise', action='store_true',
+                        help='flag to add noise to observations for robustness')
+    parser.add_argument('--obs_dropout', action='store_true',
+                        help='perform observation length dropout')
+
+    ## Loading pre-trained models
     pretrain = parser.add_argument_group('pretraining')
     pretrain.add_argument('--load-state', default=None,
                           help='load a pickled model state dictionary before training')
@@ -411,61 +416,56 @@ def main(epochs=50):
     pretrain.add_argument('--nonstrict-load-state', default=None,
                           help='load a pickled state dictionary before training')
 
-    ##Pretrain Pooling AE
-    pretrain.add_argument('--load_pretrained_pool_path', default=None,
-                          help='load a pickled model state dictionary of pool AE before training')
-    pretrain.add_argument('--pretrained_pool_arch', default='onelayer',
-                          help='architecture of pool representation')
-    pretrain.add_argument('--downscale', type=int, default=4,
-                          help='downscale factor of pooling grid')
-    pretrain.add_argument('--finetune', type=int, default=0,
-                          help='finetune factor of pretrained model')
-
+    ## Interaction Pooling Hyperparameters
     hyperparameters = parser.add_argument_group('hyperparameters')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,
                                  help='LSTM hidden dimension')
     hyperparameters.add_argument('--coordinate-embedding-dim', type=int, default=64,
                                  help='coordinate embedding dimension')
-    hyperparameters.add_argument('--cell_side', type=float, default=0.6,
-                                 help='cell size of real world')
-    hyperparameters.add_argument('--n', type=int, default=16,
-                                 help='number of cells per side')
-    hyperparameters.add_argument('--layer_dims', type=int, nargs='*', default=[512],
-                                 help='interaction module layer dims (for gridbased pooling)')
     hyperparameters.add_argument('--pool_dim', type=int, default=256,
-                                 help='output dimension of pooling/interaction vector')
-    hyperparameters.add_argument('--embedding_arch', default='two_layer',
-                                 help='interaction encoding arch for gridbased pooling')
+                                 help='output dimension of interaction vector')
     hyperparameters.add_argument('--goal_dim', type=int, default=64,
-                                 help='goal dimension')
-    hyperparameters.add_argument('--spatial_dim', type=int, default=32,
-                                 help='attentionmlp spatial dimension')
-    hyperparameters.add_argument('--vel_dim', type=int, default=32,
-                                 help='attentionmlp vel dimension')
+                                 help='goal embedding dimension')
+
+    ## Grid-based pooling
+    hyperparameters.add_argument('--cell_side', type=float, default=0.6,
+                                 help='cell size of real world (in m) for grid-based pooling')
+    hyperparameters.add_argument('--n', type=int, default=12,
+                                 help='number of cells per side for grid-based pooling')
+    hyperparameters.add_argument('--layer_dims', type=int, nargs='*', default=[512],
+                                 help='interaction module layer dims for gridbased pooling')
+    hyperparameters.add_argument('--embedding_arch', default='one_layer',
+                                 help='interaction encoding arch for gridbased pooling')
     hyperparameters.add_argument('--pool_constant', default=0, type=int,
-                                 help='background value of gridbased pooling')
-    hyperparameters.add_argument('--sample', default=1.0, type=float,
-                                 help='sample ratio of train/val scenes')
-    hyperparameters.add_argument('--norm', default=0, type=int,
-                                 help='normalization scheme for grid-based')
-    hyperparameters.add_argument('--no_vel', action='store_true',
-                                 help='flag to not consider velocity in nn')
-    hyperparameters.add_argument('--neigh', default=4, type=int,
-                                 help='number of neighbours to consider in DirectConcat')
-    hyperparameters.add_argument('--mp_iters', default=5, type=int,
-                                 help='message passing iters in NMMP')
-    hyperparameters.add_argument('--obs_dropout', action='store_true',
-                                 help='obs length dropout (regularization)')
-    hyperparameters.add_argument('--start_length', default=0, type=int,
-                                 help='start length during obs dropout')
+                                 help='background value (when cell empty) of gridbased pooling')
+    hyperparameters.add_argument('--norm_pool', action='store_true',
+                                 help='normalize the scene along direction of movement during grid-based pooling')
+    hyperparameters.add_argument('--front', action='store_true',
+                                 help='flag to only consider pedestrian in front during grid-based pooling')
     hyperparameters.add_argument('--latent_dim', type=int, default=16,
-                                 help='Social latent dimension')
-    hyperparameters.add_argument('--augment_noise', action='store_true',
-                                 help='flag to augment_noise for robustness')
+                                 help='latent dimension of encoding hidden dimension during social pooling')
+    hyperparameters.add_argument('--norm', default=0, type=int,
+                                 help='normalization scheme for input batch during grid-based pooling')
+
+    ## Non-Grid-based pooling
+    hyperparameters.add_argument('--no_vel', action='store_true',
+                                 help='flag to not consider relative velocity of neighbours')
+    hyperparameters.add_argument('--spatial_dim', type=int, default=32,
+                                 help='embedding dimension for relative position')
+    hyperparameters.add_argument('--vel_dim', type=int, default=32,
+                                 help='embedding dimension for relative velocity')
+    hyperparameters.add_argument('--neigh', default=4, type=int,
+                                 help='number of nearest neighbours to consider')
+    hyperparameters.add_argument('--mp_iters', default=5, type=int,
+                                 help='message passing iterations in NMMP')
+
+    ## Collision Loss
     hyperparameters.add_argument('--col_weight', default=0., type=float,
                                  help='collision loss weight')
     hyperparameters.add_argument('--col_gamma', default=2.0, type=float,
-                                 help='collision gamma weight')
+                                 help='hyperparameter in collision loss')
+
+
     args = parser.parse_args()
 
     ## Fixed set of scenes if sampling
