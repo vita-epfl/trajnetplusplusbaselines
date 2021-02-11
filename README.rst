@@ -27,25 +27,59 @@ LSTM
 The training script and its help menu:
 ``python -m trajnetbaselines.lstm.trainer --help``
 
+**Run Example**
+
+.. code-block::
+
+   ## Our Proposed D-LSTM
+   python -m trajnetbaselines.lstm.trainer --type directional --augment
+
+   ## Social LSTM 
+   python -m trajnetbaselines.lstm.trainer --type social --augment --n 16 --embedding_arch two_layer --layer_dims 1024
+
+
+
 GAN
 ---
 
 The training script and its help menu:
 ``python -m trajnetbaselines.sgan.trainer --help``
 
+**Run Example**
+
+.. code-block::
+
+   ## Social GAN (L2 Loss + Adversarial Loss)
+   python -m trajnetbaselines.sgan.trainer --type directional --augment
+   
+   ## Social GAN (Variety Loss only)
+   python -m trajnetbaselines.sgan.trainer --type directional --augment --d_steps 0 --k 3
+
+
 Evaluation
 ==========
 
 The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator --help``
 
+**Run Example**
+
+.. code-block::
+
+   ## TrajNet++ evaluator (saves model predictions. Useful for submission to TrajNet++ benchmark)
+   python -m evaluator.trajnet_evaluator --output OUTPUT_BLOCK/trajdata/lstm_directional_None.pkl --path <path_to_test_file>
+   
+   ## Fast Evaluator (does not save model predictions)
+   python -m evaluator.fast_evaluator --output OUTPUT_BLOCK/trajdata/lstm_directional_None.pkl --path <path_to_test_file>
+
 More details regarding TrajNet++ evaluator are provided `here <https://github.com/vita-epfl/trajnetplusplusbaselines/blob/master/evaluator/README.rst>`_
 
 Evaluation on datasplits is based on the following `categorization <https://github.com/vita-epfl/trajnetplusplusbaselines/blob/master/docs/train/Categorize.png>`_
 
+
 Results
 -------
 
-Unimodal Comparison of interaction encoder designs when forecasting 12 future time-steps, given the previous 9 time-steps, on interacting trajectories of TrajNet++ real world dataset. Errors reported are ADE / FDE in meters, collisions in mean % (std. dev. %) across 5 independent runs. Our goal is to reduce collisions in model predictions without compromising distance-based metrics.
+Unimodal Comparison of interaction encoder designs on interacting trajectories of TrajNet++ real world dataset. Errors reported are ADE / FDE in meters, collisions in mean % (std. dev. %) across 5 independent runs. Our goal is to reduce collisions in model predictions without compromising distance-based metrics.
 
 +----------------+------------+-------------------+ 
 | Method         |   ADE/FDE  | Collisions        | 
