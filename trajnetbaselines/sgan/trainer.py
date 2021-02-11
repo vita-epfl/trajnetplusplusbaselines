@@ -29,70 +29,70 @@ from ..lstm.utils import center_scene, random_rotation
 
 
 class Trainer(object):
-    def __init__(self, model=None, criterion='L2', optimizer=None, lr_scheduler=None,
-                 device=None, batch_size=32, obs_length=9, pred_length=12, augment=False,
-                 normalize_scene=False, save_every=1, start_length=0, obs_dropout=False):
+    def __init__(self, model=None, g_optimizer=None, g_lr_scheduler=None, d_optimizer=None, d_lr_scheduler=None,
+                 criterion=None, device=None, batch_size=8, obs_length=9, pred_length=12, augment=True,
+                 normalize_scene=False, save_every=1, start_length=0):
         self.model = model if model is not None else SGAN()
-        if criterion == 'L2':
-            self.criterion = L2Loss(keep_batch_dim=True)
-            self.loss_multiplier = 100
-        else:
-            self.criterion = PredictionLoss(keep_batch_dim=True)
-            self.loss_multiplier = 1
-        self.optimizer = optimizer if optimizer is not None else torch.optim.SGD(
-            self.model.parameters(), lr=3e-4, momentum=0.9) # , weight_decay=1e-4
-        self.lr_scheduler = (lr_scheduler
-                             if lr_scheduler is not None
-                             else torch.optim.lr_scheduler.StepLR(self.optimizer, 15))
+        self.g_optimizer = g_optimizer if g_optimizer is not None else torch.optim.Adam(
+                           model.generator.parameters(), lr=1e-3, weight_decay=1e-4)
+        self.d_optimizer = d_optimizer if d_optimizer is not None else torch.optim.Adam(
+                           model.discriminator.parameters(), lr=1e-3, weight_decay=1e-4)
+        self.g_lr_scheduler = g_lr_scheduler if g_lr_scheduler is not None else \
+                              torch.optim.lr_scheduler.StepLR(g_optimizer, 10)
+        self.d_lr_scheduler = d_lr_scheduler if d_lr_scheduler is not None else \
+                              torch.optim.lr_scheduler.StepLR(d_optimizer, 10)
 
+        self.criterion = criterion if criterion is not None else PredictionLoss(keep_batch_dim=True)
         self.device = device if device is not None else torch.device('cpu')
         self.model = self.model.to(self.device)
         self.criterion = self.criterion.to(self.device)
         self.log = logging.getLogger(self.__class__.__name__)
         self.save_every = save_every
 
-
         self.batch_size = batch_size
         self.obs_length = obs_length
         self.pred_length = pred_length
         self.seq_length = self.obs_length+self.pred_length
+        self.start_length = start_length
 
         self.augment = augment
         self.normalize_scene = normalize_scene
 
-        self.start_length = start_length
-        self.obs_dropout = obs_dropout
 
     def loop(self, train_scenes, val_scenes, train_goals, val_goals, out, epochs=35, start_epoch=0):
-        for epoch in range(start_epoch, start_epoch + epochs):
+        for epoch in range(start_epoch, epochs):
             if epoch % self.save_every == 0:
                 state = {'epoch': epoch, 'state_dict': self.model.state_dict(),
-                         'optimizer': self.optimizer.state_dict(),
-                         'scheduler': self.lr_scheduler.state_dict()}
+                         'g_optimizer': self.g_optimizer.state_dict(), 'd_optimizer': self.d_optimizer.state_dict(),
+                         'g_lr_scheduler': self.g_lr_scheduler.state_dict(),
+                         'd_lr_scheduler': self.d_lr_scheduler.state_dict()}
                 SGANPredictor(self.model).save(state, out + '.epoch{}'.format(epoch))
             self.train(train_scenes, train_goals, epoch)
             self.val(val_scenes, val_goals, epoch)
 
         state = {'epoch': epoch + 1, 'state_dict': self.model.state_dict(),
-                 'optimizer': self.optimizer.state_dict(),
-                 'scheduler': self.lr_scheduler.state_dict()}
+                 'g_optimizer': self.g_optimizer.state_dict(), 'd_optimizer': self.d_optimizer.state_dict(),
+                 'g_lr_scheduler': self.g_lr_scheduler.state_dict(),
+                 'd_lr_scheduler': self.d_lr_scheduler.state_dict()}
         SGANPredictor(self.model).save(state, out + '.epoch{}'.format(epoch + 1))
         SGANPredictor(self.model).save(state, out)
 
     def get_lr(self):
-        for param_group in self.optimizer.param_groups:
+        for param_group in self.g_optimizer.param_groups:
             return param_group['lr']
 
     def train(self, scenes, goals, epoch):
         start_time = time.time()
 
         print('epoch', epoch)
-        self.lr_scheduler.step()
+        self.g_lr_scheduler.step()
+        self.d_lr_scheduler.step()
 
         random.shuffle(scenes)
         epoch_loss = 0.0
         self.model.train()
-        self.optimizer.zero_grad()
+        self.g_optimizer.zero_grad()
+        self.d_optimizer.zero_grad()
 
         ## Initialize batch of scenes
         batch_scene = []
@@ -122,7 +122,6 @@ class Trainer(object):
                 scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
             if self.augment:
                 scene, scene_goal = random_rotation(scene, goals=scene_goal)
-                # scene = augmentation.add_noise(scene, thresh=0.01)
             
             ## Augment scene to batch of scenes
             batch_scene.append(scene)
@@ -273,13 +272,19 @@ class Trainer(object):
         prediction_truth = batch_scene[self.obs_length:].clone()
         targets = batch_scene[self.obs_length:self.seq_length] - batch_scene[self.obs_length-1:self.seq_length-1]
 
-        rel_output_list, outputs, scores_real, scores_fake = self.model(observed, batch_scene_goal, batch_split, prediction_truth, step_type=step_type)
+        rel_output_list, outputs, scores_real, scores_fake = self.model(observed, batch_scene_goal, batch_split, prediction_truth,
+                                                                        step_type=step_type, pred_length=self.pred_length)
 
         loss = self.loss_criterion(rel_output_list, targets, batch_split, scores_fake, scores_real, step_type)
         
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+        if step_type == 'g':
+            self.g_optimizer.zero_grad()
+            loss.backward()
+            self.g_optimizer.step()
+        else:
+            self.d_optimizer.zero_grad()
+            loss.backward()
+            self.d_optimizer.step()
 
         return loss.item()
 
@@ -308,7 +313,8 @@ class Trainer(object):
         targets = batch_scene[self.obs_length:self.seq_length] - batch_scene[self.obs_length-1:self.seq_length-1]
         
         with torch.no_grad():
-            rel_output_list, _, _, _ = self.model(observed, batch_scene_goal, batch_split, n_predict=self.pred_length)
+            rel_output_list, _, _, _ = self.model(observed, batch_scene_goal, batch_split,
+                                                  n_predict=self.pred_length, pred_length=self.pred_length)
 
             ## top-k loss
             loss = self.variety_loss(rel_output_list, targets, batch_split)
@@ -350,7 +356,7 @@ class Trainer(object):
             loss = self.variety_loss(rel_output_list, targets, batch_split)
 
             ## If discriminator used.
-            if self.model.use_d:
+            if self.model.d_steps:
                 loss += gan_g_loss(scores_fake)
 
         return loss
@@ -378,7 +384,7 @@ class Trainer(object):
 
         iterative_loss = [] 
         for sample in inputs:
-            sample_loss = self.criterion(sample[-self.pred_length:], target, batch_split) * self.loss_multiplier
+            sample_loss = self.criterion(sample[-self.pred_length:], target, batch_split)
             iterative_loss.append(sample_loss)
 
         loss = torch.stack(iterative_loss)
@@ -430,46 +436,43 @@ def prepare_data(path, subset='/train/', sample=1.0, goals=True):
         return all_scenes, all_goals
     return all_scenes, None
 
-def main(epochs=50):
+def main(epochs=25):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
-    parser.add_argument('--step_size', default=15, type=int,
-                        help='step_size of lr scheduler')
-    parser.add_argument('--save_every', default=1, type=int,
+    parser.add_argument('--save_every', default=5, type=int,
                         help='frequency of saving model (in terms of epochs)')
     parser.add_argument('--obs_length', default=9, type=int,
                         help='observation length')
     parser.add_argument('--pred_length', default=12, type=int,
                         help='prediction length')
-    parser.add_argument('--batch_size', default=1, type=int)
-    parser.add_argument('--lr', default=1e-3, type=float,
-                        help='initial learning rate')
-    parser.add_argument('--type', default='vanilla',
-                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
-                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social'),
-                        help='type of interaction encoder')
-    parser.add_argument('--norm_pool', action='store_true',
-                        help='normalize the scene along direction of movement')
-    parser.add_argument('--front', action='store_true',
-                        help='Front pooling (only consider pedestrian in front along direction of movement)')
+    parser.add_argument('--start_length', default=0, type=int,
+                        help='starting time step of encoding observation')
+    parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
                         help='disable CUDA')
-    parser.add_argument('--augment', action='store_true',
-                        help='augment scenes (rotation augmentation)')
-    parser.add_argument('--normalize_scene', action='store_true',
-                        help='rotate scene so primary pedestrian moves northwards at end of oservation')
     parser.add_argument('--path', default='trajdata',
                         help='glob expression for data files')
-    parser.add_argument('--goal_path', default=None,
-                        help='glob expression for goal files')
-    parser.add_argument('--loss', default='L2', choices=('L2', 'pred'),
-                        help='loss objective to train the model')
     parser.add_argument('--goals', action='store_true',
-                        help='flag to use goals')
+                        help='flag to consider goals of pedestrians')
+    parser.add_argument('--loss', default='pred', choices=('L2', 'pred'),
+                        help='loss objective, L2 loss (L2) and Gaussian loss (pred)')
+    parser.add_argument('--type', default='vanilla',
+                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
+                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social'),
+                        help='type of interaction encoder')
+    parser.add_argument('--sample', default=1.0, type=float,
+                        help='sample ratio when loading train/val scenes')
 
+    ## Augmentations
+    parser.add_argument('--augment', action='store_true',
+                        help='perform rotation augmentation')
+    parser.add_argument('--normalize_scene', action='store_true',
+                        help='rotate scene so primary pedestrian moves northwards at end of observation')
+
+    ## Loading pre-trained models
     pretrain = parser.add_argument_group('pretraining')
     pretrain.add_argument('--load-state', default=None,
                           help='load a pickled model state dictionary before training')
@@ -478,67 +481,72 @@ def main(epochs=50):
     pretrain.add_argument('--nonstrict-load-state', default=None,
                           help='load a pickled state dictionary before training')
 
-    ##Pretrain Pooling AE
-    pretrain.add_argument('--load_pretrained_pool_path', default=None,
-                          help='load a pickled model state dictionary of pool AE before training')
-    pretrain.add_argument('--pretrained_pool_arch', default='onelayer',
-                          help='architecture of pool representation')
-    pretrain.add_argument('--downscale', type=int, default=4,
-                          help='downscale factor of pooling grid')
-    pretrain.add_argument('--finetune', type=int, default=0,
-                          help='finetune factor of pretrained model')
-
+    ## Sequence Encoder Hyperparameters
     hyperparameters = parser.add_argument_group('hyperparameters')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,
                                  help='LSTM hidden dimension')
     hyperparameters.add_argument('--coordinate-embedding-dim', type=int, default=64,
                                  help='coordinate embedding dimension')
-    hyperparameters.add_argument('--cell_side', type=float, default=0.6,
-                                 help='cell size of real world')
-    hyperparameters.add_argument('--n', type=int, default=16,
-                                 help='number of cells per side')
-    hyperparameters.add_argument('--layer_dims', type=int, nargs='*', default=[512],
-                                 help='interaction module layer dims (for gridbased pooling)')
     hyperparameters.add_argument('--pool_dim', type=int, default=256,
-                                 help='output dimension of pooling/interaction vector')
-    hyperparameters.add_argument('--embedding_arch', default='two_layer',
-                                 help='interaction encoding arch for gridbased pooling')
+                                 help='output dimension of interaction vector')
     hyperparameters.add_argument('--goal_dim', type=int, default=64,
-                                 help='goal dimension')
-    hyperparameters.add_argument('--spatial_dim', type=int, default=32,
-                                 help='attentionmlp spatial dimension')
-    hyperparameters.add_argument('--vel_dim', type=int, default=32,
-                                 help='attentionmlp vel dimension')
-    hyperparameters.add_argument('--pool_constant', default=0, type=int,
-                                 help='background value of gridbased pooling')
-    hyperparameters.add_argument('--sample', default=1.0, type=float,
-                                 help='sample ratio of train/val scenes')
-    hyperparameters.add_argument('--norm', default=0, type=int,
-                                 help='normalization scheme for grid-based')
-    hyperparameters.add_argument('--no_vel', action='store_true',
-                                 help='flag to not consider velocity in nn')
-    hyperparameters.add_argument('--neigh', default=4, type=int,
-                                 help='number of neighbours to consider in DirectConcat')
-    hyperparameters.add_argument('--mp_iters', default=5, type=int,
-                                 help='message passing iters in NMMP')
-    hyperparameters.add_argument('--obs_dropout', action='store_true',
-                                 help='obs length dropout (regularization)')
-    hyperparameters.add_argument('--start_length', default=0, type=int,
-                                 help='start length during obs dropout')
-    hyperparameters.add_argument('--latent_dim', type=int, default=16,
-                                 help='Social latent dimension')
+                                 help='goal embedding dimension')
 
-    ## SGAN-Specific
-    hyperparameters.add_argument('--k', type=int, default=3,
-                                 help='number of samples for variety loss')
+    ## Grid-based pooling
+    hyperparameters.add_argument('--cell_side', type=float, default=0.6,
+                                 help='cell size of real world (in m) for grid-based pooling')
+    hyperparameters.add_argument('--n', type=int, default=12,
+                                 help='number of cells per side for grid-based pooling')
+    hyperparameters.add_argument('--layer_dims', type=int, nargs='*', default=[512],
+                                 help='interaction module layer dims for gridbased pooling')
+    hyperparameters.add_argument('--embedding_arch', default='one_layer',
+                                 help='interaction encoding arch for gridbased pooling')
+    hyperparameters.add_argument('--pool_constant', default=0, type=int,
+                                 help='background value (when cell empty) of gridbased pooling')
+    hyperparameters.add_argument('--norm_pool', action='store_true',
+                                 help='normalize the scene along direction of movement during grid-based pooling')
+    hyperparameters.add_argument('--front', action='store_true',
+                                 help='flag to only consider pedestrian in front during grid-based pooling')
+    hyperparameters.add_argument('--latent_dim', type=int, default=16,
+                                 help='latent dimension of encoding hidden dimension during social pooling')
+    hyperparameters.add_argument('--norm', default=0, type=int,
+                                 help='normalization scheme for input batch during grid-based pooling')
+
+    ## Non-Grid-based pooling
+    hyperparameters.add_argument('--no_vel', action='store_true',
+                                 help='flag to not consider relative velocity of neighbours')
+    hyperparameters.add_argument('--spatial_dim', type=int, default=32,
+                                 help='embedding dimension for relative position')
+    hyperparameters.add_argument('--vel_dim', type=int, default=32,
+                                 help='embedding dimension for relative velocity')
+    hyperparameters.add_argument('--neigh', default=4, type=int,
+                                 help='number of nearest neighbours to consider')
+    hyperparameters.add_argument('--mp_iters', default=5, type=int,
+                                 help='message passing iterations in NMMP')
+
+    ## SGAN-Specific Parameters
+    hyperparameters.add_argument('--g_steps', default=1, type=int,
+                                 help='number of steps of generator training')
+    hyperparameters.add_argument('--d_steps', default=1, type=int,
+                                 help='number of steps of discriminator training')
+    hyperparameters.add_argument('--g_lr', default=1e-3, type=float,
+                                 help='initial generator learning rate')
+    hyperparameters.add_argument('--d_lr', default=1e-3, type=float,
+                                 help='initial discriminator learning rate')
+    hyperparameters.add_argument('--g_step_size', default=10, type=int,
+                                 help='step_size of generator scheduler')
+    hyperparameters.add_argument('--d_step_size', default=10, type=int,
+                                 help='step_size of discriminator scheduler')
+    hyperparameters.add_argument('--no_noise', action='store_true',
+                                 help='flag to not add noise (i.e. deterministic model)')
     hyperparameters.add_argument('--noise_dim', type=int, default=16,
-                                 help='dimension of z')
-    hyperparameters.add_argument('--add_noise', action='store_true',
-                                 help='To Add Noise')
+                                 help='dimension of noise z')
     hyperparameters.add_argument('--noise_type', default='gaussian',
+                                 choices=('gaussian', 'uniform'),
                                  help='type of noise to be added')
-    hyperparameters.add_argument('--discriminator', action='store_true',
-                                 help='discriminator to be added')
+    hyperparameters.add_argument('--k', type=int, default=1,
+                                 help='number of samples for variety loss')
+
     args = parser.parse_args()
 
     ## Fixed set of scenes if sampling
@@ -621,26 +629,29 @@ def main(epochs=50):
     # generator
     lstm_generator = LSTMGenerator(embedding_dim=args.coordinate_embedding_dim, hidden_dim=args.hidden_dim,
                                    pool=pool, goal_flag=args.goals, goal_dim=args.goal_dim, noise_dim=args.noise_dim,
-                                   add_noise=args.add_noise, noise_type=args.noise_type)
+                                   no_noise=args.no_noise, noise_type=args.noise_type)
 
     # discriminator
-    print("discriminator: ", args.discriminator)
-    lstm_discriminator = None
-    if args.discriminator:
-        lstm_discriminator = LSTMDiscriminator(embedding_dim=args.coordinate_embedding_dim,
-                                               hidden_dim=args.hidden_dim, pool=pool,
-                                               goal_flag=args.goals, goal_dim=args.goal_dim)
+    lstm_discriminator = LSTMDiscriminator(embedding_dim=args.coordinate_embedding_dim,
+                                           hidden_dim=args.hidden_dim, pool=pool,
+                                           goal_flag=args.goals, goal_dim=args.goal_dim)
 
     # GAN model
-    model = SGAN(generator=lstm_generator, discriminator=lstm_discriminator,
-                 add_noise=args.add_noise, k=args.k)
+    model = SGAN(generator=lstm_generator, discriminator=lstm_discriminator, g_steps=args.g_steps,
+                 d_steps=args.d_steps, k=args.k)
 
-    # optimizer and schedular
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    lr_scheduler = None
-    if args.step_size is not None:
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.step_size)
+    # Optimizer and Scheduler
+    g_optimizer = torch.optim.Adam(model.generator.parameters(), lr=args.g_lr, weight_decay=1e-4)
+    d_optimizer = torch.optim.Adam(model.discriminator.parameters(), lr=args.d_lr, weight_decay=1e-4)
+    g_lr_scheduler = torch.optim.lr_scheduler.StepLR(g_optimizer, args.g_step_size)
+    d_lr_scheduler = torch.optim.lr_scheduler.StepLR(d_optimizer, args.d_step_size)
     start_epoch = 0
+
+    # Loss Criterion
+    if args.loss == 'L2':
+        criterion = L2Loss(keep_batch_dim=True)
+    else:
+        criterion = PredictionLoss(keep_batch_dim=True)
 
     # train
     if args.load_state:
@@ -656,17 +667,19 @@ def main(epochs=50):
         # load optimizers from last training
         # useful to continue model training
             print("Loading Optimizer Dict")
-            optimizer = torch.optim.Adam(model.parameters(), lr=args.lr) # , weight_decay=1e-4
-            optimizer.load_state_dict(checkpoint['optimizer'])
-            lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
-            lr_scheduler.load_state_dict(checkpoint['scheduler'])
+            g_optimizer.load_state_dict(checkpoint['g_optimizer'])
+            d_optimizer.load_state_dict(checkpoint['d_optimizer'])
+            g_lr_scheduler.load_state_dict(checkpoint['g_lr_scheduler'])
+            d_lr_scheduler.load_state_dict(checkpoint['d_lr_scheduler'])
             start_epoch = checkpoint['epoch']
 
+
     #trainer
-    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device,
-                      criterion=args.loss, batch_size=args.batch_size, obs_length=args.obs_length,
-                      pred_length=args.pred_length, augment=args.augment, normalize_scene=args.normalize_scene,
-                      save_every=args.save_every, start_length=args.start_length, obs_dropout=args.obs_dropout)
+    trainer = Trainer(model, g_optimizer=g_optimizer, g_lr_scheduler=g_lr_scheduler, d_optimizer=d_optimizer,
+                      d_lr_scheduler=d_lr_scheduler, device=args.device, criterion=criterion,
+                      batch_size=args.batch_size, obs_length=args.obs_length, pred_length=args.pred_length,
+                      augment=args.augment, normalize_scene=args.normalize_scene, save_every=args.save_every,
+                      start_length=args.start_length)
     trainer.loop(train_scenes, val_scenes, train_goals, val_goals, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 

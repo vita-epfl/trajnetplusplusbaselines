@@ -12,6 +12,7 @@ class PredictionLoss(torch.nn.Module):
         super(PredictionLoss, self).__init__()
         self.keep_batch_dim = keep_batch_dim
         self.background_rate = background_rate
+        self.loss_multiplier = 1
 
     @staticmethod
     def gaussian_2d(mu1mu2s1s2rho, x1x2):
@@ -92,9 +93,9 @@ class PredictionLoss(torch.nn.Module):
         ## Used in variety loss (SGAN)
         if self.keep_batch_dim:
             values = values.reshape(pred_length, batch_size)
-            return values.mean(dim=0)
+            return values.mean(dim=0) * self.loss_multiplier
         
-        return torch.mean(values)
+        return torch.mean(values) * self.loss_multiplier
 
 class L2Loss(torch.nn.Module):
     """L2 Loss (deterministic version of PredictionLoss)
@@ -105,6 +106,7 @@ class L2Loss(torch.nn.Module):
         super(L2Loss, self).__init__()
         self.loss = torch.nn.MSELoss(reduction='none')
         self.keep_batch_dim = keep_batch_dim
+        self.loss_multiplier = 100
 
     def col_loss(self, primary, neighbours, batch_split, gamma=2.0):
         """
@@ -140,9 +142,9 @@ class L2Loss(torch.nn.Module):
 
         ## Used in variety loss (SGAN)
         if self.keep_batch_dim:
-            return loss.mean(dim=0).mean(dim=1)
+            return loss.mean(dim=0).mean(dim=1) * self.loss_multiplier
         
-        return torch.mean(loss)
+        return torch.mean(loss) * self.loss_multiplier
 
 def bce_loss(input_, target):
     """

@@ -26,22 +26,16 @@ from .. import __version__ as VERSION
 from .utils import center_scene, random_rotation
 
 class Trainer(object):
-    def __init__(self, model=None, criterion='L2', optimizer=None, lr_scheduler=None,
-                 device=None, batch_size=32, obs_length=9, pred_length=12, augment=False,
+    def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
+                 device=None, batch_size=8, obs_length=9, pred_length=12, augment=True,
                  normalize_scene=False, save_every=1, start_length=0, obs_dropout=False,
                  augment_noise=False, col_weight=0.0, col_gamma=2.0):
         self.model = model if model is not None else LSTM()
-        if criterion == 'L2':
-            self.criterion = L2Loss()
-            self.loss_multiplier = 100
-        else:
-            self.criterion = PredictionLoss()
-            self.loss_multiplier = 1
-        self.optimizer = optimizer if optimizer is not None else torch.optim.SGD(
-            self.model.parameters(), lr=3e-4, momentum=0.9)
-        self.lr_scheduler = (lr_scheduler
-                             if lr_scheduler is not None
-                             else torch.optim.lr_scheduler.StepLR(self.optimizer, 15))
+        self.criterion = criterion if criterion is not None else PredictionLoss()
+        self.optimizer = optimizer if optimizer is not None else \
+                         torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
+        self.lr_scheduler = lr_scheduler if lr_scheduler is not None else \
+                            torch.optim.lr_scheduler.StepLR(self.optimizer, 15)
 
         self.device = device if device is not None else torch.device('cpu')
         self.model = self.model.to(self.device)
@@ -65,7 +59,7 @@ class Trainer(object):
         self.col_gamma = col_gamma
 
     def loop(self, train_scenes, val_scenes, train_goals, val_goals, out, epochs=35, start_epoch=0):
-        for epoch in range(start_epoch, start_epoch + epochs):
+        for epoch in range(start_epoch, epochs):
             if epoch % self.save_every == 0:
                 state = {'epoch': epoch, 'state_dict': self.model.state_dict(),
                          'optimizer': self.optimizer.state_dict(),
@@ -263,10 +257,10 @@ class Trainer(object):
         rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
         ## Loss wrt primary tracks of each scene only
-        l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
+        l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
         loss = l2_loss
         # Auxiliary collision loss
-        # l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
+        # l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
         # col_loss = self.col_weight * self.criterion.col_loss(outputs[-self.pred_length:], batch_scene[-self.pred_length:], batch_split, self.col_gamma)
         # loss = l2_loss + col_loss
 
@@ -311,11 +305,11 @@ class Trainer(object):
         with torch.no_grad():
             ## groundtruth of neighbours provided (Better validation curve to monitor model)
             rel_outputs, _ = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
-            loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
+            loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
 
             ## groundtruth of neighbours not provided
             rel_outputs_test, _ = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
-            loss_test = self.criterion(rel_outputs_test[-self.pred_length:], targets, batch_split) * self.batch_size * self.loss_multiplier
+            loss_test = self.criterion(rel_outputs_test[-self.pred_length:], targets, batch_split) * self.batch_size
 
         return loss.item(), loss_test.item()
 
@@ -367,9 +361,7 @@ def main(epochs=25):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
-    parser.add_argument('--step_size', default=10, type=int,
-                        help='step_size of lr scheduler')
-    parser.add_argument('--save_every', default=1, type=int,
+    parser.add_argument('--save_every', default=5, type=int,
                         help='frequency of saving model (in terms of epochs)')
     parser.add_argument('--obs_length', default=9, type=int,
                         help='observation length')
@@ -380,6 +372,8 @@ def main(epochs=25):
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
+    parser.add_argument('--step_size', default=10, type=int,
+                        help='step_size of lr scheduler')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
     parser.add_argument('--disable-cuda', action='store_true',
@@ -388,7 +382,7 @@ def main(epochs=25):
                         help='glob expression for data files')
     parser.add_argument('--goals', action='store_true',
                         help='flag to consider goals of pedestrians')
-    parser.add_argument('--loss', default='L2', choices=('L2', 'pred'),
+    parser.add_argument('--loss', default='pred', choices=('L2', 'pred'),
                         help='loss objective, L2 loss (L2) and Gaussian loss (pred)')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
@@ -416,7 +410,7 @@ def main(epochs=25):
     pretrain.add_argument('--nonstrict-load-state', default=None,
                           help='load a pickled state dictionary before training')
 
-    ## Interaction Pooling Hyperparameters
+    ## Sequence Encoder Hyperparameters
     hyperparameters = parser.add_argument_group('hyperparameters')
     hyperparameters.add_argument('--hidden-dim', type=int, default=128,
                                  help='LSTM hidden dimension')
@@ -561,6 +555,9 @@ def main(epochs=25):
         lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.step_size)
     start_epoch = 0
 
+    # Loss Criterion
+    criterion = L2Loss() if args.loss == 'L2' else PredictionLoss()
+
     # train
     if args.load_state:
         # load pretrained model.
@@ -575,15 +572,13 @@ def main(epochs=25):
         # load optimizers from last training
         # useful to continue model training
             print("Loading Optimizer Dict")
-            optimizer = torch.optim.Adam(model.parameters(), lr=args.lr) # , weight_decay=1e-4
             optimizer.load_state_dict(checkpoint['optimizer'])
-            lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
             lr_scheduler.load_state_dict(checkpoint['scheduler'])
             start_epoch = checkpoint['epoch']
 
     #trainer
     trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device,
-                      criterion=args.loss, batch_size=args.batch_size, obs_length=args.obs_length,
+                      criterion=criterion, batch_size=args.batch_size, obs_length=args.obs_length,
                       pred_length=args.pred_length, augment=args.augment, normalize_scene=args.normalize_scene,
                       save_every=args.save_every, start_length=args.start_length, obs_dropout=args.obs_dropout,
                       augment_noise=args.augment_noise, col_weight=args.col_weight, col_gamma=args.col_gamma)

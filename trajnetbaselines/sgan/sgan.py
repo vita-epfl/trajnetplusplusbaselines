@@ -42,7 +42,7 @@ def make_mlp(dim_list, activation='relu', batch_norm=True, dropout=0):
     return nn.Sequential(*layers)
 
 class SGAN(torch.nn.Module):
-    def __init__(self, generator=None, discriminator=None, add_noise=False, k=1, d_steps=1, g_steps=1):
+    def __init__(self, generator=None, discriminator=None, k=1, d_steps=1, g_steps=1):
         """ Initialize the SGAN  model
 
         Attributes
@@ -51,10 +51,8 @@ class SGAN(torch.nn.Module):
             LSTM-Based generator
         discriminator : torch.nn.module
             LSTM-Based discriminator
-        add_noise : Bool
-            if True, noise (z) is concatenated to the encoder hidden-state for multimodal prediction
         k : int
-            number of modes to be predicted
+            number of modes to be predicted for variety loss
         d_steps : int
             number of steps of discriminator
         g_steps : int
@@ -66,20 +64,14 @@ class SGAN(torch.nn.Module):
         self.generator = generator if generator is not None else LSTMGenerator()
         self.g_steps = g_steps
 
-        self.k = 1
-        ## Add Noise for Variety Loss
-        if add_noise:
-            self.k = k
-
         ## Discriminator
-        self.use_d = False
-        self.d_steps = 0
-        if discriminator is not None:
+        self.discriminator = discriminator if discriminator is not None else LSTMDiscriminator()
+        self.d_steps = d_steps
+        if self.d_steps > 0:
             print("Using Discriminator")
-            self.discrimator = discriminator
-            self.use_d = True
-            self.d_steps = d_steps
 
+        ## Variety Loss
+        self.k = k
 
     def forward(self, observed, goals, batch_split, prediction_truth=None, n_predict=None, step_type='g', pred_length=12):
         """forward
@@ -122,7 +114,7 @@ class SGAN(torch.nn.Module):
         pred_list = []
         for _ in range(self.k):
             # print("k:", k)
-            rel_pred_scene, pred_scene = self.generator(observed.clone(), goals, batch_split, prediction_truth, n_predict)
+            rel_pred_scene, pred_scene = self.generator(observed.clone(), goals, batch_split, prediction_truth.clone(), n_predict)
             rel_pred_list.append(rel_pred_scene)
             pred_list.append(pred_scene)
 
@@ -130,16 +122,16 @@ class SGAN(torch.nn.Module):
                 break
 
         ## Get real scores and fake scores from discriminator
-        if self.use_d and (prediction_truth is not None):
-            scores_real = self.discrimator(observed.clone(), prediction_truth, goals, batch_split)
-            scores_fake = self.discrimator(observed.clone(), pred_scene[-pred_length:], goals, batch_split)
+        if self.d_steps and (prediction_truth is not None):
+            scores_real = self.discriminator(observed.clone(), prediction_truth.clone(), goals, batch_split)
+            scores_fake = self.discriminator(observed.clone(), pred_scene[-pred_length:], goals, batch_split)
             return rel_pred_list, pred_list, scores_real, scores_fake
 
         return rel_pred_list, pred_list, None, None
 
 class LSTMGenerator(torch.nn.Module):
     def __init__(self, embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True, goal_dim=None, goal_flag=False,
-                 noise_dim=8, add_noise=False, noise_type='gaussian'):
+                 noise_dim=8, no_noise=False, noise_type='gaussian'):
         """ Initialize the LSTM Generator model
 
         Attributes
@@ -153,8 +145,8 @@ class LSTMGenerator(torch.nn.Module):
         goal_dim : Embedding dimension of the unit vector pointing towards the goal
         goal_flag: Bool
             if True, the embedded goal vector is concatenated to the input embedding of LSTM
-        add_noise : Bool
-            if True, noise (z) is concatenated to the encoder hidden-state for multimodal prediction
+        no_noise : Bool
+            if True, no noise is added to hidden-cell-state (i.e. deterministic model)
         noise_dim : Noise dimension 
         noise_type : Noise distribution 
         """
@@ -190,11 +182,10 @@ class LSTMGenerator(torch.nn.Module):
         ####### GAN Specific #########
         ## Noise
         self.noise_dim = noise_dim
-        self.add_noise = add_noise
+        self.no_noise = no_noise
         self.noise_type = noise_type
 
         ## MLP Interface between Encoder and Decoder
-        ## If required, do in future
         mlp_decoder_context_dims = [
             self.hidden_dim, self.hidden_dim - self.noise_dim
         ]
@@ -207,20 +198,18 @@ class LSTMGenerator(torch.nn.Module):
     def adding_noise(self, hidden_cell_state):
         ## Adds noise to hidden_cell_state for multimodal prediction
 
+        if self.no_noise:
+            return hidden_cell_state
+
         hidden_cell_state = (
             torch.stack([h for h in hidden_cell_state[0]], dim=0),
             torch.stack([c for c in hidden_cell_state[1]], dim=0),
         )
 
+        ## Add noise to hidden state
         ## [num_tracks, hidden_dim] --> [num_tracks, hidden_dim - noise_dim]
         new_hidden_state = self.mlp_decoder_context(hidden_cell_state[0])
-
-        if self.add_noise:
-            noise = get_noise((self.noise_dim, ), self.noise_type, device=hidden_cell_state[0].device)
-        else:
-            ## Add zeroes to inputs (CUDA if necessary)
-            noise = torch.zeros(self.noise_dim, device=hidden_cell_state[0].device)
-
+        noise = get_noise((self.noise_dim, ), self.noise_type, device=hidden_cell_state[0].device)
         z_decoder = noise.repeat(new_hidden_state.size(0), 1)
         new_hidden_state = torch.cat([new_hidden_state, z_decoder], dim=1)
 
@@ -292,14 +281,13 @@ class LSTMGenerator(torch.nn.Module):
                 curr_position = obs2[start:end][scene_track_mask]
                 curr_hidden_state = hidden_states_to_pool[start:end][scene_track_mask]
 
-                # LSTM-Based Interaction Encoders. Provide track_mask to the interaction encoder LSTMs
-                if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention_fast'}:
-                    ## Everyone absent by default
-                    interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                    ## Only those visible in current scene are present
-                    interaction_track_mask[start:end] = track_mask[start:end]
-                    self.pool.track_mask = interaction_track_mask
+                ## Provide track_mask to the interaction encoders
+                ## Everyone absent by default. Only those visible in current scene are present
+                interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
+                interaction_track_mask[start:end] = track_mask[start:end]
+                self.pool.track_mask = interaction_track_mask
 
+                ## Pool
                 pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
                 batch_pool.append(pool_sample)
 
@@ -368,9 +356,8 @@ class LSTMGenerator(torch.nn.Module):
             [torch.zeros(self.hidden_dim, device=observed.device) for _ in range(num_tracks)],
         )
 
-        ## LSTM-Based Interaction Encoders. Initialze Hdden state ## TODO
-        if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention', 'SAttention_fast'}:
-            self.pool.reset(num_tracks, device=observed.device)
+        ## Reset LSTMs of Interaction Encoders.
+        self.pool.reset(num_tracks, device=observed.device)
 
         # list of predictions
         normals = []  # predicted normal parameters for both phases
@@ -393,10 +380,8 @@ class LSTMGenerator(torch.nn.Module):
             (observed[-1:], prediction_truth[:-1])
         ))
 
-########################################################################################################################
-        ## ADD NOISE
+        # Add Noise
         hidden_cell_state = self.adding_noise(hidden_cell_state)
-########################################################################################################################
 
         # decoder, predictions
         for obs1, obs2 in zip(prediction_truth[:-1], prediction_truth[1:]):
@@ -470,8 +455,6 @@ class LSTMDiscriminator(torch.nn.Module):
         real_classifier_dims = [self.hidden_dim, int(self.hidden_dim / 2), int(self.hidden_dim / 4), 1]
         self.real_classifier = make_mlp(
             real_classifier_dims
-            # activation=activation,
-            # dropout=dropout
         )
 
     def step(self, lstm, hidden_cell_state, obs1, obs2, goals, batch_split):
@@ -537,14 +520,13 @@ class LSTMDiscriminator(torch.nn.Module):
                 curr_position = obs2[start:end][scene_track_mask]
                 curr_hidden_state = hidden_states_to_pool[start:end][scene_track_mask]
 
-                # LSTM-Based Interaction Encoders. Provide track_mask to the interaction encoder LSTMs
-                if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention_fast'}:
-                    ## Everyone absent by default
-                    interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                    ## Only those visible in current scene are present
-                    interaction_track_mask[start:end] = track_mask[start:end]
-                    self.pool.track_mask = interaction_track_mask
+                ## Provide track_mask to the interaction encoders
+                ## Everyone absent by default. Only those visible in current scene are present
+                interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
+                interaction_track_mask[start:end] = track_mask[start:end]
+                self.pool.track_mask = interaction_track_mask
 
+                ## Pool
                 pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
                 batch_pool.append(pool_sample)
 
@@ -601,9 +583,8 @@ class LSTMDiscriminator(torch.nn.Module):
             [torch.zeros(self.hidden_dim, device=observed.device) for _ in range(num_tracks)],
         )
 
-        ## LSTM-Based Interaction Encoders. Initialze Hdden state ## TODO
-        if self.pool.__class__.__name__ in {'NN_LSTM', 'TrajectronPooling', 'SAttention', 'SAttention_fast'}:
-            self.pool.reset(num_tracks, device=observed.device)
+        ## Reset LSTMs of Interaction Encoders.
+        self.pool.reset(num_tracks, device=observed.device)
 
         # list of predictions
         normals = []  # predicted normal parameters for both phases
@@ -647,7 +628,7 @@ class SGANPredictor(object):
 
     def __call__(self, paths, scene_goal, n_predict=12, modes=1, predict_all=True, obs_length=9, start_length=0, args=None):
         self.model.eval()
-        self.model.use_d = False
+        self.model.d_steps = 0
         # modes = 50 #(Trajnet Eval)
         if modes is not None:
             self.model.k = modes
