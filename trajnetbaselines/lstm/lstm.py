@@ -206,7 +206,8 @@ class LSTM(torch.nn.Module):
         )
 
         ## Reset LSTMs of Interaction Encoders.
-        self.pool.reset(num_tracks, device=observed.device)
+        if self.pool is not None:
+            self.pool.reset(num_tracks, device=observed.device)
 
         # list of predictions
         normals = []  # predicted normal parameters for both phases
