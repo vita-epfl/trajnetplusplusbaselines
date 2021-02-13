@@ -1,5 +1,6 @@
 from collections import defaultdict
 import itertools
+import copy
 
 import numpy as np
 import torch
@@ -114,7 +115,7 @@ class SGAN(torch.nn.Module):
         pred_list = []
         for _ in range(self.k):
             # print("k:", k)
-            rel_pred_scene, pred_scene = self.generator(observed.clone(), goals, batch_split, prediction_truth.clone(), n_predict)
+            rel_pred_scene, pred_scene = self.generator(observed, goals, batch_split, prediction_truth, n_predict)
             rel_pred_list.append(rel_pred_scene)
             pred_list.append(pred_scene)
 
@@ -123,8 +124,8 @@ class SGAN(torch.nn.Module):
 
         ## Get real scores and fake scores from discriminator
         if self.d_steps and (prediction_truth is not None):
-            scores_real = self.discriminator(observed.clone(), prediction_truth.clone(), goals, batch_split)
-            scores_fake = self.discriminator(observed.clone(), pred_scene[-pred_length:], goals, batch_split)
+            scores_real = self.discriminator(observed, prediction_truth, goals, batch_split)
+            scores_fake = self.discriminator(observed, pred_scene[-pred_length:], goals, batch_split)
             return rel_pred_list, pred_list, scores_real, scores_fake
 
         return rel_pred_list, pred_list, None, None
@@ -376,10 +377,10 @@ class LSTMGenerator(torch.nn.Module):
             normals.append(normal)
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
-        # initialize predictions with last position to form velocity
-        prediction_truth = list(itertools.chain.from_iterable(
+        # initialize predictions with last position to form velocity. DEEP COPY !!!
+        prediction_truth = copy.deepcopy(list(itertools.chain.from_iterable(
             (observed[-1:], prediction_truth[:-1])
-        ))
+        )))
 
         # Add Noise
         hidden_cell_state = self.adding_noise(hidden_cell_state)
