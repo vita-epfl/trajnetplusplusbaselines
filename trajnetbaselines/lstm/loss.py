@@ -5,18 +5,17 @@ import torch
 
 class PredictionLoss(torch.nn.Module):
     """2D Gaussian with a flat background.
-
     p(x) = 0.2 * N(x|mu, 3.0)  +  0.8 * N(x|mu, sigma)
     """
     def __init__(self, keep_batch_dim=False, background_rate=0.2):
         super(PredictionLoss, self).__init__()
         self.keep_batch_dim = keep_batch_dim
         self.background_rate = background_rate
+        self.loss_multiplier = 1
 
     @staticmethod
     def gaussian_2d(mu1mu2s1s2rho, x1x2):
         """This supports backward().
-
         Inspired by
         https://github.com/naba89/RNN-Handwriting-Generation-Pytorch/blob/master/loss_functions.py
         """
@@ -41,6 +40,25 @@ class PredictionLoss(torch.nn.Module):
         denominator = 2 * math.pi * sigma1sigma2 * torch.sqrt(1 - rho ** 2)
 
         return numerator / denominator
+
+    def col_loss(self, primary, neighbours, batch_split, gamma=2.0):
+        """
+        Penalizes model when primary pedestrian prediction comes close
+        to the neighbour predictions
+        primary: Tensor [pred_length, 1, 2]
+        neighbours: Tensor [pred_length, num_neighbours, 2]
+        """
+
+        neighbours[neighbours != neighbours] = -1000
+        exponential_loss = 0.0
+        for (start, end) in zip(batch_split[:-1], batch_split[1:]):
+            batch_primary = primary[:, start:start+1]
+            batch_neigh = neighbours[:, start:end]
+            distance_to_neigh = torch.norm(batch_neigh - batch_primary, dim=2)
+            mask_far = (distance_to_neigh < 0.25).detach()
+            distance_to_neigh = -gamma * distance_to_neigh * mask_far
+            exponential_loss += distance_to_neigh.exp().sum()
+        return exponential_loss.sum()
 
     def forward(self, inputs, targets, batch_split):
         
@@ -73,19 +91,38 @@ class PredictionLoss(torch.nn.Module):
         ## Used in variety loss (SGAN)
         if self.keep_batch_dim:
             values = values.reshape(pred_length, batch_size)
-            return values.mean(dim=0)
+            return values.mean(dim=0) * self.loss_multiplier
         
-        return torch.mean(values)
+        return torch.mean(values) * self.loss_multiplier
 
 class L2Loss(torch.nn.Module):
     """L2 Loss (deterministic version of PredictionLoss)
-
     This Loss penalizes only the primary trajectories
     """
     def __init__(self, keep_batch_dim=False):
         super(L2Loss, self).__init__()
         self.loss = torch.nn.MSELoss(reduction='none')
         self.keep_batch_dim = keep_batch_dim
+        self.loss_multiplier = 100
+
+    def col_loss(self, primary, neighbours, batch_split, gamma=2.0):
+        """
+        Penalizes model when primary pedestrian prediction comes close
+        to the neighbour predictions
+        primary: Tensor [pred_length, 1, 2]
+        neighbours: Tensor [pred_length, num_neighbours, 2]
+        """
+
+        neighbours[neighbours != neighbours] = -1000
+        exponential_loss = 0.0
+        for (start, end) in zip(batch_split[:-1], batch_split[1:]):
+            batch_primary = primary[:, start:start+1]
+            batch_neigh = neighbours[:, start:end]
+            distance_to_neigh = torch.norm(batch_neigh - batch_primary, dim=2)
+            mask_far = (distance_to_neigh < 0.25).detach()
+            distance_to_neigh = -gamma * distance_to_neigh * mask_far
+            exponential_loss += distance_to_neigh.exp().sum()
+        return exponential_loss.sum()
 
     def forward(self, inputs, targets, batch_split):
         ## Extract primary pedestrians
@@ -102,9 +139,9 @@ class L2Loss(torch.nn.Module):
 
         ## Used in variety loss (SGAN)
         if self.keep_batch_dim:
-            return loss.mean(dim=0).mean(dim=1)
+            return loss.mean(dim=0).mean(dim=1) * self.loss_multiplier
         
-        return torch.mean(loss)
+        return torch.mean(loss) * self.loss_multiplier
 
 def bce_loss(input_, target):
     """

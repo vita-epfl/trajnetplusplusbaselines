@@ -1,4 +1,5 @@
 import itertools
+import copy
 
 import numpy as np
 import torch
@@ -203,10 +204,10 @@ class LSTM(torch.nn.Module):
             normals.append(normal)
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
-        # initialize predictions with last position to form velocity
-        prediction_truth = list(itertools.chain.from_iterable(
+        # initialize predictions with last position to form velocity. DEEP COPY !!!
+        prediction_truth = copy.deepcopy(list(itertools.chain.from_iterable(
             (observed[-1:], prediction_truth)
-        ))
+        )))
 
         # decoder, predictions
         for obs1, obs2 in zip(prediction_truth[:-1], prediction_truth[1:]):
