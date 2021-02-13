@@ -104,10 +104,6 @@ class Trainer(object):
             else:
                 scene_goal = np.array([[0, 0] for path in paths])
 
-            ## Drop Distant
-            scene, mask = drop_distant(scene)
-            scene_goal = scene_goal[mask]
-
             ##process scene
             if self.normalize_scene:
                 scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
@@ -181,10 +177,6 @@ class Trainer(object):
                 scene_goal = np.array(goals[filename][scene_id])
             else:
                 scene_goal = np.array([[0, 0] for path in paths])
-
-            ## Drop Distant
-            scene, mask = drop_distant(scene)
-            scene_goal = scene_goal[mask]
 
             ##process scene
             if self.normalize_scene:
