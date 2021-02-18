@@ -341,6 +341,8 @@ def main():
                         help='consider orca in evaluation')
     parser.add_argument('--kf', action='store_true',
                         help='consider kalman in evaluation')
+    parser.add_argument('--cv', action='store_true',
+                        help='consider constant velocity in evaluation')
     parser.add_argument('--normalize_scene', action='store_true',
                         help='augment scenes')
     parser.add_argument('--modes', default=1, type=int,

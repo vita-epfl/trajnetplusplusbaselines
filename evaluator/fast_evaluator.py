@@ -95,6 +95,9 @@ def main():
         if 'sgan' in model_name:
             predictor = trajnetbaselines.sgan.SGANPredictor.load(model)
             goal_flag = predictor.model.generator.goal_flag
+        elif 'vae' in model_name:
+            predictor = trajnetbaselines.vae.VAEPredictor.load(model)
+            goal_flag = predictor.model.goal_flag
         else:
             predictor = trajnetbaselines.lstm.LSTMPredictor.load(model)
             goal_flag = predictor.model.goal_flag

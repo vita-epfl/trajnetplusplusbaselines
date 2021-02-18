@@ -3,7 +3,7 @@ import pykalman
 import trajnetplusplustools
 
 
-def predict(paths, predict_all=True, n_predict=12, obs_length=9, args=None):
+def predict(paths, predict_all=True, n_predict=12, obs_length=9):
     multimodal_outputs = {}
     neighbours_tracks = []
 

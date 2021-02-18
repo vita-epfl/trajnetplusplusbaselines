@@ -15,12 +15,14 @@ from tqdm import tqdm
 
 def process_scene(predictor, model_name, paths, scene_goal, args):
     ## For each scene, get predictions
-    if model_name == 'sf_opt':
+    if 'sf_opt' in model_name:
         predictions = predictor(paths, sf_params=[0.5, 5.0, 0.3], n_predict=args.pred_length, obs_length=args.obs_length) ## optimal sf_params (no collision constraint) [0.5, 1.0, 0.1],
-    elif model_name == 'orca_opt':
+    elif 'orca_opt' in model_name:
         predictions = predictor(paths, orca_params=[0.4, 1.0, 0.3], n_predict=args.pred_length, obs_length=args.obs_length) ## optimal orca_params (no collision constraint) [0.25, 1.0, 0.3]
-    elif model_name in {'sf', 'orca', 'kf'}:
-        predictions = predictor(paths, n_predict=args.pred_length, obs_length=args.obs_length, args=args)
+    elif  ('sf' in model_name) or ('orca' in model_name) or ('kf' in model_name):
+        predictions = predictor(paths, n_predict=args.pred_length, obs_length=args.obs_length)
+    elif 'cv' in model_name:
+        predictions = predictor(paths, n_predict=args.pred_length, obs_length=args.obs_length)
     else:
         predictions = predictor(paths, scene_goal, n_predict=args.pred_length, obs_length=args.obs_length, modes=args.modes, args=args)
     return predictions
@@ -40,6 +42,8 @@ def main(args=None):
     if args.orca:
         args.output.append('/orca.pkl')
         args.output.append('/orca_opt.pkl')
+    if args.cv:
+        args.output.append('/cv.pkl')
 
     ## Extract Model names from arguments and create its own folder in 'test_pred' for storing predictions
     ## WARNING: If Model predictions already exist from previous run, this process SKIPS WRITING
@@ -67,21 +71,30 @@ def main(args=None):
             ## Keep Adding Different Model Architectures to this List
             print("Model Name: ", model_name)
             goal_flag = False
-            if model_name == 'kf':
+            if 'kf' in model_name:
                 print("Kalman")
                 predictor = trajnetbaselines.classical.kalman.predict
-            elif model_name in {'sf', 'sf_opt'}:
+            elif 'sf' in model_name:
                 print("Social Force")
                 predictor = trajnetbaselines.classical.socialforce.predict
-            elif model_name in {'orca', 'orca_opt'}:
+            elif 'orca' in model_name:
                 print("ORCA")
                 predictor = trajnetbaselines.classical.orca.predict
+            elif 'cv' in model_name:
+                print("CV")
+                predictor = trajnetbaselines.classical.constant_velocity.predict
             elif 'sgan' in model_name:
                 print("SGAN")
                 predictor = trajnetbaselines.sgan.SGANPredictor.load(model)
                 device = torch.device('cpu')
                 predictor.model.to(device)
                 goal_flag = predictor.model.generator.goal_flag
+            elif 'vae' in model_name:
+                print("VAE")
+                predictor = trajnetbaselines.vae.VAEPredictor.load(model)
+                device = torch.device('cpu')
+                predictor.model.to(device)
+                goal_flag = predictor.model.goal_flag
             elif 'lstm' in model_name:
                 print("LSTM")
                 predictor = trajnetbaselines.lstm.LSTMPredictor.load(model)
