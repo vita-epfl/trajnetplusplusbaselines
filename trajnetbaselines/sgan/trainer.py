@@ -8,6 +8,7 @@ import time
 import random
 import os
 import pickle
+import copy
 
 import numpy as np
 
@@ -141,17 +142,20 @@ class Trainer(object):
                 preprocess_time = time.time() - scene_start
 
                 # Decide whether to use the batch for stepping on discriminator or
-                # generator; an iteration consists of args.d_steps steps on the
-                # discriminator followed by args.g_steps steps on the generator.
-                if d_steps_left > 0:
-                    step_type = 'd'
-                    d_steps_left -= 1
-                elif g_steps_left > 0:
+                # generator; an iteration consists of args.g_steps steps on the
+                # generator followed by args.d_steps steps on the discriminator.
+                if g_steps_left > 0:
                     step_type = 'g'
                     g_steps_left -= 1
-                
-                ## Train Batch
-                loss = self.train_batch(batch_scene, batch_scene_goal, batch_split, step_type)
+                    ## Train Batch
+                    loss = self.train_batch(batch_scene, batch_scene_goal, batch_split, step_type='g')
+
+                elif d_steps_left > 0:
+                    step_type = 'd'
+                    d_steps_left -= 1
+                    ## Train Batch
+                    loss = self.train_batch(batch_scene, batch_scene_goal, batch_split, step_type='d')
+
                 epoch_loss += loss
                 total_time = time.time() - scene_start
 
@@ -274,13 +278,13 @@ class Trainer(object):
 
         rel_output_list, outputs, scores_real, scores_fake = self.model(observed, batch_scene_goal, batch_split, prediction_truth,
                                                                         step_type=step_type, pred_length=self.pred_length)
-
         loss = self.loss_criterion(rel_output_list, targets, batch_split, scores_fake, scores_real, step_type)
-        
+
         if step_type == 'g':
             self.g_optimizer.zero_grad()
             loss.backward()
             self.g_optimizer.step()
+
         else:
             self.d_optimizer.zero_grad()
             loss.backward()
@@ -633,7 +637,7 @@ def main(epochs=25):
 
     # discriminator
     lstm_discriminator = LSTMDiscriminator(embedding_dim=args.coordinate_embedding_dim,
-                                           hidden_dim=args.hidden_dim, pool=pool,
+                                           hidden_dim=args.hidden_dim, pool=copy.deepcopy(pool),
                                            goal_flag=args.goals, goal_dim=args.goal_dim)
 
     # GAN model
