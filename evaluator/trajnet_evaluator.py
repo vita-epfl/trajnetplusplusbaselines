@@ -56,6 +56,9 @@ class TrajnetEvaluator:
         self.obs_length = args.obs_length
         self.enable_col1 = True
 
+        self.ade_list = {}
+        self.fde_list = {}
+
     def aggregate(self, name, disable_collision):
 
         ## Overall Single Mode Scores
@@ -111,6 +114,8 @@ class TrajnetEvaluator:
 
             average_l2 = trajnetplusplustools.metrics.average_l2(ground_truth[0], primary_tracks, n_predictions=self.pred_length)
             final_l2 = trajnetplusplustools.metrics.final_l2(ground_truth[0], primary_tracks)
+            self.ade_list[self.scenes_id_gt[i]] = average_l2
+            self.fde_list[self.scenes_id_gt[i]] = final_l2
 
             if not disable_collision:
                 ground_truth = self.drop_post_obs(ground_truth, self.obs_length)
@@ -264,6 +269,12 @@ class TrajnetEvaluator:
                self.lf, self.ca, self.grp, self.others, \
                self.topk_ade, self.topk_fde, self.overall_nll
 
+    def save_distance_lists(self, input_file):
+        distance_file = os.path.dirname(input_file).replace('test_pred', 'ade_fde_list')
+        os.makedirs(distance_file)
+        with open(distance_file + '/ade_fde.pkl', 'wb') as handle:
+            pickle.dump([self.ade_list, self.fde_list], handle, protocol=pickle.HIGHEST_PROTOCOL)
+
     ## drop pedestrians that appear post observation
     def drop_post_obs(self, ground_truth, obs_length):
         obs_end_frame = ground_truth[0][obs_length].frame
@@ -315,6 +326,9 @@ def eval(gt, input_file, args):
     # Evaluate
     evaluator = TrajnetEvaluator(reader_gt, scenes_gt, scenes_id_gt, scenes_sub, indexes, sub_indexes, args)
     evaluator.aggregate('kf', args.disable_collision)
+
+    ## Save Lists
+    # evaluator.save_distance_lists(input_file)
 
     return evaluator.result()
 
