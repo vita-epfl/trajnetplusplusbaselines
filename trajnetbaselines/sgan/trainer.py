@@ -27,12 +27,13 @@ from .sgan import LSTMGenerator, LSTMDiscriminator
 from .. import __version__ as VERSION
 
 from ..lstm.utils import center_scene, random_rotation
+from ..lstm.data_load_utils import prepare_data
 
 
 class Trainer(object):
     def __init__(self, model=None, g_optimizer=None, g_lr_scheduler=None, d_optimizer=None, d_lr_scheduler=None,
                  criterion=None, device=None, batch_size=8, obs_length=9, pred_length=12, augment=True,
-                 normalize_scene=False, save_every=1, start_length=0):
+                 normalize_scene=False, save_every=1, start_length=0, val_flag=True):
         self.model = model if model is not None else SGAN()
         self.g_optimizer = g_optimizer if g_optimizer is not None else torch.optim.Adam(
                            model.generator.parameters(), lr=1e-3, weight_decay=1e-4)
@@ -59,6 +60,7 @@ class Trainer(object):
         self.augment = augment
         self.normalize_scene = normalize_scene
 
+        self.val_flag = val_flag
 
     def loop(self, train_scenes, val_scenes, train_goals, val_goals, out, epochs=35, start_epoch=0):
         for epoch in range(start_epoch, epochs):
@@ -69,7 +71,8 @@ class Trainer(object):
                          'd_lr_scheduler': self.d_lr_scheduler.state_dict()}
                 SGANPredictor(self.model).save(state, out + '.epoch{}'.format(epoch))
             self.train(train_scenes, train_goals, epoch)
-            self.val(val_scenes, val_goals, epoch)
+            if self.val_flag:
+                self.val(val_scenes, val_goals, epoch)
 
         state = {'epoch': epoch + 1, 'state_dict': self.model.state_dict(),
                  'g_optimizer': self.g_optimizer.state_dict(), 'd_optimizer': self.d_optimizer.state_dict(),
@@ -86,8 +89,6 @@ class Trainer(object):
         start_time = time.time()
 
         print('epoch', epoch)
-        self.g_lr_scheduler.step()
-        self.d_lr_scheduler.step()
 
         random.shuffle(scenes)
         epoch_loss = 0.0
@@ -178,6 +179,9 @@ class Trainer(object):
                     'lr': self.get_lr(),
                     'loss': round(loss, 3),
                 })
+
+        self.g_lr_scheduler.step()
+        self.d_lr_scheduler.step()
 
         self.log.info({
             'type': 'train-epoch',
@@ -396,50 +400,6 @@ class Trainer(object):
         loss = torch.sum(loss)
         return loss
 
-def prepare_data(path, subset='/train/', sample=1.0, goals=True):
-    """ Prepares the train/val scenes and corresponding goals 
-    
-    Parameters
-    ----------
-    subset: String ['/train/', '/val/']
-        Determines the subset of data to be processed
-    sample: Float (0.0, 1.0]
-        Determines the ratio of data to be sampled
-    goals: Bool
-        If true, the goals of each track are extracted
-        The corresponding goal file must be present in the 'goal_files' folder
-        The name of the goal file must be the same as the name of the training file
-
-    Returns
-    -------
-    all_scenes: List
-        List of all processed scenes
-    all_goals: Dictionary
-        Dictionary of goals corresponding to each dataset file.
-        None if 'goals' argument is False.
-    """
-
-    ## read goal files
-    all_goals = {}
-    all_scenes = []
-
-    ## List file names
-    files = [f.split('.')[-2] for f in os.listdir(path + subset) if f.endswith('.ndjson')]
-    ## Iterate over file names
-    for file in files:
-        reader = trajnetplusplustools.Reader(path + subset + file + '.ndjson', scene_type='paths')
-        ## Necessary modification of train scene to add filename
-        scene = [(file, s_id, s) for s_id, s in reader.scenes(sample=sample)]
-        if goals:
-            goal_dict = pickle.load(open('goal_files/' + subset + file +'.pkl', "rb"))
-            ## Get goals corresponding to train scene
-            all_goals[file] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scene}
-        all_scenes += scene
-
-    if goals:
-        return all_scenes, all_goals
-    return all_scenes, None
-
 def main(epochs=25):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
@@ -597,8 +557,8 @@ def main(epochs=25):
 
     args.path = 'DATA_BLOCK/' + args.path
     ## Prepare data
-    train_scenes, train_goals = prepare_data(args.path, subset='/train/', sample=args.sample, goals=args.goals)
-    val_scenes, val_goals = prepare_data(args.path, subset='/val/', sample=args.sample, goals=args.goals)
+    train_scenes, train_goals, _ = prepare_data(args.path, subset='/train/', sample=args.sample, goals=args.goals)
+    val_scenes, val_goals, val_flag = prepare_data(args.path, subset='/val/', sample=args.sample, goals=args.goals)
 
     ## pretrained pool model (if any)
     pretrained_pool = None
@@ -683,7 +643,7 @@ def main(epochs=25):
                       d_lr_scheduler=d_lr_scheduler, device=args.device, criterion=criterion,
                       batch_size=args.batch_size, obs_length=args.obs_length, pred_length=args.pred_length,
                       augment=args.augment, normalize_scene=args.normalize_scene, save_every=args.save_every,
-                      start_length=args.start_length)
+                      start_length=args.start_length, val_flag=val_flag)
     trainer.loop(train_scenes, val_scenes, train_goals, val_goals, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 
