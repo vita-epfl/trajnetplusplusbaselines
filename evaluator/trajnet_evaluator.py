@@ -343,7 +343,7 @@ def main():
                         help='observation length')
     parser.add_argument('--pred_length', default=12, type=int,
                         help='prediction length')
-    parser.add_argument('--disable-write', action='store_true',
+    parser.add_argument('--write_only', action='store_true',
                         help='disable writing new files')
     parser.add_argument('--disable-collision', action='store_true',
                         help='disable collision metrics')
@@ -372,9 +372,11 @@ def main():
     args.path = args.path + 'test_pred/'
 
     ## Writes to Test_pred
-    ### Does this overwrite existing predictions? No. ###
-    if not args.disable_write:
-        write.main(args)
+    ## Does NOT overwrite existing predictions if they already exist ###
+    write.main(args)
+    if args.write_only: # For submission to AICrowd.
+        print("Predictions written in test_pred folder")
+        exit()
 
     ## Evaluates test_pred with test_private
     names = []

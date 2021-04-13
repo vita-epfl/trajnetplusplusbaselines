@@ -31,6 +31,8 @@ setup(
         'joblib',
         'pandas',
         'matplotlib',
+        'tqdm',
+        'pickle',
     ],
     extras_require={
         'test': [
