@@ -531,7 +531,7 @@ def main(epochs=25):
         file_handler = logging.FileHandler(args.output + '.log', mode='a')
     else:
         file_handler = logging.FileHandler(args.output + '.log', mode='w')
-    file_handler.setFormatter(jsonlogger.JsonFormatter('(message) (levelname) (name) (asctime)'))
+    file_handler.setFormatter(jsonlogger.JsonFormatter('%(message)s %(levelname)s %(name)s %(asctime)s'))
     stdout_handler = logging.StreamHandler(sys.stdout)
     logging.basicConfig(level=logging.INFO, handlers=[stdout_handler, file_handler])
     logging.info({

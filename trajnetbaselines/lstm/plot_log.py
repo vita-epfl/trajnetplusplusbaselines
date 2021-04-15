@@ -59,7 +59,7 @@ def plots(log_files, output_prefix, labels=None):
 
         ax.set_xlabel('epoch')
         ax.set_ylabel('learning rate')
-        ax.set_yscale('log', nonposy='clip')
+        ax.set_yscale('log', nonpositive='clip')
         ax.legend()
 
     with trajnetplusplustools.show.canvas(output_prefix + 'val.png') as ax:
@@ -90,7 +90,7 @@ def plots(log_files, output_prefix, labels=None):
         ax.set_ylabel('start-loss')
         # ax.set_ylim(0.05, 0.3)
         # if min(y) > -0.1:
-        #     ax.set_yscale('log', nonposy='clip')
+        #     ax.set_yscale('log', nonpositive='clip')
         ax.legend(loc=1)
 
     with trajnetplusplustools.show.canvas(output_prefix + 'seq-loss.png') as ax:
@@ -110,7 +110,7 @@ def plots(log_files, output_prefix, labels=None):
         ax.set_ylabel('seq-loss')
         # ax.set_ylim(0.0, 5.0)
         # if min(y) > -0.1:
-        #     ax.set_yscale('log', nonposy='clip')
+        #     ax.set_yscale('log', nonpositive='clip')
         ax.legend(loc=1)
 
     # # with trajnetplusplustools.show.canvas(output_prefix + 'preprocess_time.png') as ax:
@@ -161,7 +161,7 @@ def plots(log_files, output_prefix, labels=None):
         ax.set_ylabel('training loss')
         # ax.set_ylim(-5, 6)
         # if min(y_mean) > -0.1:
-        #     ax.set_yscale('log', nonposy='clip')
+        #     ax.set_yscale('log', nonpositive='clip')
         ax.legend()
 
 
