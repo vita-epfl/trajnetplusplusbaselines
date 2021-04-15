@@ -32,7 +32,6 @@ setup(
         'pandas',
         'matplotlib',
         'tqdm',
-        'pickle',
     ],
     extras_require={
         'test': [
