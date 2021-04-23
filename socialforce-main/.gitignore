@@ -1,0 +1,13 @@
+# Python
+venv*/
+*.egg-info/
+.pytest_cache/
+__pycache__/
+dist/
+.ipynb_checkpoints/
+
+# editors
+.vscode/
+
+# OS
+.DS_Store
