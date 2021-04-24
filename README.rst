@@ -21,9 +21,11 @@ Visualizations of 3 test scenes qualitatively comparing outputs of the *vanilla*
 
 <img src="milestone_1_predictions_vanilla_d-grid/visualize.scene46482.png" style="height:300px;">
 
-<img src="milestone_1_predictions_vanilla_d-grid/visualize.scene47582.png" style="height:300px;">
+<img src="milestone_1_predictions_vanilla_d-grid/visualize.scene44949.png" style="height:300px;">
 
 <img src="milestone_1_predictions_vanilla_d-grid/visualize.scene47642.png" style="height:300px;">
+
+Those 3 visualizations clearly demonstrate the superiority of the D-Grid model over the Vanilla one in terms of both Average Displacement Error (ADE) and Final Displacement Error (FDE) already for 2 epochs of training.
 
 Command used to train the *vanilla* model on 2 epochs:
 ```
