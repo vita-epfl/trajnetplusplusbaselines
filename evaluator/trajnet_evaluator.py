@@ -337,7 +337,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', default='trajdata',
                         help='directory of data to test')
-    parser.add_argument('--output', required=True, nargs='+',
+    parser.add_argument('--output', nargs='+',
                         help='relative path to saved model')
     parser.add_argument('--obs_length', default=9, type=int,
                         help='observation length')
@@ -364,6 +364,11 @@ def main():
     args = parser.parse_args()
 
     scipy.seterr('ignore')
+
+    args.output = args.output if args.output is not None else []
+    ## assert length of output models is not None
+    if (not args.sf) and (not args.orca) and (not args.kf) and (not args.cv):
+        assert len(args.output), 'No output file is provided'
 
     ## Path to the data folder name to predict
     args.path = 'DATA_BLOCK/' + args.path + '/'
