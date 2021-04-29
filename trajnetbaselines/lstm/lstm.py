@@ -1,5 +1,4 @@
 import itertools
-import copy
 
 import numpy as np
 import torch
@@ -137,7 +136,6 @@ class LSTM(torch.nn.Module):
                 interaction_track_mask[start:end] = track_mask[start:end]
                 self.pool.track_mask = interaction_track_mask
 
-                ## Pool
                 pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
                 batch_pool.append(pool_sample)
 
@@ -226,10 +224,14 @@ class LSTM(torch.nn.Module):
             normals.append(normal)
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
-        # initialize predictions with last position to form velocity. DEEP COPY !!!
-        prediction_truth = copy.deepcopy(list(itertools.chain.from_iterable(
-            (observed[-1:], prediction_truth)
-        )))
+        # ----------- Social NCE -------------
+        hidden_state_memory = []
+        hidden_state_memory.append(torch.stack([h for h in hidden_cell_state[0]], dim=0))
+
+        # initialize predictions with last position to form velocity
+        prediction_truth = list(itertools.chain.from_iterable(
+            (observed[-1:].detach().clone(), prediction_truth)
+        ))
 
         # decoder, predictions
         for obs1, obs2 in zip(prediction_truth[:-1], prediction_truth[1:]):
@@ -249,6 +251,9 @@ class LSTM(torch.nn.Module):
             normals.append(normal)
             positions.append(obs2 + normal[:, :2])  # no sampling, just mean
 
+            # embedding
+            hidden_state_memory.append(torch.stack([h for h in hidden_cell_state[0]], dim=0))
+
         # Pred_scene: Tensor [seq_length, num_tracks, 2]
         #    Absolute positions of all pedestrians
         # Rel_pred_scene: Tensor [seq_length, num_tracks, 5]
@@ -256,7 +261,10 @@ class LSTM(torch.nn.Module):
         rel_pred_scene = torch.stack(normals, dim=0)
         pred_scene = torch.stack(positions, dim=0)
 
-        return rel_pred_scene, pred_scene
+        # ----------- Social NCE -------------
+        feat_scene = torch.stack(hidden_state_memory, dim=0)
+
+        return rel_pred_scene, pred_scene, feat_scene
 
 class LSTMPredictor(object):
     def __init__(self, model):
@@ -282,7 +290,6 @@ class LSTMPredictor(object):
         # self.model.train()
         with torch.no_grad():
             xy = trajnetplusplustools.Reader.paths_to_xy(paths)
-            # xy = augmentation.add_noise(xy, thresh=args.thresh, ped=args.ped_type)
             batch_split = [0, xy.shape[1]]
 
             if args.normalize_scene:
@@ -295,7 +302,7 @@ class LSTMPredictor(object):
             multimodal_outputs = {}
             for num_p in range(modes):
                 # _, output_scenes = self.model(xy[start_length:obs_length], scene_goal, batch_split, xy[obs_length:-1].clone())
-                _, output_scenes = self.model(xy[start_length:obs_length], scene_goal, batch_split, n_predict=n_predict)
+                _, output_scenes, _ = self.model(xy[start_length:obs_length], scene_goal, batch_split, n_predict=n_predict)
                 output_scenes = output_scenes.numpy()
                 if args.normalize_scene:
                     output_scenes = augmentation.inverse_scene(output_scenes, rotation, center)

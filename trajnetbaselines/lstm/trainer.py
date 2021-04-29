@@ -25,12 +25,16 @@ from .. import __version__ as VERSION
 
 from .utils import center_scene, random_rotation
 from .data_load_utils import prepare_data
+from .contrastive import SocialNCE, ProjHead, EventEncoder, SpatialEncoder
 
 class Trainer(object):
-    def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
+    def __init__(self, projection_head=None, encoder_sample=None, 
+                 contrast_weight=1.0, contrast_temperature=0.07, contrast_horizon=4, contrast_sampling='single',
+                 model=None, criterion=None, optimizer=None, lr_scheduler=None,
                  device=None, batch_size=8, obs_length=9, pred_length=12, augment=True,
                  normalize_scene=False, save_every=1, start_length=0, obs_dropout=False,
                  augment_noise=False, col_weight=0.0, col_gamma=2.0, val_flag=True):
+
         self.model = model if model is not None else LSTM()
         self.criterion = criterion if criterion is not None else PredictionLoss()
         self.optimizer = optimizer if optimizer is not None else \
@@ -51,18 +55,21 @@ class Trainer(object):
 
         self.augment = augment
         self.augment_noise = augment_noise
+        self.col_weight = col_weight
+        self.col_gamma = col_gamma		
         self.normalize_scene = normalize_scene
 
         self.start_length = start_length
         self.obs_dropout = obs_dropout
 
-        self.col_weight = col_weight
-        self.col_gamma = col_gamma
+        self.contrastive = SocialNCE(obs_length, pred_length, projection_head.to(self.device), encoder_sample.to(self.device), contrast_temperature, contrast_horizon, contrast_sampling)
+        self.contrast_weight = contrast_weight
+        self.contrast_sampling = contrast_sampling
 
         self.val_flag = val_flag
 
     def loop(self, train_scenes, val_scenes, train_goals, val_goals, out, epochs=35, start_epoch=0):
-        for epoch in range(start_epoch, epochs):
+        for epoch in range(start_epoch, start_epoch + epochs):
             if epoch % self.save_every == 0:
                 state = {'epoch': epoch, 'state_dict': self.model.state_dict(),
                          'optimizer': self.optimizer.state_dict(),
@@ -139,7 +146,7 @@ class Trainer(object):
                 preprocess_time = time.time() - scene_start
 
                 ## Train Batch
-                loss = self.train_batch(batch_scene, batch_scene_goal, batch_split)
+                loss, loss_pred, loss_nce = self.train_batch(batch_scene, batch_scene_goal, batch_split)                
                 epoch_loss += loss
                 total_time = time.time() - scene_start
 
@@ -150,19 +157,21 @@ class Trainer(object):
 
             if (scene_i + 1) % (10*self.batch_size) == 0:
                 self.log.info({
-                    'type': 'train',
-                    'epoch': epoch, 'batch': scene_i, 'n_batches': len(scenes),
-                    'time': round(total_time, 3),
-                    'data_time': round(preprocess_time, 3),
-                    'lr': self.get_lr(),
-                    'loss': round(loss, 3),
+                    # 'type': 'train',
+                    'epoch': epoch, 'batch': '{:d} / {:d}'.format(scene_i, len(scenes)),
+                    # 'time': round(total_time, 2),
+                    # 'data_time': round(preprocess_time, 2),
+                    'lr': '{:.1e}'.format(self.get_lr()),
+                    'loss': round(loss, 2),
+                    'pred': round(loss_pred, 2),
+                    'nce': round(loss_nce, 2),
                 })
 
         self.lr_scheduler.step()
         self.log.info({
             'type': 'train-epoch',
             'epoch': epoch + 1,
-            'loss': round(epoch_loss / (len(scenes)), 5),
+            'loss': round(epoch_loss / (len(scenes)), 4),
             'time': round(time.time() - start_time, 1),
         })
 
@@ -171,7 +180,7 @@ class Trainer(object):
 
         val_loss = 0.0
         test_loss = 0.0
-        self.model.train()
+        self.model.eval()
 
         ## Initialize batch of scenes
         batch_scene = []
@@ -257,22 +266,28 @@ class Trainer(object):
         prediction_truth = batch_scene[self.obs_length:self.seq_length-1].clone()
         targets = batch_scene[self.obs_length:self.seq_length] - batch_scene[self.obs_length-1:self.seq_length-1]
 
-        rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
+        rel_outputs, outputs, batch_feat = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
         ## Loss wrt primary tracks of each scene only
-        l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
-        loss = l2_loss
-        # Auxiliary collision loss
-        # l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
-        # col_loss = self.col_weight * self.criterion.col_loss(outputs[-self.pred_length:], batch_scene[-self.pred_length:], batch_split, self.col_gamma)
-        # loss = l2_loss + col_loss
+        loss_predict = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
 
-
+        # ------------- Social NCE ----------------
+        if self.contrast_weight > 0:
+            if self.contrast_sampling == 'single':
+                loss_contrastive = self.contrastive.spatial(batch_scene, batch_split, batch_feat)
+            elif self.contrast_sampling == 'multi':
+                loss_contrastive = self.contrastive.event(batch_scene, batch_split, batch_feat)
+            else:
+                raise NotImplementedError
+            loss = loss_predict + loss_contrastive * self.contrast_weight
+        else:
+            loss = loss_predict
+        
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-        return l2_loss.item()
+        return loss.item(), loss_predict.item(), loss_contrastive.item() if self.contrast_weight > 0 else 0.0
 
     def val_batch(self, batch_scene, batch_scene_goal, batch_split):
         """Validation of B batches in parallel, B : batch_size
@@ -307,11 +322,11 @@ class Trainer(object):
 
         with torch.no_grad():
             ## groundtruth of neighbours provided (Better validation curve to monitor model)
-            rel_outputs, _ = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
+            rel_outputs, _, _ = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
             loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
 
             ## groundtruth of neighbours not provided
-            rel_outputs_test, _ = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
+            rel_outputs_test, _, _ = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
             loss_test = self.criterion(rel_outputs_test[-self.pred_length:], targets, batch_split) * self.batch_size
 
         return loss.item(), loss_test.item()
@@ -320,7 +335,7 @@ def main(epochs=25):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
-    parser.add_argument('--save_every', default=5, type=int,
+    parser.add_argument('--save_every', default=1, type=int,
                         help='frequency of saving model (in terms of epochs)')
     parser.add_argument('--obs_length', default=9, type=int,
                         help='observation length')
@@ -331,6 +346,8 @@ def main(epochs=25):
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
+    parser.add_argument('--scheduler_gamma', default=0.5, type=float,
+                        help='')    
     parser.add_argument('--step_size', default=10, type=int,
                         help='step_size of lr scheduler')
     parser.add_argument('-o', '--output', default=None,
@@ -418,13 +435,37 @@ def main(epochs=25):
     hyperparameters.add_argument('--col_gamma', default=2.0, type=float,
                                  help='hyperparameter in collision loss')
 
-
+    # Social-NCE
+    hyperparameters.add_argument('--contrast_weight', default=0.0, type=float,
+                                 help='loss weight')
+    hyperparameters.add_argument('--contrast_temperature', default=0.07, type=float,
+                                 help='')
+    hyperparameters.add_argument('--contrast_sampling', type=str, default='single',
+                                 help='single, multi')
+    hyperparameters.add_argument('--contrast_horizon', default=4, type=int,
+                                 help='')
+    hyperparameters.add_argument('--contrast_pretrain', default=0, type=int,
+                                 help='number of epoch to pretrain contrastive heads')
+    hyperparameters.add_argument('--contrast_dim', default=8, type=int,
+                                 help='dimension of projected embedding')
     args = parser.parse_args()
 
     ## Fixed set of scenes if sampling
     if args.sample < 1.0:
         torch.manual_seed("080819")
         random.seed(1)
+
+    ## Prepare data
+    train_scenes, train_goals, _ = prepare_data('DATA_BLOCK/' + args.path, subset='/train/', sample=args.sample, goals=args.goals)
+    val_scenes, val_goals, val_flag = prepare_data('DATA_BLOCK/' + args.path, subset='/val/', sample=args.sample, goals=args.goals)
+
+    args.path += '/{}/'.format(args.type)
+
+    # ------------- Social NCE ----------------
+    if args.contrast_weight > 0:
+        args.path += 'snce_{}_w_{:.2f}_h_{:d}_t_{:.2f}_p_{:d}'.format(args.contrast_sampling, args.contrast_weight, args.contrast_horizon, args.contrast_temperature, args.contrast_pretrain)
+    else:
+        args.path += 'baseline'
 
     ## Define location to save trained model
     if not os.path.exists('OUTPUT_BLOCK/{}'.format(args.path)):
@@ -465,11 +506,6 @@ def main(epochs=25):
     # if not args.disable_cuda and torch.cuda.is_available():
     #     args.device = torch.device('cuda')
 
-    args.path = 'DATA_BLOCK/' + args.path
-    ## Prepare data
-    train_scenes, train_goals, _ = prepare_data(args.path, subset='/train/', sample=args.sample, goals=args.goals)
-    val_scenes, val_goals, val_flag = prepare_data(args.path, subset='/val/', sample=args.sample, goals=args.goals)
-
     ## pretrained pool model (if any)
     pretrained_pool = None
 
@@ -506,12 +542,23 @@ def main(epochs=25):
                  hidden_dim=args.hidden_dim,
                  goal_flag=args.goals,
                  goal_dim=args.goal_dim)
+    
+    # ------------- Social NCE ----------------    
+    projection_head = ProjHead(feat_dim=args.hidden_dim, hidden_dim=args.contrast_dim*4, head_dim=args.contrast_dim)
+    if args.contrast_sampling == 'single':
+        encoder_sample = SpatialEncoder(hidden_dim=args.contrast_dim, head_dim=args.contrast_dim)
+    elif args.contrast_sampling == 'multi':
+        encoder_sample = EventEncoder(hidden_dim=args.contrast_dim, head_dim=args.contrast_dim)
+    else:
+        raise NotImplementedError
+
+    param = list(model.parameters()) + list(projection_head.parameters()) + list(encoder_sample.parameters())
 
     # optimizer and schedular
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(param, lr=args.lr, weight_decay=1e-4)
     lr_scheduler = None
     if args.step_size is not None:
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.step_size)
+        lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.step_size, args.scheduler_gamma)
     start_epoch = 0
 
     # Loss Criterion
@@ -531,17 +578,35 @@ def main(epochs=25):
         # load optimizers from last training
         # useful to continue model training
             print("Loading Optimizer Dict")
+            optimizer = torch.optim.Adam(param, lr=args.lr) # , weight_decay=1e-4
             optimizer.load_state_dict(checkpoint['optimizer'])
+            lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
             lr_scheduler.load_state_dict(checkpoint['scheduler'])
             start_epoch = checkpoint['epoch']
 
     #trainer
-    trainer = Trainer(model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device,
+    trainer = Trainer(projection_head, encoder_sample,
+                      args.contrast_weight, args.contrast_temperature, args.contrast_horizon, args.contrast_sampling,
+                      model=model, optimizer=optimizer, lr_scheduler=lr_scheduler, device=args.device,
                       criterion=criterion, batch_size=args.batch_size, obs_length=args.obs_length,
                       pred_length=args.pred_length, augment=args.augment, normalize_scene=args.normalize_scene,
                       save_every=args.save_every, start_length=args.start_length, obs_dropout=args.obs_dropout,
                       augment_noise=args.augment_noise, col_weight=args.col_weight, col_gamma=args.col_gamma,
                       val_flag=val_flag)
+
+    # ------------- Social NCE ----------------
+    if args.contrast_pretrain > 0 and args.contrast_weight > 0:
+        # freeze forecasting model parameters
+        for param in model.parameters():
+            param.requires_grad = False
+        # pretrain contrastive heads
+        for i in range(args.contrast_pretrain):
+            trainer.train(train_scenes, train_goals, i-args.contrast_pretrain)
+        # release forecasting model parameters
+        for param in model.parameters():
+            param.requires_grad = True
+
+    # train
     trainer.loop(train_scenes, val_scenes, train_goals, val_goals, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 
