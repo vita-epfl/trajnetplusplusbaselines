@@ -45,11 +45,11 @@ class SocialNCE():
         #       (Use this block to visualize the raw data)
         # -----------------------------------------------------
 
-        for i in range(batch_split.shape[0] - 1):
-            traj_primary = batch_scene[:, batch_split[i]] # [time, 2]
-            traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
-            plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
-
+        # for i in range(batch_split.shape[0] - 1):
+        #     traj_primary = batch_scene[:, batch_split[i]] # [time, 2]
+        #     traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
+        #     plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
+        # import pdb; pdb.set_trace()
 
         # #####################################################
         #           TODO: fill the following code
