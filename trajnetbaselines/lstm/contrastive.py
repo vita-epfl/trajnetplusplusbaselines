@@ -6,7 +6,7 @@ class SocialNCE():
     '''
         Social NCE: Contrastive Learning of Socially-aware Motion Representations (https://arxiv.org/abs/2012.11717)
     '''
-    def __init__(self, obs_length, pred_length, head_projection, encoder_sample, temperature, horizon):
+    def __init__(self, obs_length, pred_length, head_projection, encoder_sample, temperature, horizon, sampling):
 
         # problem setting
         self.obs_length = obs_length
@@ -28,6 +28,7 @@ class SocialNCE():
         self.min_seperation = 0.2
         self.agent_zone = self.min_seperation * torch.tensor([[1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0], [0.707, 0.707], [0.707, -0.707], [-0.707, 0.707], [-0.707, -0.707], [0.0, 0.0]])
 
+        self.sampling = sampling #by maxime
     def spatial(self, batch_scene, batch_split, batch_feat):
         '''
             Social NCE with spatial samples, i.e., samples are locations at a specific time of the future
@@ -44,11 +45,11 @@ class SocialNCE():
         #       (Use this block to visualize the raw data)
         # -----------------------------------------------------
 
-        # for i in range(batch_split.shape[0] - 1):
-        #     traj_primary = batch_scene[:, batch_split[i]] # [time, 2]
-        #     traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
-        #     plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
-        # import pdb; pdb.set_trace()
+        for i in range(batch_split.shape[0] - 1):
+            traj_primary = batch_scene[:, batch_split[i]] # [time, 2]
+            traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
+            plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
+
 
         # #####################################################
         #           TODO: fill the following code

@@ -56,3 +56,5 @@ trajnetbaselines/lstm/style_encoder.py
 tests/test_style.py
 trajnetbaselines/wta_lstm_backup/
 
+
+.idea/
