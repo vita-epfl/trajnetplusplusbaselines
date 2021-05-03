@@ -65,8 +65,8 @@ class SocialNCE():
 
         # batch_split : 9 (maybe the ID of the persons we want to select)
         # batch_scene : ( time x persons x coordinate)
-            # traj_primary: 21x2 (time x coordinate)
-            # traj_neighbor: 21x3x2 (time x persons x coordinate)
+        # traj_primary: 21x2 (time x coordinate)
+        # traj_neighbor: 21x3x2 (time x persons x coordinate)
 
         (sample_pos, sample_neg)= self._sampling_spatial(batch_scene, batch_split)
 
@@ -87,18 +87,18 @@ class SocialNCE():
         #                   Compute Similarity 
         # -----------------------------------------------------
         # similarity
-                    #12x40x8   12x8x1x8
-        sim_pos = (query * key_pos).sum(dim=1)
-        sim_neg = (query[:, None, :] * key_neg).sum(dim=2)
+        #12x40x8   12x8x1x8
+        sim_pos = (query[:, :, None, :] * key_pos).sum(dim=1)
+        sim_neg = (query[:,:, None, :] * key_neg).sum(dim=2)
         # logits
-        logits = torch.cat([sim_pos.unsqueeze(1), sim_neg], dim=1) / self.temperature
+        logits = torch.cat([sim_pos, sim_neg], dim=1) / self.temperature
 
         # -----------------------------------------------------
-        #                       NCE Loss 
+        #                       NCE Loss
         # -----------------------------------------------------
-        labels = torch.zeros(logits.size(0), dtype=torch.long, device=self.device)
+        labels = torch.zeros((logits.size(0), logits.size(2)), dtype=torch.long)
         loss = self.criterion(logits, labels)
-
+        print(f"the contrast loss is {loss} ")
         return loss
 
     def event(self, batch_scene, batch_split, batch_feat):
@@ -129,27 +129,28 @@ class SocialNCE():
 
         #positive sample (time x persons x coordinate)
         c_e = self.noise_local
-        sample_pos = gt_future[:, batch_split[0:-1], :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+        #for main interrests only
+        # sample_pos = gt_future[:, batch_split[0:-1], :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
 
+        # for everyone
+        sample_pos = gt_future[:, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
 
         # -----------------------------------------------------
         #                  Negative Samples
         # -----------------------------------------------------
         # cf paper fig 4b,
-        # probably 8 sample per neighboor for discomfort (cf self.agent_zone) + 1 sample per neighboor for collision ?
 
-        #self.agent_zone
-        personInterest = batch_split[0:-1]
-        neighboors = np.ones(gt_future.shape[1])
-        neighboors[personInterest]=0
-        neighboorsID = np.argwhere(neighboors==1)
+        # negative sample for neighboor only
+        # personInterest = batch_split[0:-1]
+        # neighboors = np.ones(gt_future.shape[1])
+        # neighboors[personInterest]=0
+        # neighboorsID = np.argwhere(neighboors==1)
+        # sceneNeighboors= gt_future[:, neighboorsID, :]
+        # sample_neg = sceneNeighboors + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
 
-        #(21x32x1x2)
-        sceneNeighboors= gt_future[:, neighboorsID, :]
-
-
-                                        #9x2
-        sample_neg = sceneNeighboors + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+        # negative sample for everyone
+        #the position          # the direction to look around     #some noise
+        sample_neg = gt_future[:,:,None,:] + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
 
         # -----------------------------------------------------
         #       Remove negatives that are too hard (optional)
@@ -171,11 +172,11 @@ class EventEncoder(nn.Module):
         self.temporal = nn.Sequential(
             nn.Linear(1, hidden_dim),
             nn.ReLU(inplace=True)
-            )
+        )
         self.spatial = nn.Sequential(
             nn.Linear(2, hidden_dim),
             nn.ReLU(inplace=True)
-            )
+        )
         self.encoder = nn.Sequential(
             nn.Linear(hidden_dim*2, hidden_dim),
             nn.ReLU(inplace=True),
@@ -213,7 +214,7 @@ class ProjHead(nn.Module):
             nn.Linear(feat_dim, hidden_dim),
             nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, head_dim)
-            )
+        )
 
     def forward(self, feat):
         return self.head(feat)
