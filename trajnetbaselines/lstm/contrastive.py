@@ -45,19 +45,29 @@ class SocialNCE():
         #       (Use this block to visualize the raw data)
         # -----------------------------------------------------
 
-        # for i in range(batch_split.shape[0] - 1):
-        #     traj_primary = batch_scene[:, batch_split[i]] # [time, 2]
-        #     traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
-        #     plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
+        for i in range(batch_split.shape[0] - 1):
+            traj_primary = batch_scene[:, batch_split[i]] # [time, 2]
+            traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
+            plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
+
         # import pdb; pdb.set_trace()
 
         # #####################################################
         #           TODO: fill the following code
         # #####################################################
 
+        # hint from navigation repo : https://github.com/vita-epfl/social-nce-crowdnav/blob/main/crowd_nav/snce/contrastive.py
+        # hint from forecasting repo: https://github.com/YuejiangLIU/social-nce-trajectron-plus-plus/blob/master/trajectron/snce/contrastive.py
+
         # -----------------------------------------------------
         #               Contrastive Sampling 
         # -----------------------------------------------------
+
+        # batch_split : 9 (maybe the ID of the persons we want to select)
+        # batch_scene : ( time x persons x coordinate)
+            # traj_primary: 21x2 (time x coordinate)
+            # traj_neighbor: 21x3x2 (time x persons x coordinate)
+
 
         # -----------------------------------------------------
         #              Lower-dimensional Embedding 
