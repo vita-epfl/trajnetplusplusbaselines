@@ -6,7 +6,7 @@ class SocialNCE():
     '''
         Social NCE: Contrastive Learning of Socially-aware Motion Representations (https://arxiv.org/abs/2012.11717)
     '''
-    def __init__(self, obs_length, pred_length, head_projection, encoder_sample, temperature, horizon):
+    def __init__(self, obs_length, pred_length, head_projection, encoder_sample, temperature, horizon, sampling):
 
         # problem setting
         self.obs_length = obs_length
@@ -25,7 +25,7 @@ class SocialNCE():
 
         # sampling param
         self.noise_local = 0.1
-        self.min_seperation = 0.2
+        self.min_seperation = 0.2 # uncomfortable zone is up to 20[cm]
         self.agent_zone = self.min_seperation * torch.tensor([[1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0], [0.707, 0.707], [0.707, -0.707], [-0.707, 0.707], [-0.707, -0.707], [0.0, 0.0]])
 
     def spatial(self, batch_scene, batch_split, batch_feat):
@@ -48,7 +48,7 @@ class SocialNCE():
         #     traj_primary = batch_scene[:, batch_split[i]] # [time, 2]
         #     traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
         #     plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
-        # import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace() # --> to do an embedded breakpoint with Python (without PyCharm debugger)
 
         # #####################################################
         #           TODO: fill the following code
@@ -79,6 +79,7 @@ class SocialNCE():
         raise ValueError("Optional")
 
     def _sampling_spatial(self, batch_scene, batch_split):
+        # "_" indicates that this is a private function that we can only access from the class
 
         gt_future = batch_scene[self.obs_length: self.obs_length+self.pred_length]
 

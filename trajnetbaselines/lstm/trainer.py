@@ -268,18 +268,34 @@ class Trainer(object):
 
         rel_outputs, outputs, batch_feat = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
-        ## Loss wrt primary tracks of each scene only
+        ## Loss w.r.t. primary tracks of each scene only
         loss_predict = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
 
+        #==========================================
         # ------------- Social NCE ----------------
         if self.contrast_weight > 0:
             if self.contrast_sampling == 'single':
                 loss_contrastive = self.contrastive.spatial(batch_scene, batch_split, batch_feat)
+                # batch_scene: contains the trajectory of all the pedestrians in the scene
+                #   batch_scene.dtype: torch.float32
+                #   batch_scene.size(): torch.Size([21, 40, 2]) --> (timestamps, person id, coord)
+                #
+                # batch_split: contains the ID of the all the pedestrians of INTEREST having crossed the scene
+                #   batch_split: torch.int64
+                #   batch_scene.size(): torch.Size([9])
+                #
+                # batch_feat:
+                #   batch_feat.dtype: torch.float32
+                #   batch_feat.size(): torch.Size([12, 40, 128])
+                #
+                #
             elif self.contrast_sampling == 'multi':
                 loss_contrastive = self.contrastive.event(batch_scene, batch_split, batch_feat)
             else:
                 raise NotImplementedError
             loss = loss_predict + loss_contrastive * self.contrast_weight
+        # -----------------------------------------
+        #==========================================
         else:
             loss = loss_predict
         
