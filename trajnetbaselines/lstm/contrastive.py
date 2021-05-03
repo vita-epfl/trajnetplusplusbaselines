@@ -1,4 +1,5 @@
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -24,10 +25,11 @@ class SocialNCE():
         self.horizon = horizon
 
         # sampling param
-        self.noise_local = 0.1
-        self.min_seperation = 0.2 # uncomfortable zone is up to 20[cm]
+        self.noise_local = 0.05 #TODO maybe 0.1
+        self.min_seperation = 0.2 # #TODO increase this ? (uncomfortable zone is up to 20[cm])
         self.agent_zone = self.min_seperation * torch.tensor([[1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0], [0.707, 0.707], [0.707, -0.707], [-0.707, 0.707], [-0.707, -0.707], [0.0, 0.0]])
 
+        self.sampling = sampling #by maxime
     def spatial(self, batch_scene, batch_split, batch_feat):
         '''
             Social NCE with spatial samples, i.e., samples are locations at a specific time of the future
@@ -44,31 +46,58 @@ class SocialNCE():
         #       (Use this block to visualize the raw data)
         # -----------------------------------------------------
 
-        # for i in range(batch_split.shape[0] - 1):
-        #     traj_primary = batch_scene[:, batch_split[i]] # [time, 2]
-        #     traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
-        #     plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
+        for i in range(batch_split.shape[0] - 1):
+            traj_primary = batch_scene[:, batch_split[i]] # [time, 2]
+            traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
+            plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
         # import pdb; pdb.set_trace() # --> to do an embedded breakpoint with Python (without PyCharm debugger)
 
         # #####################################################
         #           TODO: fill the following code
         # #####################################################
 
+        # hint from navigation repo : https://github.com/vita-epfl/social-nce-crowdnav/blob/main/crowd_nav/snce/contrastive.py
+        # hint from forecasting repo: https://github.com/YuejiangLIU/social-nce-trajectron-plus-plus/blob/master/trajectron/snce/contrastive.py
+
         # -----------------------------------------------------
         #               Contrastive Sampling 
         # -----------------------------------------------------
 
+        # batch_split : 9 (maybe the ID of the persons we want to select)
+        # batch_scene : ( time x persons x coordinate)
+            # traj_primary: 21x2 (time x coordinate)
+            # traj_neighbor: 21x3x2 (time x persons x coordinate)
+
+        (sample_pos, sample_neg)= self._sampling_spatial(batch_scene, batch_split)
+
         # -----------------------------------------------------
         #              Lower-dimensional Embedding 
         # -----------------------------------------------------
+        # 12x40x8                             12x40x128
+        emb_obsv = self.head_projection(batch_feat)
+        query = nn.functional.normalize(emb_obsv, dim=1)
+
+
+        emb_pos = self.encoder_sample(sample_pos[:, :, None, :].float()) #todo: maybe implemented a validity mask
+        emb_neg = self.encoder_sample(sample_neg.float())
+        key_pos = nn.functional.normalize(emb_pos, dim=1)
+        key_neg = nn.functional.normalize(emb_neg, dim=2)
 
         # -----------------------------------------------------
         #                   Compute Similarity 
         # -----------------------------------------------------
+        # similarity
+                    #12x40x8   12x8x1x8
+        sim_pos = (query * key_pos).sum(dim=1)
+        sim_neg = (query[:, None, :] * key_neg).sum(dim=2)
+        # logits
+        logits = torch.cat([sim_pos.unsqueeze(1), sim_neg], dim=1) / self.temperature
 
         # -----------------------------------------------------
         #                       NCE Loss 
         # -----------------------------------------------------
+        labels = torch.zeros(logits.size(0), dtype=torch.long, device=self.device)
+        loss = self.criterion(logits, labels)
 
         return loss
 
@@ -80,8 +109,13 @@ class SocialNCE():
 
     def _sampling_spatial(self, batch_scene, batch_split):
         # "_" indicates that this is a private function that we can only access from the class
+        # batch_split : 9 (maybe the ID of the persons we want to select)
+        # batch_scene : ( time x persons x coordinate)
 
+        #gt_future : (time x person x coord)
         gt_future = batch_scene[self.obs_length: self.obs_length+self.pred_length]
+
+
 
         # #####################################################
         #           TODO: fill the following code
@@ -90,10 +124,32 @@ class SocialNCE():
         # -----------------------------------------------------
         #                  Positive Samples
         # -----------------------------------------------------
+        #cf paper equ. 7
+        #ground truth + N(0, c_e * I )
+
+        #positive sample (time x persons x coordinate)
+        c_e = self.noise_local
+        sample_pos = gt_future[:, batch_split[0:-1], :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+
 
         # -----------------------------------------------------
         #                  Negative Samples
         # -----------------------------------------------------
+        # cf paper fig 4b,
+        # probably 8 sample per neighboor for discomfort (cf self.agent_zone) + 1 sample per neighboor for collision ?
+
+        #self.agent_zone
+        personInterest = batch_split[0:-1]
+        neighboors = np.ones(gt_future.shape[1])
+        neighboors[personInterest]=0
+        neighboorsID = np.argwhere(neighboors==1)
+
+        #(21x32x1x2)
+        sceneNeighboors= gt_future[:, neighboorsID, :]
+
+
+                                        #9x2
+        sample_neg = sceneNeighboors + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
 
         # -----------------------------------------------------
         #       Remove negatives that are too hard (optional)
