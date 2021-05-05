@@ -37,6 +37,7 @@ class SocialNCE():
                 batch_scene: coordinates of agents in the scene, tensor of shape [obs_length + pred_length, total num of agents in the batch, 2]
                 batch_split: index of scene split in the batch, tensor of shape [batch_size + 1]
                 batch_feat: encoded features of observations, tensor of shape [pred_length, scene, feat_dim]
+                                                                                            ^ #person maybe ?
             Output:
                 loss: social nce loss
         '''
@@ -51,7 +52,7 @@ class SocialNCE():
             traj_neighbor = batch_scene[:, batch_split[i]+1:batch_split[i+1]] # [time, num, 2]
             plot_scene(traj_primary, traj_neighbor, fname='scene_{:d}.png'.format(i))
         # import pdb; pdb.set_trace() # --> to do an embedded breakpoint with Python (without PyCharm debugger)
-
+        
         # #####################################################
         #           TODO: fill the following code
         # #####################################################
@@ -63,8 +64,9 @@ class SocialNCE():
         #               Contrastive Sampling 
         # -----------------------------------------------------
 
-        # batch_split : 9 (maybe the ID of the persons we want to select)
-        # batch_scene : ( time x persons x coordinate)
+        # batch_split : (8) (ID of the start of the scene and of the person of interrest)
+        # batch_scene : ( time x persons (personsOfInterrest and neighboor ) x coordinate)
+        #                (21)  x 40 x 2
         # traj_primary: 21x2 (time x coordinate)
         # traj_neighbor: 21x3x2 (time x persons x coordinate)
 
@@ -74,29 +76,34 @@ class SocialNCE():
         #              Lower-dimensional Embedding 
         # -----------------------------------------------------
         # 12x40x8                             12x40x128
-        emb_obsv = self.head_projection(batch_feat)
-        query = nn.functional.normalize(emb_obsv, dim=1)
+        interestsID = batch_split[0:-1]
+        emb_obsv = self.head_projection(batch_feat[:, interestsID, :]) #TODO should not he whole batch
+        query = nn.functional.normalize(emb_obsv, dim=2) #TODO might not be dim 1
 
 
-        emb_pos = self.encoder_sample(sample_pos[:, :, None, :].float()) #todo: maybe implemented a validity mask
-        emb_neg = self.encoder_sample(sample_neg.float())
-        key_pos = nn.functional.normalize(emb_pos, dim=1)
-        key_neg = nn.functional.normalize(emb_neg, dim=2)
+        emb_pos = self.encoder_sample(sample_pos.float()) #todo: maybe implemented a validity mask
+        emb_neg = self.encoder_sample(torch.tensor(sample_neg).float())
+        key_pos = nn.functional.normalize(emb_pos, dim=2)
+        key_neg = nn.functional.normalize(emb_neg, dim=3)
 
         # -----------------------------------------------------
         #                   Compute Similarity 
         # -----------------------------------------------------
         # similarity
         #12x40x8   12x8x1x8
-        sim_pos = (query[:, :, None, :] * key_pos).sum(dim=1)
-        sim_neg = (query[:,:, None, :] * key_neg).sum(dim=2)
+        sim_pos = (query[:, :, None, :] * key_pos[:, :, None,:]).sum(dim=-1)
+        sim_neg = (query[:,:, None, :] * key_neg).sum(dim=-1)
         # logits
-        logits = torch.cat([sim_pos, sim_neg], dim=1) / self.temperature
+        logits_3dim = torch.cat([sim_pos, sim_neg], dim=2) / self.temperature
+
+        #TODO: warning really unsure about this
+        #the logits need to be 2 dimensionnal, at the moement they are 3
+        logits=logits_3dim.reshape((logits.shape[0], -1))
 
         # -----------------------------------------------------
         #                       NCE Loss
         # -----------------------------------------------------
-        labels = torch.zeros((logits.size(0), logits.size(2)), dtype=torch.long)
+        labels = torch.zeros(logits.size(0), dtype=torch.long)
         loss = self.criterion(logits, labels)
         print(f"the contrast loss is {loss} ")
         return loss
@@ -128,29 +135,57 @@ class SocialNCE():
         #ground truth + N(0, c_e * I )
 
         #positive sample (time x persons x coordinate)
+
         c_e = self.noise_local
         #for main interrests only
-        # sample_pos = gt_future[:, batch_split[0:-1], :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+        sample_pos = gt_future[:, batch_split[0:-1], :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]])) #TODO, maybe diff noise for each person
 
         # for everyone
-        sample_pos = gt_future[:, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+        # sample_pos = gt_future[:, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
 
         # -----------------------------------------------------
         #                  Negative Samples
         # -----------------------------------------------------
         # cf paper fig 4b,
-
+        '''
         # negative sample for neighboor only
-        # personInterest = batch_split[0:-1]
-        # neighboors = np.ones(gt_future.shape[1])
-        # neighboors[personInterest]=0
-        # neighboorsID = np.argwhere(neighboors==1)
-        # sceneNeighboors= gt_future[:, neighboorsID, :]
-        # sample_neg = sceneNeighboors + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+        personInterest = batch_split[0:-1]
+        neighboors = np.ones(gt_future.shape[1])
+        neighboors[personInterest]=0
+        neighboorsID = np.argwhere(neighboors==1)
+        sceneNeighboors= gt_future[:, neighboorsID, :]
 
-        # negative sample for everyone
+        #12 x 30 x 9 x 2
+                    time x primary x allsample x coord
+        # should be 12 x 10 x 32 x2
+        sample_neg = sceneNeighboors + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+        
+        '''
+        nDirection = self.agent_zone.shape[0]
+        nMaxNeighboor= 12 #TODO re-tune
+
+        #dim: (#time_step_predicted, #personOfIntereset, #neigboor for ThisPerson of interest*#direction, #coordinate)
+        sample_neg = np.empty((gt_future.shape[0], batch_split.shape[0] - 1, nDirection*nMaxNeighboor,2))
+        sample_neg[:] = np.NaN
+        for i in range(batch_split.shape[0] - 1):
+            traj_primary = gt_future[:, batch_split[i]]
+            traj_neighbor = gt_future[:, batch_split[i]+1:batch_split[i+1]] # [time, numb neigboor, 2]
+
+            #(#time_step_predicted, #neigboor for ThisPerson of interest, #direction, #coordinate)
+            #                                   12x5x2                                  9x2
+            negSampleNonSqueezed = traj_neighbor[:, :, None,:] + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+
+            negSampleSqueezed = negSampleNonSqueezed.reshape((negSampleNonSqueezed.shape[0], -1, negSampleNonSqueezed.shape[3]))
+
+
+            
+            #only fill the first part, leave the Nan after
+            sample_neg[:, i, 0:negSampleSqueezed.shape[1], :] = negSampleSqueezed
+
+
+    # negative sample for everyone
         #the position          # the direction to look around     #some noise
-        sample_neg = gt_future[:,:,None,:] + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+        # sample_neg = gt_future[:,:,None,:] + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
 
         # -----------------------------------------------------
         #       Remove negatives that are too hard (optional)
