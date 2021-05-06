@@ -92,12 +92,13 @@ class SocialNCE():
                 #     ax.plot(neighbor[:, i, 0], neighbor[:, i, 1], 'b-.')
 
 
-                ax.scatter(batch_scene[self.obs_length,i, 0], batch_scene[self.obs_length, i, 1], label="person of interest true pos")
-                #neighboor
-                ax.scatter(batch_scene[self.obs_length,batch_split[i]+1:batch_split[i+1], 0].view(-1), batch_scene[self.obs_length, batch_split[i]+1:batch_split[i+1], 1].view(-1), label="neigboor true pos")
-
-
+                #person of inetrrest display
+                #TODO: there is a bug
                 ax.scatter(sample_pos[i, 0], sample_pos[i, 1], label="positive sample")
+                ax.scatter(batch_scene[self.obs_length,i, 0], batch_scene[self.obs_length, i, 1], label="person of interest true pos")
+
+                #neighboor dispaly
+                ax.scatter(batch_scene[self.obs_length,batch_split[i]+1:batch_split[i+1], 0].view(-1), batch_scene[self.obs_length, batch_split[i]+1:batch_split[i+1], 1].view(-1), label="neigboor true pos")
                 ax.scatter( sample_neg[i, :, 0].view(-1), sample_neg[i, :, 1].view(-1), label="negative sample")
 
 
@@ -108,7 +109,7 @@ class SocialNCE():
                 plt.savefig(fname, bbox_inches='tight', pad_inches=0)
                 plt.close(fig)
                 print("displayed samples")
-
+        5/0
         # -----------------------------------------------------
         #              Lower-dimensional Embedding 
         # -----------------------------------------------------
@@ -181,8 +182,10 @@ class SocialNCE():
 
         c_e = self.noise_local
         #for main interrests only
-        sample_pos = gt_future[ batch_split[0:-1], :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]])) #TODO, maybe diff noise for each person
-
+        personOfInterestLocation= gt_future[ batch_split[0:-1], :]
+        noise=  np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+        sample_pos = personOfInterestLocation + noise.reshape(1,2)#TODO, maybe diff noise for each person
+        a=1+1
         # for everyone
         # sample_pos = gt_future[:, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
 
