@@ -280,14 +280,13 @@ class Trainer(object):
                 #   batch_scene.dtype: torch.float32
                 #   batch_scene.size(): torch.Size([21, 40, 2]) --> (timestamps, person id, coord)
                 #
-                # batch_split: contains the ID of the all the pedestrians of INTEREST having crossed the scene
+                # batch_split: contains the ID of the all the pedestrians of INTEREST (i.e. the only pedestrians whose trajectory we want to predict) having crossed the scene
                 #   batch_split: torch.int64
                 #   batch_scene.size(): torch.Size([9])
                 #
-                # batch_feat:
+                # batch_feat: the feature we are trying to target (i.e. compressed representation of the ground truth, i.e. our "labels")
                 #   batch_feat.dtype: torch.float32
                 #   batch_feat.size(): torch.Size([12, 40, 128])
-                #
                 #
             elif self.contrast_sampling == 'multi':
                 loss_contrastive = self.contrastive.event(batch_scene, batch_split, batch_feat)
