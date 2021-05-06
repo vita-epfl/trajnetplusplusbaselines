@@ -70,7 +70,7 @@ class SocialNCE():
         # traj_primary: 21x2 (time x coordinate)
         # traj_neighbor: 21x3x2 (time x persons x coordinate)
 
-        (sample_pos, sample_neg)= self._sampling_spatial(batch_scene, batch_split)
+        (sample_pos, sample_neg)= self._sampling_spatial(batch_scene, batch_split) # TODO: this function should return a Pytorch tensor!
 
         # -----------------------------------------------------
         #              Lower-dimensional Embedding 
@@ -78,9 +78,12 @@ class SocialNCE():
         # 12x40x8                             12x40x128
         interestsID = batch_split[0:-1]
         emb_obsv = self.head_projection(batch_feat[:, interestsID, :]) #TODO should not he whole batch
-        query = nn.functional.normalize(emb_obsv, dim=2) #TODO might not be dim 1
+        query = nn.functional.normalize(emb_obsv, dim=2) # ✅ normalizing over the features
 
 
+        # Embedding is not necessarily a dimension reduction process! Here we
+        # want to find a way to compute the similarity btw. the motion features
+        # (for this we have to increase the number of features!)
         emb_pos = self.encoder_sample(sample_pos.float()) #todo: maybe implemented a validity mask
         emb_neg = self.encoder_sample(torch.tensor(sample_neg).float())
         key_pos = nn.functional.normalize(emb_pos, dim=2)
@@ -173,7 +176,7 @@ class SocialNCE():
 
             #(#time_step_predicted, #neigboor for ThisPerson of interest, #direction, #coordinate)
             #                                   12x5x2                                  9x2
-            negSampleNonSqueezed = traj_neighbor[:, :, None,:] + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
+            negSampleNonSqueezed = traj_neighbor[:, :, None,:] + self.agent_zone[None, None, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]])) # TODO: maybe make the noise different for each sample, but this might affect the learning process --> not sure to change this!
 
             negSampleSqueezed = negSampleNonSqueezed.reshape((negSampleNonSqueezed.shape[0], -1, negSampleNonSqueezed.shape[3]))
 
