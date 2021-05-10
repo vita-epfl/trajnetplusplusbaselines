@@ -79,8 +79,7 @@ class SocialNCE():
         # traj_primary: 21x2 (time x coordinate)
         # traj_neighbour: 21x3x2 (time x persons x coordinate)
 
-        (sample_pos, sample_neg) = self._sampling_spatial(batch_scene,
-                                                          batch_split)  # TODO pytorch tensor instead
+        (sample_pos, sample_neg) = self._sampling_spatial(batch_scene, batch_split)  # TODO pytorch tensor instead
 
         # visualisation
         visualize = 1
@@ -99,11 +98,15 @@ class SocialNCE():
                 #     ax.plot(neighbor[:, i, 0], neighbor[:, i, 1], 'b-.')
 
                 # Displaying the positions of the person of interest
-                # TODO: there is a bug
-                #  Very strange: the first picture is systematically always good! But not the following ones...
+                # TODO: Remove next lines of comments once you have understood why we had a visualization problem here!
                 # True position
-                ax.scatter(batch_scene[self.obs_length, i, 0],
-                           batch_scene[self.obs_length, i, 1],
+                # False ❌:
+                # ax.scatter(batch_scene[self.obs_length, i, 0],
+                #            batch_scene[self.obs_length, i, 1],
+                #            label="person of interest true pos")
+                # Correct ✅:
+                ax.scatter(batch_scene[self.obs_length, batch_split[i], 0],
+                           batch_scene[self.obs_length, batch_split[i], 1],
                            label="person of interest true pos")
                 # Positive sample
                 ax.scatter(sample_pos[i, 0], sample_pos[i, 1],
@@ -111,10 +114,8 @@ class SocialNCE():
 
                 # Displaying the position of the neighbours
                 # True position
-                ax.scatter(batch_scene[self.obs_length,
-                           batch_split[i] + 1:batch_split[i + 1], 0].view(-1),
-                           batch_scene[self.obs_length,
-                           batch_split[i] + 1:batch_split[i + 1], 1].view(-1),
+                ax.scatter(batch_scene[self.obs_length, batch_split[i] + 1:batch_split[i + 1], 0].view(-1),
+                           batch_scene[self.obs_length, batch_split[i] + 1:batch_split[i + 1], 1].view(-1),
                            label="neighbours true pos")
                 # Negative sample
                 ax.scatter(sample_neg[i, :, 0].view(-1),
@@ -136,10 +137,8 @@ class SocialNCE():
         # -----------------------------------------------------
         # 12x40x8                             12x40x128
         interestsID = batch_split[0:-1]
-        emb_obsv = self.head_projection(batch_feat[self.obs_length, interestsID,
-                                        :])  # TODO should not the whole batch
-        query = nn.functional.normalize(emb_obsv,
-                                        dim=-1)  # TODO might not be dim 1
+        emb_obsv = self.head_projection(batch_feat[self.obs_length, interestsID, :])  # TODO should not the whole batch
+        query = nn.functional.normalize(emb_obsv, dim=-1)  # TODO might not be dim 1
 
         # Embedding is not necessarily a dimension reduction process! Here we
         # want to find a way to compute the similarity btw. the motion features
@@ -167,8 +166,7 @@ class SocialNCE():
                                            mask_normal_space[:, :, 1])
         sim_neg[mask_new_space] = -10
 
-        logits = torch.cat([sim_pos, sim_neg],
-                           dim=-1) / self.temperature  # Warning! Pos and neg samples are concatenated!
+        logits = torch.cat([sim_pos, sim_neg], dim=-1) / self.temperature  # Warning! Pos and neg samples are concatenated!
 
         # -----------------------------------------------------
         #                       NCE Loss
@@ -193,8 +191,12 @@ class SocialNCE():
         # gt_future = batch_scene[self.obs_length: self.obs_length+self.pred_length]
 
         # Selecting only the first pred sample (i.e. the prediction for the first timestamp)
-        # (persons x coordinates) --> for instance 39 x 2
+        # (persons x coordinates) --> gt_future is for instance of size 39 x 2
         gt_future = batch_scene[self.obs_length]
+        # Note: Since the first 9 frames of the scene correspond to observations
+        # and since Python uses zero-based indexing, the first location prediction
+        # sample (i.e. the 10th element in batch_scene) is accessed as
+        # "batch_scene[9]" (i.e. "batch_scene[self.obs_length]")
 
         # #####################################################
         #           TODO: fill the following code
@@ -211,14 +213,18 @@ class SocialNCE():
 
         c_e = self.noise_local
         # Retrieving the location of the pedestrians of interest only
-        personOfInterestLocation = gt_future[batch_split[0:-1],
-                                   :]  # (persons of interest x coordinates) --> for instance: 8 x 2
-        noise = np.random.multivariate_normal([0, 0], np.array(
-            [[c_e, 0], [0, c_e]]))  # (2,)
+        personOfInterestLocation = gt_future[batch_split[0:-1], :]  # (persons of interest x coordinates) --> for instance: 8 x 2
+        noise_pos = np.random.multivariate_normal([0, 0], np.array([[c_e, 0], [0, c_e]]))  # (2,)
         #                      8 x 2                   1 x 2
         # sample_pos = personOfInterestLocation + noise.reshape(1, 2) # TODO, maybe diff noise for each person (/!\ --> apparently not necessary finally, according to Liu)
         #                      8 x 2             (2,)
-        sample_pos = personOfInterestLocation + noise
+        sample_pos = personOfInterestLocation + noise_pos
+
+        # This ⤵️ is equivalent to the line above ⤴️
+        # sample_pos_2 = torch.zeros(personOfInterestLocation.size())
+        # for i in range(len(personOfInterestLocation)):
+        #     sample_pos_2[i] = personOfInterestLocation[i] + noise
+
         a = 1 + 1
 
         # Retrieving the location of all pedestrians
@@ -245,27 +251,24 @@ class SocialNCE():
         
         '''
         nDirection = self.agent_zone.shape[0]
-        nMaxNeighboor = 12  # TODO re-tune
+        nMaxNeighbour = 12  # TODO re-tune
 
         # sample_neg: (#persons of interest, #neigboor for this person of interest * #directions, #coordinates)
         # --> for instance: 8 x 12*9 x 2 = 8 x 108 x 2
         sample_neg = np.empty(
-            (batch_split.shape[0] - 1, nDirection * nMaxNeighboor, 2))
+            (batch_split.shape[0] - 1, nDirection * nMaxNeighbour, 2))
         sample_neg[:] = np.NaN  # populating sample_neg with NaN values
         for i in range(batch_split.shape[0] - 1):
             # traj_primary = gt_future[batch_split[i]]
-            traj_neighbour = gt_future[batch_split[i] + 1:batch_split[
-                i + 1]]  # (number of neigbours x coordinates) --> for instance: 3 x 2
+            traj_neighbour = gt_future[batch_split[i] + 1:batch_split[i + 1]]  # (number of neigbours x coordinates) --> for instance: 3 x 2
 
+            noise_neg = np.random.multivariate_normal([0, 0], np.array([[c_e, 0], [0, c_e]])) # (2,)
             # negSampleNonSqueezed: (number of neighbours x directions x coordinates) --> for instance: 3 x 9 x 2
-            #                            3 x 1 x 2                     1 x 9 x 2                               (2,)
-            negSampleNonSqueezed = traj_neighbour[:, None, :] + self.agent_zone[
-                                                                None, :,
-                                                                :] + noise  # + np.random.multivariate_normal([0, 0], np.array([[c_e, 0], [0, c_e]]))
+            #                            3 x 1 x 2                     1 x 9 x 2                (2,)
+            negSampleNonSqueezed = traj_neighbour[:, None, :] + self.agent_zone[None, :, :] + noise_neg
 
             # negSampleSqueezed: (number of neighbours * directions x coordinates) --> for instance: 27 x 2
-            negSampleSqueezed = negSampleNonSqueezed.reshape(
-                (-1, negSampleNonSqueezed.shape[2]))
+            negSampleSqueezed = negSampleNonSqueezed.reshape((-1, negSampleNonSqueezed.shape[2]))
 
             # Filling only the first part in the second dimension of sample_neg (leaving the rest as NaN values)
             sample_neg[i, 0:negSampleSqueezed.shape[0], :] = negSampleSqueezed
@@ -317,7 +320,7 @@ class EventEncoder(nn.Module):
 
 class SpatialEncoder(nn.Module):
     """
-        Spatial encoder that maps an sampled location to the embedding space
+        Spatial encoder that maps a sampled location to the embedding space
     """
 
     def __init__(self, hidden_dim, head_dim):
