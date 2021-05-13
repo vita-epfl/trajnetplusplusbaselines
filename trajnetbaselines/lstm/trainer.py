@@ -570,12 +570,12 @@ def main(epochs=25):
 
 
     #if finetuning an already contrative model
+
+
     param = list(model.parameters()) + list(projection_head.parameters()) + list(encoder_sample.parameters())
-    #if fine tuning a model from milestone 1  #TODO cleaner parameters condition
-    param = list(model.parameters())
 
 
-    # optimizer and schedular
+        # optimizer and schedular
     optimizer = torch.optim.Adam(param, lr=args.lr, weight_decay=1e-4)
     lr_scheduler = None
     if args.step_size is not None:
@@ -600,7 +600,11 @@ def main(epochs=25):
         # useful to continue model training
             print("Loading Optimizer Dict")
             optimizer = torch.optim.Adam(param, lr=args.lr) # , weight_decay=1e-4
-            optimizer.load_state_dict(checkpoint['optimizer'])
+            try:
+                optimizer.load_state_dict(checkpoint['optimizer'])
+            except Exception as e:
+                print("can't load the param of old adam into new adam, probably because you're finetuning a model from ML 1, will continue with a fresh adam :) ")
+
             lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 15)
             lr_scheduler.load_state_dict(checkpoint['scheduler'])
             start_epoch = checkpoint['epoch']

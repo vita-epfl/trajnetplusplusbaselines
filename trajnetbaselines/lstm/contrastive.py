@@ -306,7 +306,7 @@ class SocialNCE():
         c_e = self.noise_local
         # Retrieving the location of the pedestrians of interest only
         personOfInterestLocation = gt_future[batch_split[0:-1], :]  # (persons of interest x coordinates) --> for instance: 8 x 2
-        noise_pos = np.random.multivariate_normal([0, 0], np.array([[c_e, 0], [0, c_e]]))  # (2,)
+        noise_pos = np.random.multivariate_normal([0, 0], np.array([[c_e, 0], [0, c_e]]), (personOfInterestLocation.shape[0]))  # (2,)
         #                      8 x 2                   1 x 2
         # sample_pos = personOfInterestLocation + noise.reshape(1, 2) # TODO, maybe diff noise for each person (/!\ --> apparently not necessary finally, according to Liu)
         #                      8 x 2             (2,)
@@ -347,7 +347,7 @@ class SocialNCE():
             # traj_primary = gt_future[batch_split[i]]
             traj_neighbour = gt_future[batch_split[i] + 1:batch_split[i + 1]]  # (number of neigbours x coordinates) --> for instance: 3 x 2
 
-            noise_neg = np.random.multivariate_normal([0, 0], np.array([[c_e, 0], [0, c_e]])) # (2,)
+            noise_neg = np.random.multivariate_normal([0, 0], np.array([[c_e, 0], [0, c_e]]), (traj_neighbour.shape[0], self.agent_zone.shape[0])) # (2,)
             # negSampleNonSqueezed: (number of neighbours x directions x coordinates) --> for instance: 3 x 9 x 2
             #                            3 x 1 x 2                     1 x 9 x 2                (2,)
             negSampleNonSqueezed = traj_neighbour[:, None, :] + self.agent_zone[None, :, :] + noise_neg
