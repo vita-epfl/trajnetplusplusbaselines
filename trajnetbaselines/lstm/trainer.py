@@ -567,7 +567,13 @@ def main(epochs=25):
     else:
         raise NotImplementedError
 
+
+
+    #if finetuning an already contrative model
     param = list(model.parameters()) + list(projection_head.parameters()) + list(encoder_sample.parameters())
+    #if fine tuning a model from milestone 1  #TODO cleaner parameters condition
+    param = list(model.parameters())
+
 
     # optimizer and schedular
     optimizer = torch.optim.Adam(param, lr=args.lr, weight_decay=1e-4)

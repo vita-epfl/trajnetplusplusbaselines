@@ -85,6 +85,7 @@ class SocialNCE():
         visualize = 1
         if visualize:
             for i in range(batch_split.shape[0] - 1):  # for each scene
+                """
                 import matplotlib
                 matplotlib.use('Agg')
                 import matplotlib.pyplot as plt
@@ -131,7 +132,7 @@ class SocialNCE():
                 plt.savefig(fname, bbox_inches='tight', pad_inches=0)
                 plt.close(fig)
                 print(f'displayed samples {i}')
-        5 / 0
+                """
         # -----------------------------------------------------
         #              Lower-dimensional Embedding
         # -----------------------------------------------------
@@ -173,14 +174,105 @@ class SocialNCE():
         # -----------------------------------------------------
         labels = torch.zeros(logits.size(0), dtype=torch.long)
         loss = self.criterion(logits, labels)
-        print(f"the contrast loss is {loss}")
+        #print(f"the contrast loss is {loss}")
         return loss
 
     def event(self, batch_scene, batch_split, batch_feat):
         """
             Social NCE with event samples, i.e., samples are spatial-temporal events at various time steps of the future
         """
-        raise ValueError("Optional")
+        (sample_pos, sample_neg) = self._sampling_event(batch_scene, batch_split)
+
+
+        # -----------------------------------------------------
+        #              Lower-dimensional Embedding
+        # -----------------------------------------------------
+
+        interestsID = batch_split[0:-1]
+        emb_obsv = self.head_projection(batch_feat[self.obs_length, interestsID, :])
+        query = nn.functional.normalize(emb_obsv, dim=-1)
+
+        # Embedding is not necessarily a dimension reduction process! Here we
+        # want to find a way to compute the similarity btw. the motion features
+        # (for this we have to increase the number of features!)
+        # sample_neg: 8x108x2
+        mask_normal_space = torch.isnan(sample_neg)
+
+        sample_neg[torch.isnan(sample_neg)] = 0
+        # key_neg : 8x108x8
+        emb_pos = self.encoder_sample(sample_pos)
+        emb_neg = self.encoder_sample(sample_neg)
+        key_pos = nn.functional.normalize(emb_pos, dim=-1)
+        key_neg = nn.functional.normalize(emb_neg, dim=-1)
+
+        # -----------------------------------------------------
+        #                   Compute Similarity
+        # -----------------------------------------------------
+        # similarity
+        # 12x40x8   12x8x1x8
+        sim_pos = (query[:, None, :] * key_pos[:, None, :]).sum(dim=-1)
+        sim_neg = (query[:, None, :] * key_neg).sum(dim=-1)
+
+        # 8x108
+        mask_new_space = torch.logical_and(mask_normal_space[:, :, 0],
+                                           mask_normal_space[:, :, 1])
+        sim_neg[mask_new_space] = -10
+
+        logits = torch.cat([sim_pos, sim_neg], dim=-1) / self.temperature  # Warning! Pos and neg samples are concatenated!
+
+        # -----------------------------------------------------
+        #                       NCE Loss
+        # -----------------------------------------------------
+        labels = torch.zeros(logits.size(0), dtype=torch.long)
+        loss = self.criterion(logits, labels)
+        #print(f"the contrast loss is {loss}")
+        return loss
+
+
+    def _sampling_event(self, batch_scene, batch_split):
+
+        gt_future = batch_scene[self.obs_length: self.obs_length+self.pred_length]
+
+        #positive sample
+        c_e = self.noise_local
+        # Retrieving the location of the pedestrians of interest only
+        personOfInterestLocation = gt_future[:, batch_split[0:-1], :]  # (persons of interest x coordinates) --> for instance: 8 x 2
+        noise_pos = np.random.multivariate_normal([0, 0], np.array([[c_e, 0], [0, c_e]]), (self.pred_length, 8))  # (2,)
+        #                      8 x 2                   1 x 2
+        # sample_pos = personOfInterestLocation + noise.reshape(1, 2) # TODO, maybe diff noise for each person (/!\ --> apparently not necessary finally, according to Liu)
+        #                      8 x 2             (2,)
+        sample_pos = personOfInterestLocation + noise_pos
+
+
+
+        #_______negative sample____________
+        nDirection = self.agent_zone.shape[0]
+        nMaxNeighbour = 12  # TODO re-tune
+
+        # sample_neg: (#persons of interest, #neigboor for this person of interest * #directions, #coordinates)
+        # --> for instance: 8 x 12*9 x 2 = 8 x 108 x 2
+        sample_neg = np.empty(
+            (self.pred_length, batch_split.shape[0] - 1, nDirection * nMaxNeighbour, 2))
+        sample_neg[:] = np.NaN  # populating sample_neg with NaN values
+        for i in range(batch_split.shape[0] - 1):
+
+            traj_neighbour = gt_future[:, batch_split[i] + 1:batch_split[i + 1]]  # (number of neigbours x coordinates) --> for instance: 3 x 2
+
+            noise_neg = np.random.multivariate_normal([0, 0], np.array([[c_e, 0], [0, c_e]]), (self.pred_length, traj_neighbour.shape[1], self.agent_zone.shape[0])) # (2,)
+            # negSampleNonSqueezed: (time x number of neighbours x directions x coordinates)
+            #                            12x 3 x 1 x 2                     12x 3 x 9 x 2                (12,3,9,2)
+            negSampleNonSqueezed = traj_neighbour[:,:, None, :] + self.agent_zone[None, None, :, :] + noise_neg
+
+            # negSampleSqueezed: (time x number of neighbours * directions x coordinates)
+            negSampleSqueezed = negSampleNonSqueezed.reshape((self.pred_length,-1, negSampleNonSqueezed.shape[-1]))
+
+            # Filling only the first part in the second dimension of sample_neg (leaving the rest as NaN values)
+            sample_neg[:, i, 0:negSampleSqueezed.shape[1], :] = negSampleSqueezed
+
+        sample_pos = sample_pos.float()
+        sample_neg = torch.tensor(sample_neg).float()
+        return sample_pos, sample_neg
+
 
     def _sampling_spatial(self, batch_scene, batch_split):
         # "_" indicates that this is a private function that we can only access from the class
@@ -220,14 +312,7 @@ class SocialNCE():
         #                      8 x 2             (2,)
         sample_pos = personOfInterestLocation + noise_pos
 
-        # This ⤵️ is equivalent to the line above ⤴️
-        # sample_pos_2 = torch.zeros(personOfInterestLocation.size())
-        # for i in range(len(personOfInterestLocation)):
-        #     sample_pos_2[i] = personOfInterestLocation[i] + noise
-
-        a = 1 + 1
-
-        # Retrieving the location of all pedestrians
+              # Retrieving the location of all pedestrians
         # sample_pos = gt_future[:, :, :] + np.random.multivariate_normal([0,0], np.array([[c_e, 0], [0, c_e]]))
 
         # -----------------------------------------------------
