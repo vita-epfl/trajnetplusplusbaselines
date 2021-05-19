@@ -144,7 +144,30 @@ The parameters to be tuned were the following:
 
 Here is our results comparison in terms of FDE and Col-I of your D-LSTM models trained without (milestone 1) and with (milestone 2) contrastive loss.
 
--- table --
+**Milestone 1**
+
+| Subm. | Epochs | lr       | FDE  | COL-I |
+|-------|--------|----------|------|-------|
+| 1     | 15     | 1.e-03   | 1.22 | 6.32  |
+| 2     | 25     | 1.e-03   | 1.22 | 6.03  |
+
+
+**Milestone 2**
+
+| Subm. | Start epoch | Add. epochs | lr    | contrast_weight | FDE  | COL-I |
+|-------|-------------|-------------|-------|-----------------|------|-------|
+| 1     | 30          | 10          | 1e-04 | 2               | 1.22 | 6.03  |
+| 2     | 30          | 10          | 1e-04 | 2 and 5         | 1.23 | 5.85  |
+| 3     | 30          | 15          | 1e-02 | 1               | 1.34 | 7.16  |
+| 4     | 30          | 10          | 1e-03 | 3               | 1.25 | <mark>5.25</mark>  |
+| 5     | 30          | 15          | 1e-03 | 4               | 1.22 | 6.5   |
+| 6     | 25          | 10          | 1e-03 | 5               | 1.23 | 5.61  |
+| 7     | 30          | 10          | 5e-03 | 1               | 1.27 | 6.32  |
+| 8     | 25          | 15          | 1e-03 | 2               | 1.23 | 5.85  |
+| 9     | 25          | 15          | 5e-04 | 4               | <mark>1.21</mark> | 6.44  |
+| 10    | 25          | 15          | 1e-03 | 2.5             | <span style="background-color:lightgreen">1.22</span> | <span style="background-color:lightgreen">5.55</span>  |
+
+
 
 
 <a name="mi_2_obs"></a>
