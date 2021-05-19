@@ -84,5 +84,3 @@ Example of scene presenting both positive and negative samples used to train our
 
 Here is our results comparison in terms of FDE and Col-I of your D-LSTM models trained without (milestone 1) and with (milestone 2) contrastive loss.
 
-
-
