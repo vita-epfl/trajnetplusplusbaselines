@@ -23,11 +23,12 @@ This project is conducted in the frame of the EPFL course *CIVIL-459 Deep Learni
 TrajNet++ is a large scale interaction-centric trajectory forecasting benchmark comprising explicit agent-agent scenarios. The framework provides proper indexing of trajectories by defining a hierarchy of trajectory categorization. In addition, it provides an extensive evaluation system to test the gathered methods for a fair comparison. In the evaluation, the framework goes beyond the standard distance-based metrics and introduces novel metrics that measure the capability of a model to emulate pedestrian behavior in crowds. Finally, TrajNet++ provides code implementations of > 10 popular human trajectory forecasting baselines.
 
 ## Table of contents
+
 1. [ Milestone 1: Getting Started ](#mi_1)
 
- 1.1 [ 1) 1) Visualizations ](#mi_1_vis) 
+ 1.1 [ Visualizations ](#mi_1_vis) 
  
- 1.2 [ 2) Qualitative evaluation ](#mi_1_qual_eval)
+ 1.2 [ Qualitative evaluation ](#mi_1_qual_eval)
 
 2. [ Milestone 2: Implementing Social Contrastive Learning ](#mi_2)
 
