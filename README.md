@@ -26,21 +26,21 @@ TrajNet++ is a large scale interaction-centric trajectory forecasting benchmark 
 
 1. [ Milestone 1: Getting Started ](#mi_1)
 
- 1.1 [ Visualizations ](#mi_1_vis) 
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.1 [ Visualizations ](#mi_1_vis) 
  
- 1.2 [ Qualitative evaluation ](#mi_1_qual_eval)
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1.2 [ Qualitative evaluation ](#mi_1_qual_eval)
 
 2. [ Milestone 2: Implementing Social Contrastive Learning ](#mi_2)
 
- 2.1 [ Spatial sampling ](#mi_2_sp)
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.1 [ Spatial sampling ](#mi_2_sp)
  
- 2.2 [ Contrastive learning implementation ](#mi_2_cli)
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.2 [ Contrastive learning implementation ](#mi_2_cli)
  
- 2.3 [ Training ](#mi_2_tr)
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.3 [ Training ](#mi_2_tr)
  
- 2.4 [ Results ](#mi_2_res)
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.4 [ Results ](#mi_2_res)
  
- 2.5 [ Observations ](#mi_2_obs)
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2.5 [ Observations ](#mi_2_obs)
   
 
 <a name="mi_1"></a>
@@ -53,11 +53,11 @@ The purpose of this first milestone is to get used to work with the TrajNet++ fr
 
 Visualizations of 3 test scenes qualitatively comparing outputs of the *Vanilla* model and *D-Grid* model both trained during 2 epochs:
 
-<img src="milestone_1_predictions_vanilla_d-grid/visualize.scene46482.png" style="height:500px;">
+<img src="milestone_1_predictions_vanilla_d-grid/visualize.scene46482.png" style="height:300px;">
 
-<img src="milestone_1_predictions_vanilla_d-grid/visualize.scene44949.png" style="height:500px;">
+<img src="milestone_1_predictions_vanilla_d-grid/visualize.scene44949.png" style="height:300px;">
 
-<img src="milestone_1_predictions_vanilla_d-grid/visualize.scene47642.png" style="height:500px;">
+<img src="milestone_1_predictions_vanilla_d-grid/visualize.scene47642.png" style="height:300px;">
 
 Those 3 visualizations clearly demonstrate the superiority of the *D-Grid* model over the *Vanilla*  one in terms of both Average Displacement Error (ADE) and Final Displacement Error (FDE) already for only 2 epochs of training.
 
@@ -106,7 +106,7 @@ Here is how our spatial sampling is performed:
 
 Example of scene presenting both positive and negative samples used to train our model following the safety-driven sampling strategy proposed in the [reference paper](https://arxiv.org/pdf/2012.11717.pdf):
 
-<img src="milestone_2_positive_and_negative_sampling_visualizations/sampling_scene_4.png" style="height:500px;">
+<img src="milestone_2_positive_and_negative_sampling_visualizations/sampling_scene_4.png" style="height:300px;">
 
 
 <a name="mi_2_cli"></a>
