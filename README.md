@@ -32,6 +32,16 @@ TrajNet++ is a large scale interaction-centric trajectory forecasting benchmark 
 
 2. [ Milestone 2: Implementing Social Contrastive Learning ](#mi_2)
 
+ 2.1 [ Spatial sampling ](#mi_2_sp)
+ 
+ 2.2 [ Contrastive learning implementation ](#mi_2_cli)
+ 
+ 2.3 [ Training ](#mi_2_tr)
+ 
+ 2.4 [ Results ](#mi_2_res)
+ 
+ 2.5 [ Observations ](#mi_2_obs)
+  
 
 <a name="mi_1"></a>
 ## ᐅ Milestone 1: Getting Started
@@ -77,10 +87,69 @@ Qualitative evaluation (Results.png):
 
 Based on our familiarity with the Trajnet++ framework, the purpose of this second milestone is to apply social contrastive learning to the D-LSTM (i.e. *D-Grid*) model. More information about this method can be found in the paper [*Social NCE: Contrastive Learning of Socially-aware Motion Representations*](https://arxiv.org/pdf/2012.11717.pdf) written by researchers from VITA lab of EPFL. Briefly explained, contrastive learning combined with negative data augmentation has been a promising technique to boost the robustness of forecasting models. In addition, it has been shown that using social contrastive learning helps to reduce the percentage of collision (COL). In fact, this strategy allows to locally treat trajectories to avoid other pedestrians (in comparison with a model that has been trained without contrastive loss). In this second milestone we have hence implemented contrastive learning and sampling methods (both positive and negative) as suggested in the [reference paper](https://arxiv.org/pdf/2012.11717.pdf).
 
+Given time constraints, it was chosen not to implement event sampling in order to better focus on the spatial sampling and its hyperparameters tuning.
+
+<a name="mi_2_sp"></a>
+### 1) Spatial sampling
+
+Here is how our spatial sampling is performed:
+
+* Positive sampling: the ground truth position of the primary pedestrian is selected, and small noise is added in order to avoid overfitting.
+
+* Negative sampling: the generation of negative samples was a bit more challenging, since the number of neighbours is not constant and can vary from scene to scene. Here are the three main points of our proposed solution:
+
+	i. A constant maximum number of neighbours is defined, and a big tensor of negative samples is built based on this constant.
+
+	ii. The first part of this tensor is filled with the present neighbour position, on which we add shifts in 9 different directions, and again a small noise to prevent overfitting.
+	
+	iii. The leftover part of this tensor is filled with NaN values (missing neighbours).
+
 Example of scene presenting both positive and negative samples used to train our model following the safety-driven sampling strategy proposed in the [reference paper](https://arxiv.org/pdf/2012.11717.pdf):
 
 <img src="milestone_2_positive_and_negative_sampling_visualizations/sampling_scene_4.png" style="height:500px;">
 
 
+<a name="mi_2_cli"></a>
+### 2) Contrastive learning implementation
+
+After sampling, the following steps were performed in our contrastive learning process:
+
+1. Saving a mask for the present neighbours.
+2. Conversion of NaN values to 0 to cancel their effect in the following MLP.
+3. Lower-dimensional embedding of the past trajectories, negative samples and positive samples computation via an MLP encoder.
+4. Normalization of those lower-dimensional embeddings.
+5. Similarity computation between positive/negative embeddings and the predicted trajectory.
+6. Using the mask, setting the similarity value for missing sample to -10 to prevent them from interfering with the loss computation.
+7. Loss computation
+
+
+<a name="mi_2_tr"></a>
+### 3) Training
+
+**Training procedure**
+
+The models trained on both real (`real_data`) and synthetic (`synth_data`) data obtained from milestone 1 (25 epochs) were fine-tuned using this new NCE (Noise Contrastive Estimation) loss function designed for contrastive learning again on both real and synthetic data.
+
+**Hyperparameters tuning**
+
+The parameters to be tuned were the following:
+
+* Contrastive weight (`contrastive_weight`): relative weight of the contrastive loss with respect to the original loss.
+* Learning rate (`lr`) of the network: a too high learning rate might destroy the previously learned net; on the other hand, a too low learning rate might be ineffective to pursue learning.
+* Number of additional epochs (`epochs`) used for fine-tuning.
+
+
+<a name="mi_2_res"></a>
+### 4) Results
+
 Here is our results comparison in terms of FDE and Col-I of your D-LSTM models trained without (milestone 1) and with (milestone 2) contrastive loss.
 
+-- table --
+
+
+<a name="mi_2_obs"></a>
+### 5) Observations
+
+The contrastive loss managed to improve the COL-I measure (collision rate) by 8%. With this second milestone, we observed, indeed, that creating negative samples around neighbours helps to avoid them and hence reduce the amount of collisions.
+
+Even if the FDE (Final Displacement Error) metric didn't decrease that much, we can conclude that this new NCE loss remains all the same competitive in the FDE  by not impacting it too much.
