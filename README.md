@@ -79,7 +79,7 @@ Based on our familiarity with the Trajnet++ framework, the purpose of this secon
 
 Example of scene presenting both positive and negative samples used to train our model following the safety-driven sampling strategy proposed in the [reference paper](https://arxiv.org/pdf/2012.11717.pdf):
 
-<img src="milestone_2_positive_and_negative_sampling_visualizations/sampling_scene_0.png" style="height:500px;">
+<img src="milestone_2_positive_and_negative_sampling_visualizations/sampling_scene_4.png" style="height:500px;">
 
 
 Here is our results comparison in terms of FDE and Col-I of your D-LSTM models trained without (milestone 1) and with (milestone 2) contrastive loss.
