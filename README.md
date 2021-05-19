@@ -94,7 +94,7 @@ Given time constraints, it was chosen not to implement event sampling in order t
 
 Here is how our spatial sampling is performed:
 
-* Positive sampling: the ground truth position of the primary pedestrian is selected, and small noise is added in order to avoid overfitting.
+* Positive sampling: the ground truth position of the primary pedestrian is selected, and a small noise is added in order to avoid overfitting.
 
 * Negative sampling: the generation of negative samples was a bit more challenging, since the number of neighbours is not constant and can vary from scene to scene. Here are the three main points of our proposed solution:
 
@@ -104,7 +104,7 @@ Here is how our spatial sampling is performed:
 	
 	iii. The leftover part of this tensor is filled with NaN values (missing neighbours).
 
-Example of scene presenting both positive and negative samples used to train our model following the safety-driven sampling strategy proposed in the [reference paper](https://arxiv.org/pdf/2012.11717.pdf):
+Example of scene with 4 neighbours presenting both positive and negative samples used to train our model following the safety-driven sampling strategy proposed in the [reference paper](https://arxiv.org/pdf/2012.11717.pdf):
 
 <img src="milestone_2_positive_and_negative_sampling_visualizations/sampling_scene_4.png" style="height:300px;">
 
@@ -142,7 +142,7 @@ The parameters to be tuned were the following:
 <a name="mi_2_res"></a>
 ### 4) Results
 
-Here is our results comparison in terms of FDE and Col-I of your D-LSTM models trained without (milestone 1) and with (milestone 2) contrastive loss.
+Here is our results comparison in terms of FDE and Col-I of our D-LSTM models trained without (milestone 1) and with (milestone 2) contrastive loss.
 
 **Milestone 1**
 
@@ -173,8 +173,8 @@ Here is our results comparison in terms of FDE and Col-I of your D-LSTM models t
 <a name="mi_2_obs"></a>
 ### 5) Observations
 
-From the results we obtain, we can see that in comparison to our best submission for milestone 1 (submission 2) the contrastive loss managed to improve the COL-I measure (Prediction Collision) by at most 13% (submission 4). This observation allows us to conclude that the contrastive learning and the negative data augmentation (i.e. creating negative samples around neighbours) implemented in this second milestone help to reduce the amount of collisions and hence to predict more realistic pedestrian trajectories.
+From the results we obtain, we can see that in comparison to our best submission for milestone 1 (submission 2) the contrastive loss managed to improve the COL-I measure (Prediction Collision) by at most 13% (submission 4 of milestone 2). This observation allows us to conclude that the contrastive learning and the negative data augmentation (i.e. creating negative samples around neighbours) implemented in this second milestone effectively help to reduce the amount of collisions and hence to predict more realistic pedestrian trajectories.
 
 Concerning the FDE (Final Displacement Error), even if this metric didn't decrease that much in comparison with milestone 1 (our lowest FDE was obtained with submission 9), we can conclude that this new NCE loss remains all the same competitive in the FDE by not impacting it too much.
 
-To sum up, the overall best performing model we trained (i.e. the one embedding jointly the lowest FDE and COL-I) is the one in submission 10. As said previously, the learning rate must be chosen wisely to allow the model to learn effectively. In our case, we have chosen to keep its default value (1e-3). In the first submissions we made, we started with a model that we had not submitted for milestone 1, but that we had trained to 30 epochs. Later, for fairer comparisons, we chose rather to fine-tune with the best model we had submitted to AICrowd (i.e. the submission 2 of milestone 1 trained to 25 epochs) even if it was trained on less epochs. There doesn't seem to be much improvement between 10 and 15 additional epochs. Indeed, the learning curve should gently tend towards a zero slope from 10 additional epochs. Finally, the contrastive weight (introduced in milestone 2) was the new critical hyperparameter we had to tune. From our tests, we deduce that an optimal value for this parameter is situated between 2 and 4 in order to influence the global loss in a reasonable way and reduce the COL-I metric.
+To sum up, the overall best performing model we trained (i.e. the one embedding jointly the lowest FDE and COL-I) is the one of submission 10. As said previously, the learning rate must be chosen wisely to allow the model to learn effectively. In our case, we have chosen to keep its default value (1e-3). In the first submissions we made, we started with a model that we had not submitted for milestone 1, but that we had trained to 30 epochs. Later, for fairer comparisons, we chose rather to fine-tune the best model we had submitted to AICrowd (i.e. the one from submission 2 of milestone 1 trained to 25 epochs) even though it has been trained on 5 less epochs. We also observed that there doesn't seem to be much improvement between 10 and 15 additional epochs. Indeed, the learning curve should apparently gently tend towards a zero slope from 10 additional epochs. Finally, the contrastive weight (introduced in milestone 2) was the new critical hyperparameter we had to tune. From our tests, we deduce that an optimal value for this parameter is situated between 2 and 4 in order to influence the global loss in a reasonable way and to reduce the COL-I metric.
