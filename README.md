@@ -1,5 +1,6 @@
 # TrajNet++ : The Trajectory Forecasting Framework
 
+![Python](https://img.shields.io/badge/python-v3.6+-green.svg)
 ![Python](https://img.shields.io/badge/python-v3.8+-green.svg)
 [![wakatime](https://wakatime.com/badge/github/Antho1426/trajnetplusplusbaselines.svg)](https://wakatime.com/badge/github/Antho1426/trajnetplusplusbaselines)
 [![Open Source? Yes!](https://badgen.net/badge/Open%20Source%20%3F/Yes%21/blue?icon=github)](https://github.com/Naereen/badges/)
