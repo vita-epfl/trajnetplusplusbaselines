@@ -66,7 +66,6 @@ def predict(paths, predict_all=True, n_predict=12, obs_length=9):
             neighbours_tracks.append(np.array(predictions[1:]))
 
     ## Unimodal Ouput
-    neighbours_tracks = []
     if len(np.array(neighbours_tracks)):
         neighbours_tracks = np.array(neighbours_tracks).transpose(1, 0, 2)
 
