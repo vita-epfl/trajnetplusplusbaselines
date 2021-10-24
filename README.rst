@@ -121,12 +121,15 @@ Citation
 If you find this code useful in your research then please cite
 
 .. code-block::
-
+    
     @article{Kothari2020HumanTF,
-      title={Human Trajectory Forecasting in Crowds: A Deep Learning Perspective},
-      author={Parth Kothari and S. Kreiss and Alexandre Alahi},
-      journal={ArXiv},
-      year={2020},
-      volume={abs/2007.03639}
-    }
+      author={Kothari, Parth and Kreiss, Sven and Alahi, Alexandre},
+      journal={IEEE Transactions on Intelligent Transportation Systems}, 
+      title={Human Trajectory Forecasting in Crowds: A Deep Learning Perspective}, 
+      year={2021},
+      volume={},
+      number={},
+      pages={1-15},
+      doi={10.1109/TITS.2021.3069362}
+     }
 
