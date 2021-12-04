@@ -5,7 +5,7 @@ import trajnetplusplustools
 
 import socialforce
 from socialforce.potentials import PedPedPotential
-from socialforce.fieldofview import FieldOfView
+from socialforce.field_of_view import FieldOfView
 
 def predict(input_paths, dest_dict=None, dest_type='interp', sf_params=[0.5, 2.1, 0.3],
             predict_all=True, n_predict=12, obs_length=9):
