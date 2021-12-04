@@ -25,7 +25,7 @@ setup(
         'pykalman',
         'python-json-logger',
         'scipy',
-        'torch',
+        'torch==1.10.0',
         'trajnetplusplustools',
         'pysparkling',
         'joblib',

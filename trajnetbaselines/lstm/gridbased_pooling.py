@@ -115,7 +115,7 @@ class GridBasedPooling(torch.nn.Module):
             grid = self.pretrained_model(grid)
 
         ## Normalize Grid (if necessary)
-        grid = grid.view(num_tracks, -1)
+        grid = grid.reshape(num_tracks, -1)
         ## Normalization schemes
         if self.norm == 1:
             # "Global Norm"
