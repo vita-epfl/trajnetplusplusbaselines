@@ -349,6 +349,7 @@ def main(epochs=25):
                         help='type of interaction encoder')
     parser.add_argument('--sample', default=1.0, type=float,
                         help='sample ratio when loading train/val scenes')
+    parser.add_argument('--seed', type=int, default=42)
 
     ## Augmentations
     parser.add_argument('--augment', action='store_true',
@@ -417,14 +418,11 @@ def main(epochs=25):
                                  help='collision loss weight')
     hyperparameters.add_argument('--col_gamma', default=2.0, type=float,
                                  help='hyperparameter in collision loss')
-
-
     args = parser.parse_args()
 
-    ## Fixed set of scenes if sampling
-    if args.sample < 1.0:
-        torch.manual_seed("080819")
-        random.seed(1)
+    ## Set seed for reproducibility
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
 
     ## Define location to save trained model
     if not os.path.exists('OUTPUT_BLOCK/{}'.format(args.path)):
