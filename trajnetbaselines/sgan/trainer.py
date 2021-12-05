@@ -550,9 +550,14 @@ def main(epochs=25):
         args.load_state = args.load_full_state
 
     # add args.device
-    args.device = torch.device('cpu')
-    # if not args.disable_cuda and torch.cuda.is_available():
-    #     args.device = torch.device('cuda')
+    print('Torch', torch.__version__, 'CUDA', torch.version.cuda)
+    args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if not args.disable_cuda and torch.cuda.is_available():
+        args.device = torch.device('cuda')
+    elif args.disable_cuda:
+        args.device = torch.device('cpu')
+    print('Actual Training Device:', args.device)
+
 
     args.path = 'DATA_BLOCK/' + args.path
     ## Prepare data
