@@ -36,11 +36,6 @@ def front_ped(xy, other_xy, past_xy):
 def rel_obs(obs):
     """ Provides relative position of neighbours wrt one another
 
-    Parameters
-    ----------
-    obs :  Tensor [num_tracks, 2]
-        x-y positions of all agents
-
     Returns
     -------
     relative : Tensor [num_tracks, num_tracks, 2]
@@ -51,13 +46,6 @@ def rel_obs(obs):
 
 def rel_directional(obs1, obs2):
     """ Provides relative velocity of neighbours wrt one another
-
-    Parameters
-    ----------
-    obs1 :  Tensor [num_tracks, 2]
-        x-y positions of all agents at previous time-step t-1
-    obs2 :  Tensor [num_tracks, 2]
-        x-y positions of all agents at current time-step t
 
     Returns
     -------
@@ -653,7 +641,6 @@ class SAttention_fast(torch.nn.Module):
         # [num_tracks, num_tracks, 2] --> [num_tracks * (num_tracks - 1), 2]
         rel_position = rel_position[~torch.eye(num_tracks).bool()]
         rel_embed = self.embedding(rel_position)
-
         ## Update interaction-encoder LSTMs
         pool_hidden_states = self.pool_lstm(rel_embed, hidden_cell_stacked)
         

@@ -19,7 +19,7 @@ from .lstm import LSTM, LSTMPredictor, drop_distant
 from .gridbased_pooling import GridBasedPooling
 from .non_gridbased_pooling import NN_Pooling, HiddenStateMLPPooling, AttentionMLPPooling, DirectionalMLPPooling
 from .non_gridbased_pooling import NN_LSTM, TrajectronPooling, SAttention_fast
-from .more_non_gridbased_pooling import NMMP
+from .more_non_gridbased_pooling import NMMP, Directional_SAttention
 
 from .. import __version__ as VERSION
 
@@ -345,7 +345,8 @@ def main(epochs=25):
                         help='loss objective, L2 loss (L2) and Gaussian loss (pred)')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
-                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social'),
+                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social',
+                                 'directional_s_att'),
                         help='type of interaction encoder')
     parser.add_argument('--sample', default=1.0, type=float,
                         help='sample ratio when loading train/val scenes')
@@ -491,6 +492,8 @@ def main(epochs=25):
         pool = TrajectronPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
     elif args.type == 's_att_fast':
         pool = SAttention_fast(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
+    elif args.type == 'directional_s_att':
+        pool = Directional_SAttention(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
     elif args.type != 'vanilla':
         pool = GridBasedPooling(type_=args.type, hidden_dim=args.hidden_dim,
                                 cell_side=args.cell_side, n=args.n, front=args.front,
