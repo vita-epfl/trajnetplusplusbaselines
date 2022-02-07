@@ -332,119 +332,29 @@ def eval(gt, input_file, args):
 
     return evaluator.result()
 
-def main():
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--path', default='trajdata',
-                        help='directory of data to test')
-    parser.add_argument('--output', nargs='+',
-                        help='relative path to saved model')
-    parser.add_argument('--obs_length', default=9, type=int,
-                        help='observation length')
-    parser.add_argument('--pred_length', default=12, type=int,
-                        help='prediction length')
-    parser.add_argument('--write_only', action='store_true',
-                        help='disable writing new files')
-    parser.add_argument('--disable-collision', action='store_true',
-                        help='disable collision metrics')
-    parser.add_argument('--labels', required=False, nargs='+',
-                        help='labels of models')
-    parser.add_argument('--sf', action='store_true',
-                        help='consider socialforce in evaluation')
-    parser.add_argument('--orca', action='store_true',
-                        help='consider orca in evaluation')
-    parser.add_argument('--kf', action='store_true',
-                        help='consider kalman in evaluation')
-    parser.add_argument('--cv', action='store_true',
-                        help='consider constant velocity in evaluation')
-    parser.add_argument('--normalize_scene', action='store_true',
-                        help='augment scenes')
-    parser.add_argument('--modes', default=1, type=int,
-                        help='number of modes to predict')
-    args = parser.parse_args()
-
-    scipy.seterr('ignore')
-
-    args.output = args.output if args.output is not None else []
-    ## assert length of output models is not None
-    if (not args.sf) and (not args.orca) and (not args.kf) and (not args.cv):
-        assert len(args.output), 'No output file is provided'
-
-    ## Path to the data folder name to predict
-    args.path = 'DATA_BLOCK/' + args.path + '/'
-
-    ## Test_pred : Folders for saving model predictions
-    args.path = args.path + 'test_pred/'
-
-    ## Writes to Test_pred
-    ## Does NOT overwrite existing predictions if they already exist ###
-    write.main(args)
-    if args.write_only: # For submission to AICrowd.
-        print("Predictions written in test_pred folder")
-        exit()
-
-    ## Evaluates test_pred with test_private
-    names = []
-    for model in args.output:
-        model_name = model.split('/')[-1].replace('.pkl', '')
-        model_name = model_name + '_modes' + str(args.modes)
-        names.append(model_name)
-
-    ## labels
-    if args.labels:
-        labels = args.labels
-    else:
-        labels = names
-
-    # Initiate Result Table
+def trajnet_evaluate(args):
+    """Evaluates test_pred against test_private"""
+    model_names = [model.split('/')[-1].replace('.pkl', '') + '_modes' + str(args.modes) for model in args.output]
+    labels = args.labels if args.labels is not None else model_names
     table = Table()
 
-    for num, name in enumerate(names):
-        print(name)
+    for num, model_name in enumerate(model_names):
+        print(model_name)
+        model_preds = sorted([f for f in os.listdir(args.path + model_name) if not f.startswith('.')])
 
-        result_file = args.path.replace('pred', 'results') + name
+        # Simple Collision Test (if present in test_private)
+        col_result = collision_test(model_preds, model_name, args)
+        table.add_collision_entry(labels[num], col_result)
 
-        ## If result was pre-calculated and saved, Load
-        if os.path.exists(result_file + '/results.pkl'):
-            print("Loading Saved Results")
-            with open(result_file + '/results.pkl', 'rb') as handle:
-                [final_result, sub_final_result, col_result] = pickle.load(handle)
-            table.add_result(labels[num], final_result, sub_final_result)
-            table.add_collision_entry(labels[num], col_result)
+        pred_datasets = [args.path + model_name + '/' + f for f in model_preds if 'collision_test.ndjson' not in f]
+        true_datasets = [args.path.replace('pred', 'private') + f for f in model_preds if 'collision_test.ndjson' not in f]
 
-        # ## Else, Calculate results and save
-        else:
-            list_sub = sorted([f for f in os.listdir(args.path + name)
-                               if not f.startswith('.')])
+        # Evaluate predicted datasets with True Datasets
+        results = {pred_datasets[i].replace(args.path, '').replace('.ndjson', ''):
+                   eval(true_datasets[i], pred_datasets[i], args) for i in range(len(true_datasets))}
 
-            ## Simple Collision Test
-            col_result = collision_test(list_sub, name, args)
-            table.add_collision_entry(labels[num], col_result)
+        # Add results to Table
+        final_result, sub_final_result = table.add_entry(labels[num], results)
 
-            submit_datasets = [args.path + name + '/' + f for f in list_sub if 'collision_test.ndjson' not in f]
-            true_datasets = [args.path.replace('pred', 'private') + f for f in list_sub if 'collision_test.ndjson' not in f]
-
-            ## Evaluate submitted datasets with True Datasets [The main eval function]
-            # results = {submit_datasets[i].replace(args.path, '').replace('.ndjson', ''):
-            #             eval(true_datasets[i], submit_datasets[i], args)
-            #            for i in range(len(true_datasets))}
-
-            results_list = Parallel(n_jobs=4)(delayed(eval)(true_datasets[i], submit_datasets[i], args)
-                                                            for i in range(len(true_datasets)))
-            results = {submit_datasets[i].replace(args.path, '').replace('.ndjson', ''): results_list[i] 
-                       for i in range(len(true_datasets))}
-
-            # print(results)
-            ## Generate results
-            final_result, sub_final_result = table.add_entry(labels[num], results)
-
-            ## Save results as pkl (to avoid computation again)
-            os.makedirs(result_file)
-            with open(result_file + '/results.pkl', 'wb') as handle:
-                pickle.dump([final_result, sub_final_result, col_result], handle, protocol=pickle.HIGHEST_PROTOCOL)
-
-    ## Make Result Table
+    # Output Result Table
     table.print_table()
-
-if __name__ == '__main__':
-    main()
