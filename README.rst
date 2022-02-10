@@ -59,7 +59,7 @@ The training script and its help menu:
 Evaluation
 ==========
 
-The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator --help``
+The evaluation script and its help menu: ``python -m evaluator.lstm.trajnet_evaluator --help``
 
 **Run Example**
 
