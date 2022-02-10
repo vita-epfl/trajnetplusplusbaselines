@@ -70,6 +70,7 @@ class TrajnetEvaluator:
             ## Extract Prediction Frames
             primary_tracks_all = [t for t in self.scenes_pred[i][0] if t.scene_id == self.scenes_id_gt[i]]
             neighbours_tracks_all = [[t for t in self.scenes_pred[i][j] if t.scene_id == self.scenes_id_gt[i]] for j in range(1, len(self.scenes_pred[i]))]
+            neighbours_tracks_all = [track for track in neighbours_tracks_all if len(track)]   # Required for overlapping scenes
 
             ##### --------------------------------------------------- SINGLE -------------------------------------------- ####
 
@@ -110,6 +111,7 @@ class TrajnetEvaluator:
                 num_gt_neigh = len(ground_truth) - 1
                 num_predicted_neigh = len(neighbours_tracks)
                 if num_gt_neigh != num_predicted_neigh:
+                    print("The model does not predict all neighbours in the scene")
                     self.enable_col1 = False
                     self.metrics.pred_col = -1
                     score[curr_type].pred_col = -1

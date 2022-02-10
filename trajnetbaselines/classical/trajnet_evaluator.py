@@ -8,11 +8,12 @@ import torch
 from tqdm import tqdm
 
 from evaluator.trajnet_evaluator import trajnet_evaluate
-from evaluator.write_utils import load_test_datasets, write_predictions
+from evaluator.write_utils import load_test_datasets, preprocess_test, write_predictions
 
 
 def predict_scene(predictor, model_name, paths, scene_goal, args):
     """For each scene, get model predictions"""
+    paths = preprocess_test(paths, args.obs_length)
     if 'sf_opt' in model_name:
         predictions = predictor(paths, sf_params=[0.5, 5.0, 0.3], n_predict=args.pred_length, obs_length=args.obs_length) ## optimal sf_params (no collision constraint) [0.5, 1.0, 0.1],
     elif 'orca_opt' in model_name:

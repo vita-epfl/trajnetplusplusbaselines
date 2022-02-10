@@ -8,12 +8,13 @@ import torch
 from tqdm import tqdm
 
 from evaluator.trajnet_evaluator import trajnet_evaluate
-from evaluator.write_utils import load_test_datasets, write_predictions
+from evaluator.write_utils import load_test_datasets, preprocess_test, write_predictions
 from .sgan import SGANPredictor
 
 
 def predict_scene(predictor, model_name, paths, scene_goal, args):
     """For each scene, get model predictions"""
+    paths = preprocess_test(paths, args.obs_length)
     predictions = predictor(paths, scene_goal, n_predict=args.pred_length, obs_length=args.obs_length, modes=args.modes, args=args)
     return predictions
 

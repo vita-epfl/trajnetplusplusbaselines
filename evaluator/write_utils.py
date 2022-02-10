@@ -29,6 +29,16 @@ def load_test_datasets(dataset, goal_flag, args):
     return dataset_name, scenes, scene_goals
 
 
+def preprocess_test(scene, obs_len):
+    """Remove pedestrian trajectories that appear post observation period.
+    Can occur when the test set has overlapping scenes."""
+    obs_frames = [primary_row.frame for primary_row in scene[0]][:obs_len]
+    last_obs_frame = obs_frames[-1]
+    scene = [[row for row in ped if row.frame <= last_obs_frame]
+                for ped in scene if ped[0].frame <= last_obs_frame]
+    return scene
+
+
 def write_predictions(pred_list, scenes, model_name, dataset_name, args):
     """Write predictions corresponding to the scenes in the respective file"""
     seq_length = args.obs_length + args.pred_length
