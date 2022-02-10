@@ -59,17 +59,17 @@ The training script and its help menu:
 Evaluation
 ==========
 
-The evaluation script and its help menu: ``python -m evaluator.trajnet_evaluator --help``
+The evaluation script and its help menu: ``python -m evaluator.lstm.trajnet_evaluator --help``
 
 **Run Example**
 
 .. code-block::
-
-   ## TrajNet++ evaluator (saves model predictions. Useful for submission to TrajNet++ benchmark)
-   python -m evaluator.trajnet_evaluator --output OUTPUT_BLOCK/trajdata/lstm_directional_None.pkl --path <path_to_test_file>
    
-   ## Fast Evaluator (does not save model predictions)
-   python -m evaluator.fast_evaluator --output OUTPUT_BLOCK/trajdata/lstm_directional_None.pkl --path <path_to_test_file>
+   ## LSTM (saves model predictions. Useful for submission to TrajNet++ benchmark)
+   python -m evaluator.lstm.trajnet_evaluator --output OUTPUT_BLOCK/trajdata/lstm_directional_None.pkl --path <path_to_test_file>
+
+   ## SGAN (saves model predictions. Useful for submission to TrajNet++ benchmark)
+   python -m evaluator.sgan.trajnet_evaluator --output OUTPUT_BLOCK/trajdata/sgan_directional_None.pkl --path <path_to_test_file>
 
 More details regarding TrajNet++ evaluator are provided `here <https://github.com/vita-epfl/trajnetplusplusbaselines/blob/master/evaluator/README.rst>`_
 
