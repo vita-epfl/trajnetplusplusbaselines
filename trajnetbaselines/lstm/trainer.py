@@ -30,7 +30,7 @@ class Trainer(object):
     def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
                  device=None, batch_size=8, obs_length=9, pred_length=12, augment=True,
                  normalize_scene=False, save_every=1, start_length=0, obs_dropout=False,
-                 augment_noise=False, col_weight=0.0, col_gamma=2.0, val_flag=True):
+                 augment_noise=False, val_flag=True):
         self.model = model if model is not None else LSTM()
         self.criterion = criterion if criterion is not None else PredictionLoss()
         self.optimizer = optimizer if optimizer is not None else \
@@ -55,9 +55,6 @@ class Trainer(object):
 
         self.start_length = start_length
         self.obs_dropout = obs_dropout
-
-        self.col_weight = col_weight
-        self.col_gamma = col_gamma
 
         self.val_flag = val_flag
 
@@ -259,20 +256,18 @@ class Trainer(object):
 
         rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
-        ## Loss wrt primary tracks of each scene only
-        l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
-        loss = l2_loss
-        # Auxiliary collision loss
-        # l2_loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
-        # col_loss = self.col_weight * self.criterion.col_loss(outputs[-self.pred_length:], batch_scene[-self.pred_length:], batch_split, self.col_gamma)
-        # loss = l2_loss + col_loss
+        # For collision loss calculation
+        primary_prediction = batch_scene[-self.pred_length:].clone()
+        primary_prediction[:, batch_split[:-1]] = outputs[-self.pred_length:, batch_split[:-1]]
 
+        ## Loss wrt primary tracks of each scene only
+        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * self.batch_size
 
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-        return l2_loss.item()
+        return loss.item()
 
     def val_batch(self, batch_scene, batch_scene_goal, batch_split):
         """Validation of B batches in parallel, B : batch_size
@@ -414,10 +409,10 @@ def main(epochs=25):
                                  help='message passing iterations in NMMP')
 
     ## Collision Loss
-    hyperparameters.add_argument('--col_weight', default=0., type=float,
+    hyperparameters.add_argument('--col_wt', default=0., type=float,
                                  help='collision loss weight')
-    hyperparameters.add_argument('--col_gamma', default=2.0, type=float,
-                                 help='hyperparameter in collision loss')
+    hyperparameters.add_argument('--col_distance', default=0.2, type=float,
+                                 help='distance threshold post which collision occurs')
     args = parser.parse_args()
 
     ## Set seed for reproducibility
@@ -513,7 +508,8 @@ def main(epochs=25):
     start_epoch = 0
 
     # Loss Criterion
-    criterion = L2Loss() if args.loss == 'L2' else PredictionLoss()
+    criterion = L2Loss(col_wt=args.col_wt, col_distance=args.col_distance) if args.loss == 'L2' \
+                    else PredictionLoss(col_wt=args.col_wt, col_distance=args.col_distance)
 
     # train
     if args.load_state:
@@ -538,8 +534,7 @@ def main(epochs=25):
                       criterion=criterion, batch_size=args.batch_size, obs_length=args.obs_length,
                       pred_length=args.pred_length, augment=args.augment, normalize_scene=args.normalize_scene,
                       save_every=args.save_every, start_length=args.start_length, obs_dropout=args.obs_dropout,
-                      augment_noise=args.augment_noise, col_weight=args.col_weight, col_gamma=args.col_gamma,
-                      val_flag=val_flag)
+                      augment_noise=args.augment_noise, val_flag=val_flag)
     trainer.loop(train_scenes, val_scenes, train_goals, val_goals, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 

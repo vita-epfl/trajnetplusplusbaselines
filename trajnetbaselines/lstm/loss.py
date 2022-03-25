@@ -8,11 +8,17 @@ class PredictionLoss(torch.nn.Module):
 
     p(x) = 0.2 * N(x|mu, 3.0)  +  0.8 * N(x|mu, sigma)
     """
-    def __init__(self, keep_batch_dim=False, background_rate=0.2):
+    def __init__(self, keep_batch_dim=False, background_rate=0.2,
+                 col_wt=0.0, col_distance=0.2):
         super(PredictionLoss, self).__init__()
         self.keep_batch_dim = keep_batch_dim
         self.background_rate = background_rate
         self.loss_multiplier = 1
+
+        self.col_wt = col_wt
+        self.col_distance = col_distance
+        if self.col_wt:
+            print("Using Auxiliary collision loss")
 
     @staticmethod
     def gaussian_2d(mu1mu2s1s2rho, x1x2):
@@ -43,33 +49,18 @@ class PredictionLoss(torch.nn.Module):
 
         return numerator / denominator
 
-    def col_loss(self, primary, neighbours, batch_split, gamma=2.0):
-        """
-        Penalizes model when primary pedestrian prediction comes close
-        to the neighbour predictions
-        primary: Tensor [pred_length, 1, 2]
-        neighbours: Tensor [pred_length, num_neighbours, 2]
-        """
-
-        neighbours[neighbours != neighbours] = -1000
-        exponential_loss = 0.0
-        for (start, end) in zip(batch_split[:-1], batch_split[1:]):
-            batch_primary = primary[:, start:start+1]
-            batch_neigh = neighbours[:, start:end]
-            distance_to_neigh = torch.norm(batch_neigh - batch_primary, dim=2)
-            mask_far = (distance_to_neigh < 0.25).detach()
-            distance_to_neigh = -gamma * distance_to_neigh * mask_far
-            exponential_loss += distance_to_neigh.exp().sum()
-        return exponential_loss.sum()
-
-    def forward(self, inputs, targets, batch_split):
-        
+    def forward(self, inputs, targets, batch_split, positions=None):
         pred_length, batch_size = targets.size(0), batch_split[:-1].size(0)
         ## Extract primary pedestrians
         # [pred_length, num_tracks, 2] --> [pred_length, batch_size, 2]
         targets = targets.transpose(0, 1)
         targets = targets[batch_split[:-1]]
         targets = targets.transpose(0, 1)
+
+        col_loss = 0
+        if self.col_wt:
+            assert positions is not None, "Prediction positions required to calculate collision loss"
+            col_loss = CollisionLoss(positions, batch_split, self.col_wt, self.col_distance)
 
         # [pred_length, num_tracks, 5] --> [pred_length, batch_size, 5]
         inputs = inputs.transpose(0, 1)
@@ -95,44 +86,39 @@ class PredictionLoss(torch.nn.Module):
             values = values.reshape(pred_length, batch_size)
             return values.mean(dim=0) * self.loss_multiplier
         
-        return torch.mean(values) * self.loss_multiplier
+        if self.col_wt:
+            return torch.mean(values) * self.loss_multiplier + col_loss * self.loss_multiplier
+        return (torch.mean(values) * self.loss_multiplier)
 
 class L2Loss(torch.nn.Module):
     """L2 Loss (deterministic version of PredictionLoss)
 
     This Loss penalizes only the primary trajectories
     """
-    def __init__(self, keep_batch_dim=False):
+    def __init__(self, keep_batch_dim=False,
+                 col_wt=0.0, col_distance=0.2):
         super(L2Loss, self).__init__()
         self.loss = torch.nn.MSELoss(reduction='none')
         self.keep_batch_dim = keep_batch_dim
         self.loss_multiplier = 100
 
-    def col_loss(self, primary, neighbours, batch_split, gamma=2.0):
-        """
-        Penalizes model when primary pedestrian prediction comes close
-        to the neighbour predictions
-        primary: Tensor [pred_length, 1, 2]
-        neighbours: Tensor [pred_length, num_neighbours, 2]
-        """
+        self.col_wt = col_wt
+        self.col_distance = col_distance
+        if self.col_wt:
+            print("Using Auxiliary collision loss")
 
-        neighbours[neighbours != neighbours] = -1000
-        exponential_loss = 0.0
-        for (start, end) in zip(batch_split[:-1], batch_split[1:]):
-            batch_primary = primary[:, start:start+1]
-            batch_neigh = neighbours[:, start:end]
-            distance_to_neigh = torch.norm(batch_neigh - batch_primary, dim=2)
-            mask_far = (distance_to_neigh < 0.25).detach()
-            distance_to_neigh = -gamma * distance_to_neigh * mask_far
-            exponential_loss += distance_to_neigh.exp().sum()
-        return exponential_loss.sum()
-
-    def forward(self, inputs, targets, batch_split):
+    def forward(self, inputs, targets, batch_split, positions=None):
         ## Extract primary pedestrians
         # [pred_length, num_tracks, 2] --> [pred_length, batch_size, 2]
         targets = targets.transpose(0, 1)
         targets = targets[batch_split[:-1]]
         targets = targets.transpose(0, 1)
+
+        col_loss = 0.0
+        if self.col_wt:
+            assert positions is not None, "Prediction positions required to calculate collision loss"
+            col_loss = CollisionLoss(positions, batch_split, self.col_wt, self.col_distance)
+
         # [pred_length, num_tracks, 5] --> [pred_length, batch_size, 5]
         inputs = inputs.transpose(0, 1)
         inputs = inputs[batch_split[:-1]]
@@ -144,7 +130,37 @@ class L2Loss(torch.nn.Module):
         if self.keep_batch_dim:
             return loss.mean(dim=0).mean(dim=1) * self.loss_multiplier
         
-        return torch.mean(loss) * self.loss_multiplier
+        if self.col_wt:
+            return torch.mean(loss) * self.loss_multiplier + col_loss * self.loss_multiplier
+        return (torch.mean(loss) * self.loss_multiplier)
+
+
+def CollisionLoss(predictions, batch_split, col_wt=10.0, col_distance=0.2):
+    """
+    Penalizes model when primary pedestrian prediction comes close
+    to the neighbour predictions
+    primary: Tensor [pred_length, 1, 2]
+    neighbours: Tensor [pred_length, num_neighbours, 2]
+    col_wt: Weight of collision loss
+    col_distance: distance threshold post which collision occurs
+    """
+
+    predictions[predictions != predictions] = -1000
+    col_loss = 0.0
+    for (start, end) in zip(batch_split[:-1], batch_split[1:]):
+        primary = predictions[:, start:start+1, :2]
+        if (start + 1) == end:  # No neighbours
+            continue
+        neighs = predictions[:, start+1:end, :2].detach()
+        distance_to_neighs = torch.norm(primary - neighs, dim=-1).view(-1)
+        colliding_neigh_mask = (distance_to_neighs <= col_distance).detach()
+        if not colliding_neigh_mask.any():  # No collisions
+            continue
+        colliding_neighs_dist = distance_to_neighs[colliding_neigh_mask] / col_distance
+        col_val = 1 - colliding_neighs_dist
+        col_loss += col_wt * col_val.sum()
+    return col_loss
+
 
 def bce_loss(input_, target):
     """
