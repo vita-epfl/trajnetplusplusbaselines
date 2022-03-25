@@ -22,6 +22,26 @@ def drop_distant(xy, r=6.0):
     return xy[:, mask], mask
 
 
+def generate_pooling_inputs(obs2, obs1, hidden_cell_state, track_mask, batch_split):
+    hidden_states_to_pool = torch.stack(hidden_cell_state[0]).clone() # detach?
+    hidden_dim = hidden_states_to_pool.size(-1)
+    # tensor for pooling; filled with nan-mask [bs, max # neighbor, 2]
+    max_num_neighbor = (batch_split[1:] - batch_split[:-1]).max()   # number of agents in a scene minus the primary
+    batch_size = len(batch_split) - 1
+    curr_positions = torch.empty(batch_size, max_num_neighbor, 2).fill_(float('nan')).to(obs1.device) # placeholder
+    prev_positions = torch.empty(batch_size, max_num_neighbor, 2).fill_(float('nan')).to(obs1.device) # placeholder
+    curr_hidden_state = torch.empty(batch_size, max_num_neighbor, hidden_dim).fill_(float('nan')).to(obs1.device) # placeholder
+    track_mask_positions = torch.empty(batch_size, max_num_neighbor).fill_(False).bool().to(obs1.device)  # placeholder
+
+    for i in range(batch_size):
+        curr_positions[i, :batch_split[i+1]-batch_split[i]] = obs2[batch_split[i]:batch_split[i+1]]
+        prev_positions[i, :batch_split[i+1]-batch_split[i]] = obs1[batch_split[i]:batch_split[i+1]]
+        curr_hidden_state[i, :batch_split[i+1]-batch_split[i]] = hidden_states_to_pool[batch_split[i]:batch_split[i+1]]
+        track_mask_positions[i, :batch_split[i+1]-batch_split[i]] = track_mask[batch_split[i]:batch_split[i+1]].bool()
+
+    return curr_positions, prev_positions, curr_hidden_state, track_mask_positions
+
+
 class LSTM(torch.nn.Module):
     def __init__(self, embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True, goal_dim=None, goal_flag=False):
         """ Initialize the LSTM forecasting model
@@ -120,28 +140,11 @@ class LSTM(torch.nn.Module):
 
         ## Mask & Pool per scene
         if self.pool is not None:
-            hidden_states_to_pool = torch.stack(hidden_cell_state[0]).clone() # detach?
-            batch_pool = []
-            ## Iterate over scenes
-            for (start, end) in zip(batch_split[:-1], batch_split[1:]):
-                ## Mask for the scene
-                scene_track_mask = track_mask[start:end]
-                ## Get observations and hidden-state for the scene
-                prev_position = obs1[start:end][scene_track_mask]
-                curr_position = obs2[start:end][scene_track_mask]
-                curr_hidden_state = hidden_states_to_pool[start:end][scene_track_mask]
+            curr_positions, prev_positions, curr_hidden_state, track_mask_positions = \
+                generate_pooling_inputs(obs2, obs1, hidden_cell_state, track_mask, batch_split)
+            pool_sample = self.pool(curr_hidden_state, prev_positions, curr_positions)
+            pooled = pool_sample[track_mask_positions.view(-1)]
 
-                ## Provide track_mask to the interaction encoders
-                ## Everyone absent by default. Only those visible in current scene are present
-                interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                interaction_track_mask[start:end] = track_mask[start:end]
-                self.pool.track_mask = interaction_track_mask
-
-                ## Pool
-                pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
-                batch_pool.append(pool_sample)
-
-            pooled = torch.cat(batch_pool)
             if self.pool_to_input:
                 input_emb = torch.cat([input_emb, pooled], dim=1)
             else:
@@ -208,7 +211,9 @@ class LSTM(torch.nn.Module):
 
         ## Reset LSTMs of Interaction Encoders.
         if self.pool is not None:
-            self.pool.reset(num_tracks, device=observed.device)
+            max_num_neighbor = (batch_split[1:] - batch_split[:-1]).max()
+            batch_size = len(batch_split) - 1
+            self.pool.reset(batch_size * max_num_neighbor, max_num_neighbor, device=observed.device)
 
         # list of predictions
         normals = []  # predicted normal parameters for both phases

@@ -91,58 +91,8 @@ class GridBasedPooling(torch.nn.Module):
         elif self.embedding_arch == 'lstm_layer':
             self.embedding = self.lstm_layer(hidden_dim)
 
-    def forward_grid(self, grid):
-        """ Encodes the generated grid tensor
-        
-        Parameters
-        ----------
-        grid: [num_tracks, self.pooling_dim, self.n, self.n]
-            Generated Grid
-        Returns
-        -------
-        interactor_vector: Tensor [num_tracks, self.out_dim]
-        """
-        num_tracks = grid.size(0)
-
-        ## Encode grid using pre-trained autoencoder (reduce dimensionality)
-        if self.pretrained_model is not None:
-            if not isinstance(self.pretrained_model[0], torch.nn.Conv2d):
-                grid = grid.view(num_tracks, -1)
-            mean, std = grid.mean(), grid.std()
-            if std == 0:
-                std = 0.03
-            grid = (grid - mean) / std
-            grid = self.pretrained_model(grid)
-
-        ## Normalize Grid (if necessary)
-        grid = grid.reshape(num_tracks, -1)
-        ## Normalization schemes
-        if self.norm == 1:
-            # "Global Norm"
-            mean, std = grid.mean(), grid.std()
-            std[std == 0] = 0.09
-            grid = (grid - mean) / std
-        elif self.norm == 2:
-            # "Feature Norm"
-            mean, std = grid.mean(dim=0, keepdim=True), grid.std(dim=0, keepdim=True)
-            std[std == 0] = 0.1
-            grid = (grid - mean) / std
-        elif self.norm == 3:
-            # "Sample Norm"
-            mean, std = grid.mean(dim=1, keepdim=True), grid.std(dim=1, keepdim=True)
-            std[std == 0] = 0.1
-            grid = (grid - mean) / std
-
-        ## Embed grid
-        if self.embedding_arch == 'lstm_layer':
-            return self.lstm_forward(grid)
-
-        elif self.embedding:
-            return self.embedding(grid)
-
-        return grid
-
     def forward(self, hidden_state, obs1, obs2):
+        batch_size, num_tracks = obs1.size(0), obs1.size(1) 
         ## Make chosen grid
         if self.type_ == 'occupancy':
             grid = self.occupancies(obs1, obs2)
@@ -153,47 +103,67 @@ class GridBasedPooling(torch.nn.Module):
         elif self.type_ == 'dir_social':
             grid = self.dir_social(hidden_state, obs1, obs2)
 
-        ## Forward Grid
-        return self.forward_grid(grid)
+        ## Embed grid
+        grid = grid.reshape(batch_size * num_tracks, -1)
+        if self.embedding:
+            return self.embedding(grid)
+        return grid
 
     def occupancies(self, obs1, obs2):
         ## Generate the Occupancy Map
+        # obs1 : batch_size, num_tracks, 2
+        # obs2 : batch_size, num_tracks, 2
         return self.occupancy(obs2, past_obs=obs1)
 
     def directional(self, obs1, obs2):
         ## Makes the Directional Grid
+        # obs1 : batch_size, num_tracks, 2
+        # obs2 : batch_size, num_tracks, 2
 
-        num_tracks = obs2.size(0)
+        num_tracks = obs2.size(1)
+        batch_size = obs2.size(0)
 
         ## if only primary pedestrian present
         if num_tracks == 1:
-            return self.occupancy(obs2, None)
+            return self.occupancy(obs2, None, past_obs=obs1)
 
         ## Generate values to input in directional grid tensor (relative velocities in this case) 
         vel = obs2 - obs1
-        unfolded = vel.unsqueeze(0).repeat(vel.size(0), 1, 1)
-        ## [num_tracks, 2] --> [num_tracks, num_tracks, 2]
-        relative = unfolded - vel.unsqueeze(1)
+        unfolded = vel.unsqueeze(1).repeat(1, vel.size(1), 1, 1)
+        ## [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
+        relative = unfolded - vel.unsqueeze(2)
         ## Deleting Diagonal (Ped wrt itself)
-        ## [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks-1, 2]
-        relative = relative[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
+        ## mask: [batch_size, num_tracks, num_tracks]
+        mask = ~torch.eye(num_tracks).unsqueeze(0).repeat(batch_size, 1, 1).bool()
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        relative = relative[mask].reshape(batch_size, num_tracks, num_tracks-1, 2)
+        relative = torch.nan_to_num(relative)
 
         ## Generate Occupancy Map
         return self.occupancy(obs2, relative, past_obs=obs1)
 
     def social(self, hidden_state, obs1, obs2):
         ## Makes the Social Grid
+        # hidden_state : batch_size, num_tracks, hidden_dim
+        # obs1 : batch_size, num_tracks, 2
+        # obs2 : batch_size, num_tracks, 2
 
-        num_tracks = obs2.size(0)
+        num_tracks = obs2.size(1)
+        batch_size = obs2.size(0)
 
         ## if only primary pedestrian present
         if num_tracks == 1:
             return self.occupancy(obs2, None, past_obs=obs1)
 
-        ## Generate values to input in hiddenstate grid tensor (compressed hidden-states in this case) 
-        ## [num_tracks, hidden_dim] --> [num_tracks, num_tracks-1, pooling_dim]
-        hidden_state_grid = hidden_state.repeat(num_tracks, 1).view(num_tracks, num_tracks, -1)
-        hidden_state_grid = hidden_state_grid[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, -1)
+        ## Generate values to input in hiddenstate grid tensor (compressed hidden-states in this case)
+        ## [batch_size, num_tracks, hidden_dim] --> [batch_size, num_tracks, num_tracks, pooling_dim]
+        hidden_state_grid = hidden_state.unsqueeze(1).repeat(1, num_tracks, 1, 1)
+        ## Deleting Diagonal (Ped wrt itself)
+        ## mask: [batch_size, num_tracks, num_tracks]
+        mask = ~torch.eye(num_tracks).unsqueeze(0).repeat(batch_size, 1, 1).bool()
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        hidden_state_grid = hidden_state_grid[mask].reshape(batch_size, num_tracks, num_tracks-1, -1)
+        hidden_state_grid = torch.nan_to_num(hidden_state_grid)
         hidden_state_grid = self.hidden_dim_encoding(hidden_state_grid)
         
         ## Generate Occupancy Map
@@ -201,28 +171,41 @@ class GridBasedPooling(torch.nn.Module):
 
     def dir_social(self, hidden_state, obs1, obs2):
         ## Makes the Directional + Social Grid
+        # hidden_state : batch_size, num_tracks, hidden_dim
+        # obs1 : batch_size, num_tracks, 2
+        # obs2 : batch_size, num_tracks, 2
 
-        num_tracks = obs2.size(0)
+        num_tracks = obs2.size(1)
+        batch_size = obs2.size(0)
 
         ## if only primary pedestrian present
         if num_tracks == 1:
-            return self.occupancy(obs2, None)
+            return self.occupancy(obs2, None, past_obs=obs1)
 
         ## Generate values to input in directional grid tensor (relative velocities in this case) 
         vel = obs2 - obs1
-        unfolded = vel.unsqueeze(0).repeat(vel.size(0), 1, 1)
-        ## [num_tracks, 2] --> [num_tracks, num_tracks, 2]
-        relative = unfolded - vel.unsqueeze(1)
+        unfolded = vel.unsqueeze(1).repeat(1, vel.size(1), 1, 1)
+        ## [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
+        relative = unfolded - vel.unsqueeze(2)
         ## Deleting Diagonal (Ped wrt itself)
-        ## [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks-1, 2]
-        relative = relative[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
+        ## mask: [batch_size, num_tracks, num_tracks]
+        mask = ~torch.eye(num_tracks).unsqueeze(0).repeat(batch_size, 1, 1).bool()
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        relative = relative[mask].reshape(batch_size, num_tracks, num_tracks-1, 2)
+        relative = torch.nan_to_num(relative)
 
-        ## Generate values to input in hiddenstate grid tensor (compressed hidden-states in this case) 
-        ## [num_tracks, hidden_dim] --> [num_tracks, num_tracks-1, pooling_dim]
-        hidden_state_grid = hidden_state.repeat(num_tracks, 1).view(num_tracks, num_tracks, -1)
-        hidden_state_grid = hidden_state_grid[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, -1)
+        ## Generate values to input in hiddenstate grid tensor (compressed hidden-states in this case)
+        ## [batch_size, num_tracks, hidden_dim] --> [batch_size, num_tracks, num_tracks, pooling_dim]
+        hidden_state_grid = hidden_state.unsqueeze(1).repeat(1, num_tracks, 1, 1)
+        ## Deleting Diagonal (Ped wrt itself)
+        ## mask: [batch_size, num_tracks, num_tracks]
+        mask = ~torch.eye(num_tracks).unsqueeze(0).repeat(batch_size, 1, 1).bool()
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        hidden_state_grid = hidden_state_grid[mask].reshape(batch_size, num_tracks, num_tracks-1, -1)
+        hidden_state_grid = torch.nan_to_num(hidden_state_grid)
         hidden_state_grid = self.hidden_dim_encoding(hidden_state_grid)
 
+        # Combine representations
         dir_social_rep = torch.cat([relative, hidden_state_grid], dim=2)
 
         ## Generate Occupancy Map
@@ -258,54 +241,58 @@ class GridBasedPooling(torch.nn.Module):
         -------
         grid: Tensor [num_tracks, self.pooling_dim, self.n, self.n]
         """
-        num_tracks = obs.size(0)
+        batch_size = obs.size(0)
+        num_tracks = obs.size(1)
 
         ##mask unseen
-        mask = torch.isnan(obs).any(dim=1)
-        obs[mask] = 0
+        mask = torch.isnan(obs).any(dim=-1)
+        obs[mask] = -500.0
 
         ## if only primary pedestrian present
         if num_tracks == 1:
             return self.constant*torch.ones(1, self.pooling_dim, self.n, self.n, device=obs.device)
 
         ## Get relative position
-        ## [num_tracks, 2] --> [num_tracks, num_tracks, 2]
-        unfolded = obs.unsqueeze(0).repeat(obs.size(0), 1, 1)
-        relative = unfolded - obs.unsqueeze(1)
+        ## [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
+        unfolded = obs.unsqueeze(1).repeat(1, obs.size(1), 1, 1)
+        relative = unfolded - obs.unsqueeze(2)
         ## Deleting Diagonal (Ped wrt itself)
-        ## [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks-1, 2]
-        relative = relative[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
+        ## mask: [batch_size, num_tracks, num_tracks]
+        mask = ~torch.eye(num_tracks).unsqueeze(0).repeat(batch_size, 1, 1).bool()
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        relative = relative[mask].reshape(batch_size, num_tracks, num_tracks-1, 2)
 
         ## In case of 'occupancy' pooling
         if other_values is None:
-            other_values = torch.ones(num_tracks, num_tracks-1, self.pooling_dim, device=obs.device)
+            other_values = torch.ones(batch_size, num_tracks, num_tracks-1, self.pooling_dim, device=obs.device)
 
         ## Normalize pooling grid along direction of pedestrian motion
-        if self.norm_pool:
-            relative = self.normalize(relative, obs, past_obs)
+        # if self.norm_pool:
+        #     relative = self.normalize(relative, obs, past_obs)
 
         if self.front:
             oij = (relative / (self.cell_side / self.pool_size) + torch.Tensor([self.n * self.pool_size / 2, 0]))
         else:
             oij = (relative / (self.cell_side / self.pool_size) + self.n * self.pool_size / 2)
 
-        range_violations = torch.sum((oij < 0) + (oij >= self.n * self.pool_size), dim=2)
+        range_violations = torch.sum((oij < 0) + (oij >= self.n * self.pool_size), dim=-1)
         range_mask = range_violations == 0
 
         oij[~range_mask] = 0
         other_values[~range_mask] = self.constant
+        other_values = other_values.view(batch_size * num_tracks, num_tracks-1, -1)
         oij = oij.long()
 
         ## Flatten
-        oi = oij[:, :, 0] * self.n * self.pool_size + oij[:, :, 1]
-
+        oi = oij[:, :, :, 0] * self.n * self.pool_size + oij[:, :, :, 1]
+        oi = oi.view(batch_size * num_tracks, -1)
         # faster occupancy
-        occ = self.constant*torch.ones(num_tracks, self.n**2 * self.pool_size**2, self.pooling_dim, device=obs.device)
+        occ = self.constant*torch.ones(batch_size * num_tracks, self.n**2 * self.pool_size**2, self.pooling_dim, device=obs.device)
 
         ## Fill occupancy map with attributes
         occ[torch.arange(occ.size(0)).unsqueeze(1), oi] = other_values
         occ = torch.transpose(occ, 1, 2)
-        occ_2d = occ.view(num_tracks, -1, self.n * self.pool_size, self.n * self.pool_size)
+        occ_2d = occ.view(batch_size * num_tracks, -1, self.n * self.pool_size, self.n * self.pool_size)
 
         if self.blur_size == 1:
             occ_blurred = occ_2d
@@ -355,7 +342,7 @@ class GridBasedPooling(torch.nn.Module):
                          torch.nn.Linear(self.n * self.n * self.pooling_dim, self.out_dim),
                          torch.nn.ReLU(),)
 
-    def reset(self, num_tracks, device):
+    def reset(self, num_tracks, max_num_neigh, device):
         self.track_mask = None
         if self.embedding_arch == 'lstm_layer':
             self.hidden_cell_state = (

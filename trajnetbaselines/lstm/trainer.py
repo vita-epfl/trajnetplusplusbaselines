@@ -17,9 +17,8 @@ from .. import augmentation
 from .loss import PredictionLoss, L2Loss
 from .lstm import LSTM, LSTMPredictor, drop_distant
 from .gridbased_pooling import GridBasedPooling
-from .non_gridbased_pooling import NN_Pooling, HiddenStateMLPPooling, AttentionMLPPooling, DirectionalMLPPooling
+from .non_gridbased_pooling import NN_Pooling, HiddenStateMLPPooling, AttentionMLPPooling
 from .non_gridbased_pooling import NN_LSTM, TrajectronPooling, SAttention_fast
-from .more_non_gridbased_pooling import NMMP
 
 from .. import __version__ as VERSION
 
@@ -476,8 +475,6 @@ def main(epochs=25):
     elif args.type == 'attentionmlp':
         pool = AttentionMLPPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim,
                                    mlp_dim_spatial=args.spatial_dim, mlp_dim_vel=args.vel_dim)
-    elif args.type == 'directionalmlp':
-        pool = DirectionalMLPPooling(out_dim=args.pool_dim)
     elif args.type == 'nn':
         pool = NN_Pooling(n=args.neigh, out_dim=args.pool_dim, no_vel=args.no_vel)
     elif args.type == 'nn_lstm':
