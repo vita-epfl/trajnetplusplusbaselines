@@ -134,6 +134,7 @@ class NN_Pooling(torch.nn.Module):
             nearest_grid[:, :, :(num_tracks-1)] = overall_grid
         else:
             rel_distance = torch.norm(rel_position, dim=-1)
+            rel_distance = torch.nan_to_num(rel_distance, nan=1000)  # High dummy distance
             _, dist_index = torch.topk(-rel_distance, self.n, dim=-1)
             nearest_grid = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
         
@@ -433,6 +434,7 @@ class NN_LSTM(torch.nn.Module):
             nearest_grid[:, :, :(num_tracks-1)] = overall_grid
         else:
             rel_distance = torch.norm(rel_position, dim=-1)
+            rel_distance = torch.nan_to_num(rel_distance, nan=1000)  # High dummy distance
             _, dist_index = torch.topk(-rel_distance, self.n, dim=-1)
             nearest_grid = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
         

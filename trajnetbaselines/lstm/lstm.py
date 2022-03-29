@@ -211,9 +211,9 @@ class LSTM(torch.nn.Module):
 
         ## Reset LSTMs of Interaction Encoders.
         if self.pool is not None:
-            max_num_neighbor = (batch_split[1:] - batch_split[:-1]).max()
+            max_num_neighbor = (batch_split[1:] - batch_split[:-1]).max() - 1
             batch_size = len(batch_split) - 1
-            self.pool.reset(batch_size * max_num_neighbor, max_num_neighbor, device=observed.device)
+            self.pool.reset(batch_size * (max_num_neighbor+1), max_num_neighbor, device=observed.device)
 
         # list of predictions
         normals = []  # predicted normal parameters for both phases
