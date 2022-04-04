@@ -12,6 +12,7 @@ from ..lstm.modules import Hidden2Normal, InputEmbedding
 
 from .. import augmentation
 from ..lstm.utils import center_scene
+from ..lstm.lstm import generate_pooling_inputs
 
 NAN = float('nan')
 
@@ -271,28 +272,11 @@ class LSTMGenerator(torch.nn.Module):
 
         ## Mask & Pool per scene
         if self.pool is not None:
-            hidden_states_to_pool = torch.stack(hidden_cell_state[0]).clone() # detach?
-            batch_pool = []
-            ## Iterate over scenes
-            for (start, end) in zip(batch_split[:-1], batch_split[1:]):
-                ## Mask for the scene
-                scene_track_mask = track_mask[start:end]
-                ## Get observations and hidden-state for the scene
-                prev_position = obs1[start:end][scene_track_mask]
-                curr_position = obs2[start:end][scene_track_mask]
-                curr_hidden_state = hidden_states_to_pool[start:end][scene_track_mask]
+            curr_positions, prev_positions, curr_hidden_state, track_mask_positions = \
+                generate_pooling_inputs(obs2, obs1, hidden_cell_state, track_mask, batch_split)
+            pool_sample = self.pool(curr_hidden_state, prev_positions, curr_positions)
+            pooled = pool_sample[track_mask_positions.view(-1)]
 
-                ## Provide track_mask to the interaction encoders
-                ## Everyone absent by default. Only those visible in current scene are present
-                interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                interaction_track_mask[start:end] = track_mask[start:end]
-                self.pool.track_mask = interaction_track_mask
-
-                ## Pool
-                pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
-                batch_pool.append(pool_sample)
-
-            pooled = torch.cat(batch_pool)
             if self.pool_to_input:
                 input_emb = torch.cat([input_emb, pooled], dim=1)
             else:
@@ -359,7 +343,9 @@ class LSTMGenerator(torch.nn.Module):
 
         ## Reset LSTMs of Interaction Encoders.
         if self.pool is not None:
-            self.pool.reset(num_tracks, device=observed.device)
+            max_num_neighbor = (batch_split[1:] - batch_split[:-1]).max() - 1
+            batch_size = len(batch_split) - 1
+            self.pool.reset(batch_size * (max_num_neighbor+1), max_num_neighbor, device=observed.device)
 
         # list of predictions
         normals = []  # predicted normal parameters for both phases
@@ -511,28 +497,11 @@ class LSTMDiscriminator(torch.nn.Module):
 
         ## Mask & Pool per scene
         if self.pool is not None:
-            hidden_states_to_pool = torch.stack(hidden_cell_state[0]).clone() # detach?
-            batch_pool = []
-            ## Iterate over scenes
-            for (start, end) in zip(batch_split[:-1], batch_split[1:]):
-                ## Mask for the scene
-                scene_track_mask = track_mask[start:end]
-                ## Get observations and hidden-state for the scene
-                prev_position = obs1[start:end][scene_track_mask]
-                curr_position = obs2[start:end][scene_track_mask]
-                curr_hidden_state = hidden_states_to_pool[start:end][scene_track_mask]
+            curr_positions, prev_positions, curr_hidden_state, track_mask_positions = \
+                generate_pooling_inputs(obs2, obs1, hidden_cell_state, track_mask, batch_split)
+            pool_sample = self.pool(curr_hidden_state, prev_positions, curr_positions)
+            pooled = pool_sample[track_mask_positions.view(-1)]
 
-                ## Provide track_mask to the interaction encoders
-                ## Everyone absent by default. Only those visible in current scene are present
-                interaction_track_mask = torch.zeros(num_tracks, device=obs1.device).bool()
-                interaction_track_mask[start:end] = track_mask[start:end]
-                self.pool.track_mask = interaction_track_mask
-
-                ## Pool
-                pool_sample = self.pool(curr_hidden_state, prev_position, curr_position)
-                batch_pool.append(pool_sample)
-
-            pooled = torch.cat(batch_pool)
             if self.pool_to_input:
                 input_emb = torch.cat([input_emb, pooled], dim=1)
             else:
@@ -587,19 +556,14 @@ class LSTMDiscriminator(torch.nn.Module):
 
         ## Reset LSTMs of Interaction Encoders.
         if self.pool is not None:
-            self.pool.reset(num_tracks, device=observed.device)
-
-        # list of predictions
-        normals = []  # predicted normal parameters for both phases
-        positions = []  # true (during obs phase) and predicted positions
-
-        if len(observed) == 2:
-            positions = [observed[-1]]
+            max_num_neighbor = (batch_split[1:] - batch_split[:-1]).max() - 1
+            batch_size = len(batch_split) - 1
+            self.pool.reset(batch_size * (max_num_neighbor+1), max_num_neighbor, device=observed.device)
 
         # encoder
         for obs1, obs2 in zip(observed[:-1], observed[1:]):
             ##LSTM Step
-            hidden_cell_state, normal = self.step(self.encoder, hidden_cell_state, obs1, obs2, goals, batch_split)
+            hidden_cell_state, _ = self.step(self.encoder, hidden_cell_state, obs1, obs2, goals, batch_split)
 
         hidden_cell_state = (
             torch.stack([h for h in hidden_cell_state[0]], dim=0),

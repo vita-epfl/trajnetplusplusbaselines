@@ -339,7 +339,7 @@ def main(epochs=25):
                         help='loss objective, L2 loss (L2) and Gaussian loss (pred)')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
-                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social'),
+                                 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool'),
                         help='type of interaction encoder')
     parser.add_argument('--sample', default=1.0, type=float,
                         help='sample ratio when loading train/val scenes')
