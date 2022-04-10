@@ -129,15 +129,16 @@ class NN_Pooling(torch.nn.Module):
         overall_grid = torch.cat([rel_position, rel_direction], dim=-1) if not self.no_velocity else rel_position
 
         # Get nearest n neighours
+        rel_distance = torch.norm(rel_position, dim=-1)
+        rel_distance = torch.nan_to_num(rel_distance, nan=1000)  # High dummy distance
         if (num_tracks - 1) < self.n:
             nearest_grid = torch.zeros((batch_size, num_tracks, self.n, self.input_dim), device=obs2.device)
-            nearest_grid[:, :, :(num_tracks-1)] = overall_grid
+            _, dist_index = torch.topk(-rel_distance, num_tracks-1, dim=-1)
+            nearest_grid[:, :, :(num_tracks-1)] = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
         else:
-            rel_distance = torch.norm(rel_position, dim=-1)
-            rel_distance = torch.nan_to_num(rel_distance, nan=1000)  # High dummy distance
             _, dist_index = torch.topk(-rel_distance, self.n, dim=-1)
             nearest_grid = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
-        
+
         # Remove NaNs
         nearest_grid = torch.nan_to_num(nearest_grid)
 
@@ -429,15 +430,16 @@ class NN_LSTM(torch.nn.Module):
         overall_grid = torch.cat([rel_position, rel_direction], dim=-1)
 
         # Get nearest n neighours
+        rel_distance = torch.norm(rel_position, dim=-1)
+        rel_distance = torch.nan_to_num(rel_distance, nan=1000)  # High dummy distance
         if (num_tracks - 1) < self.n:
             nearest_grid = torch.zeros((batch_size, num_tracks, self.n, self.input_dim), device=obs2.device)
-            nearest_grid[:, :, :(num_tracks-1)] = overall_grid
+            _, dist_index = torch.topk(-rel_distance, num_tracks-1, dim=-1)
+            nearest_grid[:, :, :(num_tracks-1)] = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
         else:
-            rel_distance = torch.norm(rel_position, dim=-1)
-            rel_distance = torch.nan_to_num(rel_distance, nan=1000)  # High dummy distance
             _, dist_index = torch.topk(-rel_distance, self.n, dim=-1)
             nearest_grid = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
-        
+
         # Remove NaNs
         nearest_grid = torch.nan_to_num(nearest_grid)
         ## Embed top-n relative neighbour attributes
@@ -514,10 +516,17 @@ class TrajectronPooling(torch.nn.Module):
         curr_pos = obs2
         states = torch.cat([curr_pos, curr_vel], dim=-1)
         states = states.view(batch_size * num_tracks, -1)
-        neigh_grid = torch.stack([
-            torch.cat([states[i], torch.sum(states[one_cold(i, batch_size * num_tracks)], dim=0)])
-            for i in range(batch_size * num_tracks)], dim=0)
-        neigh_grid = self.embedding(neigh_grid)
+
+        ## Only consider visible pedestrians
+        neigh_grid = torch.zeros(batch_size * num_tracks, self.out_dim, device=obs1.device)
+        nan_mask = torch.isnan(states).any(dim=-1)
+        states_vis = states[~nan_mask]
+        ## Get neighbour configuration embedding
+        neigh_grid_vis = torch.stack([
+            torch.cat([states_vis[i], torch.sum(states_vis[one_cold(i, len(states_vis))], dim=0)])
+            for i in range(len(states_vis))], dim=0)
+        neigh_grid_vis = self.embedding(neigh_grid_vis)
+        neigh_grid[~nan_mask] = neigh_grid_vis
 
         ## Update interaction-encoder LSTM
         hidden_cell_stacked = self.pool_lstm(neigh_grid, hidden_cell_stacked)
@@ -594,6 +603,9 @@ class SAttention_fast(torch.nn.Module):
         """
         batch_size = obs2.size(0)
         num_tracks = obs2.size(1)
+
+        if num_tracks == 1:
+            return torch.zeros(num_tracks, self.out_dim, device=obs1.device)
 
         hidden_cell_stacked = [
             self.hidden_cell_state[0].view(-1, self.spatial_dim),
