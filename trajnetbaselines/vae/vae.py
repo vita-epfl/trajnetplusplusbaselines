@@ -25,7 +25,7 @@ def drop_distant(xy, r=6.0):
 
 class VAE(torch.nn.Module):
     def __init__(self, embedding_dim=64, hidden_dim=128, pool=None, pool_to_input=True, goal_dim=None, goal_flag=False,
-                 num_modes=1, desire_approach=False, latent_dim=128):
+                 num_modes=1, latent_dim=128):
         """ Initialize the VAE forecasting model
 
         Attributes
@@ -74,7 +74,7 @@ class VAE(torch.nn.Module):
         ## VAE Specific
         self.latent_dim = latent_dim
         self.num_modes = num_modes
-        self.desire = desire_approach
+        self.desire = True
 
         self.vae_encoder_xy = VAEEncoder(2*self.hidden_dim, 2*self.latent_dim)
         self.vae_encoder_x = VAEEncoder(self.hidden_dim, 2*self.latent_dim)

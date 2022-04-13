@@ -61,7 +61,7 @@ def embed_with_masking(embedding_module, input, out_dim, fill_value=-100):
     return embedding
 
 
-class NN_Pooling(torch.nn.Module):
+class NearestNeighborMLP(torch.nn.Module):
     """ Interaction vector is obtained by concatenating the relative coordinates of
         top-n neighbours selected according to criterion (euclidean distance)
         
@@ -76,7 +76,7 @@ class NN_Pooling(torch.nn.Module):
             Dimension of resultant interaction vector
     """
     def __init__(self, n=4, out_dim=32, no_vel=False):
-        super(NN_Pooling, self).__init__()
+        super(NearestNeighborMLP, self).__init__()
         self.n = n
         self.out_dim = out_dim
         self.no_velocity = no_vel
@@ -351,7 +351,7 @@ class AttentionMLPPooling(torch.nn.Module):
         return self.out_projection(attn_output_ped)
 
 
-class NN_LSTM(torch.nn.Module):
+class NearestNeighborLSTM(torch.nn.Module):
     """ Interaction vector is obtained by concatenating the relative coordinates of
         top-n neighbours filtered according to criterion (euclidean distance).
         The concatenated vector is passed through an LSTM.
@@ -370,7 +370,7 @@ class NN_LSTM(torch.nn.Module):
     """
 
     def __init__(self, n=4, hidden_dim=256, out_dim=32):
-        super(NN_LSTM, self).__init__()
+        super(NearestNeighborLSTM, self).__init__()
         self.n = n
         self.out_dim = out_dim
         self.input_dim = 4
@@ -536,117 +536,3 @@ class TrajectronPooling(torch.nn.Module):
         self.hidden_cell_state[1] = list(hidden_cell_stacked[1])
 
         return interaction_vector
-
-class SAttention_fast(torch.nn.Module):
-    """ Interaction vector is obtained by attention-weighting the embeddings of relative coordinates obtained
-        using Interaction Encoder LSTM. Proposed in S-Attention
-        
-        Attributes
-        ----------
-        track_mask : Bool [num_tracks,]
-            Mask of tracks visible at the current time-instant
-            as well as tracks belonging to the particular scene 
-        spatial_dim : Scalar
-            Embedding dimension of relative position of neighbour       
-        hidden_dim : Scalar
-            Hidden-state dimension of interaction-encoder LSTM
-        out_dim: Scalar
-            Dimension of resultant interaction vector
-    """
-
-    def __init__(self, n=4, spatial_dim=32, hidden_dim=256, out_dim=32, track_mask=None):
-        super(SAttention_fast, self).__init__()
-        self.n = n
-        if out_dim is None:
-            out_dim = hidden_dim
-        self.out_dim = out_dim
-        self.embedding = torch.nn.Sequential(
-            torch.nn.Linear(2, spatial_dim),
-            torch.nn.ReLU(),
-        )
-        self.spatial_dim = spatial_dim
-        self.hiddentospat = torch.nn.Linear(hidden_dim, spatial_dim)
-        self.hidden_dim = hidden_dim
-        self.pool_lstm = torch.nn.LSTMCell(spatial_dim, spatial_dim)
-        self.track_mask = track_mask
-
-        ## Attention Embeddings (Query, Key, Value)
-        self.wq = torch.nn.Linear(spatial_dim, spatial_dim, bias=False)
-        self.wk = torch.nn.Linear(spatial_dim, spatial_dim, bias=False)
-        self.wv = torch.nn.Linear(spatial_dim, spatial_dim, bias=False)
-        self.multihead_attn = torch.nn.MultiheadAttention(embed_dim=spatial_dim, num_heads=1)
-
-        self.out_projection = torch.nn.Linear(spatial_dim, self.out_dim)
-
-    def reset(self, num_tracks, max_num_neigh, device):
-        self.hidden_cell_state = [
-            torch.zeros((num_tracks, max_num_neigh, self.spatial_dim), device=device),
-            torch.zeros((num_tracks, max_num_neigh, self.spatial_dim), device=device),
-        ]
-
-    def forward(self, hidden_state, obs1, obs2):
-        """ Forward function. All agents must belong to the same scene
-
-        Parameters
-        ----------
-        obs1 :  Tensor [num_tracks, 2]
-            x-y positions of all agents at previous time-step t-1
-        obs2 :  Tensor [num_tracks, 2]
-            x-y positions of all agents at current time-step t
-        hidden_states :  Tensor [num_tracks, hidden_dim]
-            LSTM hidden state of all agents at current time-step t
-
-        Returns
-        -------
-        interaction_vector : Tensor [num_tracks, self.out_dim]
-            interaction vector of all agents in the scene
-        """
-        batch_size = obs2.size(0)
-        num_tracks = obs2.size(1)
-
-        if num_tracks == 1:
-            return torch.zeros(num_tracks, self.out_dim, device=obs1.device)
-
-        hidden_cell_stacked = [
-            self.hidden_cell_state[0].view(-1, self.spatial_dim),
-            self.hidden_cell_state[1].view(-1, self.spatial_dim),
-        ]
-
-        # Get relative position of all agents wrt one another 
-        # [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
-        rel_position = rel_obs(obs2)
-        ## Deleting Diagonal (Ped wrt itself)
-        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
-        rel_position = delete_diagonal(rel_position, batch_size, num_tracks)
-        rel_embed = embed_with_masking(self.embedding, rel_position, self.spatial_dim, fill_value=-10)
-        rel_embed = rel_embed.reshape(batch_size * num_tracks * (num_tracks-1), -1)
-
-        ## Update interaction-encoder LSTMs
-        hidden_cell_stacked = self.pool_lstm(rel_embed, hidden_cell_stacked)
-
-
-        # Save hidden-cell-states
-        self.hidden_cell_state[0] = hidden_cell_stacked[0].view(batch_size * num_tracks, num_tracks-1, self.spatial_dim)
-        self.hidden_cell_state[1] = hidden_cell_stacked[1].view(batch_size * num_tracks, num_tracks-1, self.spatial_dim)
-
-
-        ## Attention between hidden_states of motion encoder & hidden_states of interactions encoders ##
-        # Embed Hidden-state of Motion LSTM: [num_tracks, hidden_dim] --> [num_tracks, self.spatial_dim]
-        # hidden_state_spat = self.hiddentospat(hidden_state)
-        hidden_state_spat = embed_with_masking(self.hiddentospat, hidden_state, self.spatial_dim, fill_value=0)
-        
-        # Concat Hidden-state of Motion LSTM to Hidden-state of Interaction LSTMs
-        # embedded.shape = [num_tracks, num_tracks, self.spatial_dim]
-        embedded = torch.cat([hidden_state_spat.unsqueeze(2), hidden_cell_stacked[0].reshape(batch_size, num_tracks, num_tracks-1, self.spatial_dim)], dim=2)
-
-        ## Attention
-        # [batch_size, num_tracks, num_tracks, mlp_dim] --> [batch_size * num_tracks, num_tracks, mlp_dim]
-        embedded = embedded.view(batch_size * num_tracks, num_tracks, -1)
-        # [batch, seq, mlp_dim] --> [seq, batch, mlp_dim]
-        embedded = embedded.transpose(0, 1)
-        query = self.wq(embedded)
-        key = self.wk(embedded)
-        value = self.wv(embedded)
-        attn_output, _ = self.multihead_attn(query, key, value)
-        attn_vectors = attn_output[0]
-        return self.out_projection(attn_vectors)

@@ -59,7 +59,7 @@ def plots(log_files, output_prefix, labels=None):
 
         ax.set_xlabel('epoch')
         ax.set_ylabel('learning rate')
-        ax.set_yscale('log', nonpositive='clip')
+        # ax.set_yscale('log', nonpositive='clip')
         ax.legend()
 
     with trajnetplusplustools.show.canvas(output_prefix + 'val.png') as ax:
