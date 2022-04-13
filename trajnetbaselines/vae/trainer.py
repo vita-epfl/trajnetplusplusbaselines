@@ -18,8 +18,8 @@ from ..lstm.loss import PredictionLoss, L2Loss
 from .vae import VAE, VAEPredictor, drop_distant
 from .loss import KLDLoss
 from ..lstm.gridbased_pooling import GridBasedPooling
-from ..lstm.non_gridbased_pooling import NN_Pooling, HiddenStateMLPPooling, AttentionMLPPooling, DirectionalMLPPooling
-from ..lstm.non_gridbased_pooling import NN_LSTM, TrajectronPooling, SAttention_fast
+from ..lstm.non_gridbased_pooling import NearestNeighborMLP, HiddenStateMLPPooling, AttentionMLPPooling
+from ..lstm.non_gridbased_pooling import NearestNeighborLSTM, TrajectronPooling
 from ..lstm.more_non_gridbased_pooling import NMMP
 
 from .. import __version__ as VERSION
@@ -349,8 +349,8 @@ def main(epochs=25):
     parser.add_argument('--loss', default='pred', choices=('L2', 'pred'),
                         help='loss objective, L2 loss (L2) and Gaussian loss (pred)')
     parser.add_argument('--type', default='vanilla',
-                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp', 's_att_fast',
-                                 'directionalmlp', 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'nmmp', 'dir_social'),
+                        choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp',
+                                 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool'),
                         help='type of interaction encoder')
     parser.add_argument('--sample', default=1.0, type=float,
                         help='sample ratio when loading train/val scenes')
@@ -423,9 +423,7 @@ def main(epochs=25):
                                  help='KLD loss weight')
     hyperparameters.add_argument('--k', type=int, default=1,
                                  help='number of samples for reconstruction loss')
-    hyperparameters.add_argument('--desire', action='store_true',
-                                 help='flag to use kld version of DESIRE')
-    hyperparameters.add_argument('--noise_dim', type=int, default=64,
+    hyperparameters.add_argument('--noise_dim', type=int, default=8,
                                  help='noise dim of VAE')
     args = parser.parse_args()
 
@@ -485,21 +483,15 @@ def main(epochs=25):
     if args.type == 'hiddenstatemlp':
         pool = HiddenStateMLPPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim,
                                      mlp_dim_vel=args.vel_dim)
-    elif args.type == 'nmmp':
-        pool = NMMP(hidden_dim=args.hidden_dim, out_dim=args.pool_dim, k=args.mp_iters)
     elif args.type == 'attentionmlp':
         pool = AttentionMLPPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim,
                                    mlp_dim_spatial=args.spatial_dim, mlp_dim_vel=args.vel_dim)
-    elif args.type == 'directionalmlp':
-        pool = DirectionalMLPPooling(out_dim=args.pool_dim)
     elif args.type == 'nn':
-        pool = NN_Pooling(n=args.neigh, out_dim=args.pool_dim, no_vel=args.no_vel)
+        pool = NearestNeighborMLP(n=args.neigh, out_dim=args.pool_dim, no_vel=args.no_vel)
     elif args.type == 'nn_lstm':
-        pool = NN_LSTM(n=args.neigh, hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
+        pool = NearestNeighborLSTM(n=args.neigh, hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
     elif args.type == 'traj_pool':
         pool = TrajectronPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
-    elif args.type == 's_att_fast':
-        pool = SAttention_fast(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
     elif args.type != 'vanilla':
         pool = GridBasedPooling(type_=args.type, hidden_dim=args.hidden_dim,
                                 cell_side=args.cell_side, n=args.n, front=args.front,
@@ -514,7 +506,6 @@ def main(epochs=25):
                 goal_flag=args.goals,
                 goal_dim=args.goal_dim,
                 num_modes=args.k,
-                desire_approach=args.desire,
                 latent_dim=args.noise_dim)
 
     # optimizer and schedular

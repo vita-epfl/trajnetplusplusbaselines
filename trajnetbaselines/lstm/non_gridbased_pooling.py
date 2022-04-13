@@ -9,66 +9,59 @@ def one_cold(i, n):
     x[i] = 0
     return x
 
-def front_ped(xy, other_xy, past_xy):
-    """ Provides indices of neighbours in front of chosen pedestrian
 
-    Parameters
-    ----------
-    xy :  Tensor [2,]
-        x-y position of the chosen pedestrian at time t
-    other_xy :  Tensor [num_tracks, 2]
-        x-y position of all neighbours of the chosen pedestrian at current time-step t
-    past_xy :  Tensor [2,]
-        x-y position of the chosen pedestrian at time t-1
-
-    Returns
-    -------
-    angle_index : Bool Tensor [num_tracks,]
-        1 if the corresponding neighbour is present in front of current pedestrian
-    """
-    primary_direction = torch.atan2(xy[1] - past_xy[1], xy[0] - past_xy[0])
-    relative_neigh = other_xy - xy
-    neigh_direction = torch.atan2(relative_neigh[:, 1], relative_neigh[:, 0])
-    angle_index = torch.abs((neigh_direction - primary_direction) * 180 / np.pi) < 90
-    return angle_index
-
-# 
 def rel_obs(obs):
     """ Provides relative position of neighbours wrt one another
-
-    Parameters
-    ----------
-    obs :  Tensor [num_tracks, 2]
+    obs :  Tensor [batch_size, num_tracks, 2]
         x-y positions of all agents
-
-    Returns
-    -------
-    relative : Tensor [num_tracks, num_tracks, 2]
+    relative : Tensor [batch_size, num_tracks, num_tracks, 2]
     """
-    unfolded = obs.unsqueeze(0).repeat(obs.size(0), 1, 1)
-    relative = unfolded - obs.unsqueeze(1)
+    ## [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
+    unfolded = obs.unsqueeze(1).repeat(1, obs.size(1), 1, 1)
+    relative = unfolded - obs.unsqueeze(2)
     return relative
+
 
 def rel_directional(obs1, obs2):
     """ Provides relative velocity of neighbours wrt one another
-
-    Parameters
-    ----------
-    obs1 :  Tensor [num_tracks, 2]
+    obs1 :  Tensor [batch_size, num_tracks, 2]
         x-y positions of all agents at previous time-step t-1
-    obs2 :  Tensor [num_tracks, 2]
+    obs2 :  Tensor [batch_size, num_tracks, 2]
         x-y positions of all agents at current time-step t
-
-    Returns
-    -------
-    relative : Tensor [num_tracks, num_tracks, 2]
+    relative : Tensor [batch_size, num_tracks, num_tracks, 2]
     """
+    ## Generate values to input in directional grid tensor (relative velocities in this case) 
     vel = obs2 - obs1
-    unfolded = vel.unsqueeze(0).repeat(vel.size(0), 1, 1)
-    relative = unfolded - vel.unsqueeze(1)
+    unfolded = vel.unsqueeze(1).repeat(1, vel.size(1), 1, 1)
+    ## [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
+    relative = unfolded - vel.unsqueeze(2)
     return relative
 
-class NN_Pooling(torch.nn.Module):
+
+def delete_diagonal(input, batch_size, num_tracks):
+    """ Deletes the effects of each pedestrian on itself.
+    input: Tensor [batch_size, num_tracks, num_tracks, 2]
+    output : Tensor [batch_size, num_tracks, num_tracks-1, 2]
+    """
+    # mask: [batch_size, num_tracks, num_tracks]
+    mask = ~torch.eye(num_tracks).unsqueeze(0).repeat(batch_size, 1, 1).bool()
+    last_dim = input.size(-1)
+    # [batch_size, num_tracks, num_tracks, last_dim] --> [batch_size, num_tracks, num_tracks-1, last_dim]
+    return input[mask].reshape(batch_size, num_tracks, num_tracks-1, last_dim)
+
+
+def embed_with_masking(embedding_module, input, out_dim, fill_value=-100):
+    """ Embed the parts of the inputs that do not corresponding to NaNs.
+    Fill the rest with 'fill_value'."""
+    nan_mask = torch.isnan(input).any(dim=-1)
+    # [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, self.mlp_dim_spatial]
+    embedding_vis = embedding_module(input[~nan_mask])
+    embedding = torch.empty(*input.size()[:-1], out_dim).fill_(fill_value).to(input.device)  # placeholder
+    embedding[~nan_mask] = embedding_vis
+    return embedding
+
+
+class NearestNeighborMLP(torch.nn.Module):
     """ Interaction vector is obtained by concatenating the relative coordinates of
         top-n neighbours selected according to criterion (euclidean distance)
         
@@ -83,7 +76,7 @@ class NN_Pooling(torch.nn.Module):
             Dimension of resultant interaction vector
     """
     def __init__(self, n=4, out_dim=32, no_vel=False):
-        super(NN_Pooling, self).__init__()
+        super(NearestNeighborMLP, self).__init__()
         self.n = n
         self.out_dim = out_dim
         self.no_velocity = no_vel
@@ -96,7 +89,7 @@ class NN_Pooling(torch.nn.Module):
             torch.nn.ReLU(),
         )
 
-    def reset(self, _, device):
+    def reset(self, num_tracks, max_num_neigh, device):
         self.track_mask = None
 
     def forward(self, _, obs1, obs2):
@@ -104,49 +97,55 @@ class NN_Pooling(torch.nn.Module):
 
         Parameters
         ----------
-        obs1 :  Tensor [num_tracks, 2]
+        obs1 :  Tensor [batch_size, num_tracks, 2]
             x-y positions of all agents at previous time-step t-1
-        obs2 :  Tensor [num_tracks, 2]
+        obs2 :  Tensor [batch_size, num_tracks, 2]
             x-y positions of all agents at current time-step t
 
         Returns
         -------
-        interaction_vector : Tensor [num_tracks, self.out_dim]
+        interaction_vector : Tensor [batch_size, num_tracks, self.out_dim]
             interaction vector of all agents in the scene
         """
 
-        num_tracks = obs2.size(0)
+        num_tracks = obs2.size(1)
+        batch_size = obs2.size(0)
 
         # Get relative position of all agents wrt one another 
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        # [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
         rel_position = rel_obs(obs2)
-        # Deleting Diagonal (agents wrt themselves) 
-        # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks - 1, 2]
-        rel_position = rel_position[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
-
+        ## Deleting Diagonal (Ped wrt itself)
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        rel_position = delete_diagonal(rel_position, batch_size, num_tracks)
 
         # Get relative velocities of all agents wrt one another 
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        # [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
         rel_direction = rel_directional(obs1, obs2)
-        # Deleting Diagonal (agents wrt themselves) 
-        # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks - 1, 2]
-        rel_direction = rel_direction[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
+        ## Deleting Diagonal (Ped wrt itself)
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        rel_direction = delete_diagonal(rel_direction, batch_size, num_tracks)
 
-        # Combine [num_tracks, num_tracks - 1, self.input_dim]
-        overall_grid = torch.cat([rel_position, rel_direction], dim=2) if not self.no_velocity else rel_position
+        # Combine [batch_size, num_tracks, num_tracks - 1, self.input_dim]
+        overall_grid = torch.cat([rel_position, rel_direction], dim=-1) if not self.no_velocity else rel_position
 
         # Get nearest n neighours
+        rel_distance = torch.norm(rel_position, dim=-1)
+        rel_distance = torch.nan_to_num(rel_distance, nan=1000)  # High dummy distance
         if (num_tracks - 1) < self.n:
-            nearest_grid = torch.zeros((num_tracks, self.n, self.input_dim), device=obs2.device)
-            nearest_grid[:, :(num_tracks-1)] = overall_grid
+            nearest_grid = torch.zeros((batch_size, num_tracks, self.n, self.input_dim), device=obs2.device)
+            _, dist_index = torch.topk(-rel_distance, num_tracks-1, dim=-1)
+            nearest_grid[:, :, :(num_tracks-1)] = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
         else:
-            rel_distance = torch.norm(rel_position, dim=2)
-            _, dist_index = torch.topk(-rel_distance, self.n, dim=1)
-            nearest_grid = torch.gather(overall_grid, 1, dist_index.unsqueeze(2).repeat(1, 1, self.input_dim))
+            _, dist_index = torch.topk(-rel_distance, self.n, dim=-1)
+            nearest_grid = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
+
+        # Remove NaNs
+        nearest_grid = torch.nan_to_num(nearest_grid)
 
         ## Embed top-n relative neighbour attributes
         nearest_grid = self.embedding(nearest_grid)
-        return nearest_grid.view(num_tracks, -1)
+        return nearest_grid.view(batch_size * num_tracks, -1)
+
 
 class HiddenStateMLPPooling(torch.nn.Module):
     """ Interaction vector is obtained by max-pooling the embeddings of relative coordinates
@@ -166,26 +165,32 @@ class HiddenStateMLPPooling(torch.nn.Module):
     def __init__(self, hidden_dim=128, mlp_dim=128, mlp_dim_spatial=32, mlp_dim_vel=32, out_dim=None):
         super(HiddenStateMLPPooling, self).__init__()
         self.out_dim = out_dim or hidden_dim
+        self.hidden_dim = hidden_dim
+
+        self.mlp_dim = mlp_dim
+        self.mlp_dim_spatial = mlp_dim_spatial
+        self.mlp_dim_vel = mlp_dim_vel
+        self.mlp_dim_hidden = mlp_dim - mlp_dim_spatial - mlp_dim_vel
+
         self.spatial_embedding = torch.nn.Sequential(
-            torch.nn.Linear(2, mlp_dim_spatial),
+            torch.nn.Linear(2, self.mlp_dim_spatial),
             torch.nn.ReLU(),
         )
 
-        self.vel_embedding = None
-        if mlp_dim_vel:
+        if self.mlp_dim_vel:
             self.vel_embedding = torch.nn.Sequential(
-                torch.nn.Linear(2, mlp_dim_vel),
+                torch.nn.Linear(2, self.mlp_dim_vel),
                 torch.nn.ReLU(),
             )
 
-        #mlp_dim_hidden = mlp_dim - mlp_dim_spatial - mlp_dim_vel
-        self.hidden_embedding = torch.nn.Sequential(
-            torch.nn.Linear(hidden_dim, mlp_dim - mlp_dim_spatial - mlp_dim_vel),
-            torch.nn.ReLU(),
-        )
-        self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
+        if self.mlp_dim_hidden:
+            self.hidden_embedding = torch.nn.Sequential(
+                torch.nn.Linear(self.hidden_dim, self.mlp_dim_hidden),
+                torch.nn.ReLU(),
+            )
+        self.out_projection = torch.nn.Linear(self.mlp_dim, self.out_dim)
 
-    def reset(self, _, device):
+    def reset(self, num_tracks, max_num_neigh, device):
         self.track_mask = None
 
     def forward(self, hidden_states, obs1, obs2):
@@ -206,31 +211,33 @@ class HiddenStateMLPPooling(torch.nn.Module):
             interaction vector of all agents in the scene
         """
 
-        # Obtain and embed relative position
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        num_tracks = obs2.size(1)
+        batch_size = obs2.size(0)
+
+        # Embed relative position with proper masking
+        # [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
         relative_obs = rel_obs(obs2)
-        # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks, self.mlp_dim_spatial]
-        spatial = self.spatial_embedding(relative_obs)
+        embedded = embed_with_masking(self.spatial_embedding, relative_obs, self.mlp_dim_spatial)
 
-        # Embed hidden states
-        # [num_tracks, hidden_dim] --> [num_tracks, mlp_dim_hidden]
-        hidden = self.hidden_embedding(hidden_states)
-        # [num_tracks, mlp_dim_hidden] --> [num_tracks, num_tracks, mlp_dim_hidden]
-        hidden_unfolded = hidden.unsqueeze(0).repeat(hidden.size(0), 1, 1)
+        if self.mlp_dim_hidden:
+            # Embed hidden states with proper masking
+            # [batch_size, num_tracks, hidden_dim] --> [batch_size, num_tracks, mlp_dim_hidden]
+            hidden = embed_with_masking(self.hidden_embedding, hidden_states, self.mlp_dim_hidden)
+            # [batch_size, num_tracks, mlp_dim_hidden] --> [batch_size, num_tracks, num_tracks, mlp_dim_hidden]
+            hidden_unfolded = hidden.unsqueeze(1).repeat(1, num_tracks, 1, 1)
+            embedded = torch.cat([embedded, hidden_unfolded], dim=-1)
 
-        # Obtain and embed relative position
-        if self.vel_embedding is not None:
-            # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        if self.mlp_dim_vel:
+            # Embed relative velocity with proper masking
+            # [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
             rel_vel = rel_directional(obs1, obs2)
-            # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks, self.mlp_dim_vel]
-            directional = self.vel_embedding(rel_vel*4)
-            embedded = torch.cat([spatial, directional, hidden_unfolded], dim=2)
-        else:
-            embedded = torch.cat([spatial, hidden_unfolded], dim=2)
+            directional = embed_with_masking(self.vel_embedding, rel_vel*4, self.mlp_dim_vel)
+            embedded = torch.cat([embedded, directional], dim=-1)
 
         # Max Pool
-        pooled, _ = torch.max(embedded, dim=1)
-        return self.out_projection(pooled)
+        pooled, _ = torch.max(embedded, dim=2)
+        return self.out_projection(pooled).view(batch_size * num_tracks, -1)
+
 
 class AttentionMLPPooling(torch.nn.Module):
     """ Interaction vector is obtained by attention-weighting the embeddings of relative coordinates
@@ -247,36 +254,43 @@ class AttentionMLPPooling(torch.nn.Module):
         out_dim: Scalar
             Dimension of resultant interaction vector
     """
-    def __init__(self, hidden_dim=128, mlp_dim=128, mlp_dim_spatial=32, mlp_dim_vel=32, out_dim=None):
+    def __init__(self, hidden_dim=128, mlp_dim=128, mlp_dim_spatial=32, mlp_dim_vel=32, out_dim=None, fill_value=-10):
         super(AttentionMLPPooling, self).__init__()
         self.out_dim = out_dim or hidden_dim
+        self.hidden_dim = hidden_dim
+        self.fill_value = fill_value
+
+        self.mlp_dim = mlp_dim
+        self.mlp_dim_spatial = mlp_dim_spatial
+        self.mlp_dim_vel = mlp_dim_vel
+        self.mlp_dim_hidden = mlp_dim - mlp_dim_spatial - mlp_dim_vel
+
         self.spatial_embedding = torch.nn.Sequential(
-            torch.nn.Linear(2, mlp_dim_spatial),
-            torch.nn.ReLU(),
-        )
-        self.vel_embedding = torch.nn.Sequential(
-            torch.nn.Linear(2, mlp_dim_vel),
+            torch.nn.Linear(2, self.mlp_dim_spatial),
             torch.nn.ReLU(),
         )
 
-        #mlp_dim_hidden = mlp_dim - mlp_dim_spatial - mlp_dim_vel
-        self.hidden_embedding = None
-        if mlp_dim_spatial + mlp_dim_vel < mlp_dim:
+        if self.mlp_dim_vel:
+            self.vel_embedding = torch.nn.Sequential(
+                torch.nn.Linear(2, self.mlp_dim_vel),
+                torch.nn.ReLU(),
+            )
+
+        if self.mlp_dim_hidden:
             self.hidden_embedding = torch.nn.Sequential(
-                torch.nn.Linear(hidden_dim, mlp_dim - mlp_dim_spatial - mlp_dim_vel),
+                torch.nn.Linear(self.hidden_dim, self.mlp_dim_hidden),
                 torch.nn.ReLU(),
             )
 
         ## Attention Embeddings (Query, Key, Value)
-        self.wq = torch.nn.Linear(mlp_dim, mlp_dim, bias=False)
-        self.wk = torch.nn.Linear(mlp_dim, mlp_dim, bias=False)
-        self.wv = torch.nn.Linear(mlp_dim, mlp_dim, bias=False)
+        self.wq = torch.nn.Linear(self.mlp_dim, self.mlp_dim, bias=False)
+        self.wk = torch.nn.Linear(self.mlp_dim, self.mlp_dim, bias=False)
+        self.wv = torch.nn.Linear(self.mlp_dim, self.mlp_dim, bias=False)
 
-        self.multihead_attn = torch.nn.MultiheadAttention(embed_dim=mlp_dim, num_heads=1)
+        self.multihead_attn = torch.nn.MultiheadAttention(embed_dim=self.mlp_dim, num_heads=1)
+        self.out_projection = torch.nn.Linear(self.mlp_dim, self.out_dim)
 
-        self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
-
-    def reset(self, _, device):
+    def reset(self, num_tracks, max_num_neigh, device):
         self.track_mask = None
 
     def forward(self, hidden_states, obs1, obs2):
@@ -284,97 +298,60 @@ class AttentionMLPPooling(torch.nn.Module):
 
         Parameters
         ----------
-        obs1 :  Tensor [num_tracks, 2]
+        obs1 :  Tensor [batch_size, num_tracks, 2]
             x-y positions of all agents at previous time-step t-1
-        obs2 :  Tensor [num_tracks, 2]
+        obs2 :  Tensor [batch_size, num_tracks, 2]
             x-y positions of all agents at current time-step t
-        hidden_states :  Tensor [num_tracks, hidden_dim]
+        hidden_states :  Tensor [batch_size, num_tracks, hidden_dim]
             LSTM hidden state of all agents at current time-step t
 
         Returns
         -------
-        interaction_vector : Tensor [num_tracks, self.out_dim]
+        interaction_vector : Tensor [batch_size * num_tracks, self.out_dim]
             interaction vector of all agents in the scene
         """
 
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        num_tracks = obs2.size(1)
+        batch_size = obs2.size(0)
+
+        # Embed relative position with proper masking
+        # [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
         relative_obs = rel_obs(obs2)
-        # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks, self.mlp_dim_spatial]
-        spatial = self.spatial_embedding(relative_obs)
+        embedded = embed_with_masking(self.spatial_embedding, relative_obs, self.mlp_dim_spatial, self.fill_value)
 
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
-        rel_vel = rel_directional(obs1, obs2)
-        # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks, self.mlp_dim_vel]
-        directional = self.vel_embedding(rel_vel*4)
+        if self.mlp_dim_hidden:
+            # Embed hidden states with proper masking
+            # [batch_size, num_tracks, hidden_dim] --> [batch_size, num_tracks, mlp_dim_hidden]
+            hidden = embed_with_masking(self.hidden_embedding, hidden_states, self.mlp_dim_hidden, fill_value=0)
+            # [batch_size, num_tracks, mlp_dim_hidden] --> [batch_size, num_tracks, num_tracks, mlp_dim_hidden]
+            hidden_unfolded = hidden.unsqueeze(1).repeat(1, num_tracks, 1, 1)
+            embedded = torch.cat([embedded, hidden_unfolded], dim=-1)
 
-        if self.hidden_embedding is not None:
-            # [num_tracks, hidden_dim] --> [num_tracks, mlp_dim_hidden]
-            hidden = self.hidden_embedding(hidden_states)
-            # [num_tracks, mlp_dim_hidden] --> [num_tracks, num_tracks, mlp_dim_hidden]
-            hidden_unfolded = hidden.unsqueeze(0).repeat(hidden.size(0), 1, 1)
-            embedded = torch.cat([spatial, directional, hidden_unfolded], dim=2)
-        else:
-            embedded = torch.cat([spatial, directional], dim=2)
+        if self.mlp_dim_vel:
+            # Embed relative velocity with proper masking
+            # [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
+            rel_vel = rel_directional(obs1, obs2)
+            directional = embed_with_masking(self.vel_embedding, rel_vel*4, self.mlp_dim_vel, self.fill_value)
+            embedded = torch.cat([embedded, directional], dim=-1)
 
         ## Attention
-        # [num_tracks, num_tracks, mlp_dim] --> [num_tracks, num_tracks, mlp_dim]
-        # i.e. [batch, seq, mlp_dim] --> [seq, batch, mlp_dim]
+        # [batch_size, num_tracks, num_tracks, mlp_dim] --> [batch_size * num_tracks, num_tracks, mlp_dim]
+        embedded = embedded.view(batch_size * num_tracks, num_tracks, -1)
+        # [batch, seq, mlp_dim] --> [seq, batch, mlp_dim]
         embedded = embedded.transpose(0, 1)
         query = self.wq(embedded)
         key = self.wk(embedded)
         value = self.wv(embedded)
         attn_output, _ = self.multihead_attn(query, key, value)
+
+        # We need to select entries along diagonal of each scene; along the first axis.
         attn_output = attn_output.transpose(0, 1)
+        attn_output = attn_output.reshape(batch_size, num_tracks, num_tracks, -1)
+        attn_output_ped = attn_output[torch.eye(num_tracks).bool().unsqueeze(0).repeat(batch_size, 1, 1)]
+        return self.out_projection(attn_output_ped)
 
-        return self.out_projection(attn_output[torch.eye(len(obs2)).bool()])
 
-class DirectionalMLPPooling(torch.nn.Module):
-    """ Interaction vector is obtained by max-pooling the embeddings of relative coordinates
-        and relative velocity of all neighbours.
-        
-        Attributes
-        ----------
-        mlp_dim : Scalar
-            Embedding dimension of each neighbour
-        mlp_dim_spatial : Scalar
-            Embedding dimension of relative spatial coordinates
-        out_dim: Scalar
-            Dimension of resultant interaction vector
-    """
-    def __init__(self, hidden_dim=128, mlp_dim=128, mlp_dim_spatial=64, out_dim=None):
-        super(DirectionalMLPPooling, self).__init__()
-        self.out_dim = out_dim or hidden_dim
-        self.spatial_embedding = torch.nn.Sequential(
-            torch.nn.Linear(2, mlp_dim_spatial),
-            torch.nn.ReLU(),
-        )
-
-        # mlp_dim_vel = mlp_dim - mlp_dim_spatial
-        self.directional_embedding = torch.nn.Sequential(
-            torch.nn.Linear(2, mlp_dim - mlp_dim_spatial),
-            torch.nn.ReLU(),
-        )
-        self.out_projection = torch.nn.Linear(mlp_dim, self.out_dim)
-
-    def reset(self, _, device):
-        self.track_mask = None
-
-    def forward(self, _, obs1, obs2):
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
-        relative_obs = rel_obs(obs2)
-        # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks, self.mlp_dim_spatial]
-        spatial = self.spatial_embedding(relative_obs)
-
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
-        rel_vel = rel_directional(obs1, obs2)
-        # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks, mlp_dim_vel]
-        directional = self.directional_embedding(rel_vel*4)
-
-        embedded = torch.cat([spatial, directional], dim=2)
-        pooled, _ = torch.max(embedded, dim=1)
-        return self.out_projection(pooled)
-
-class NN_LSTM(torch.nn.Module):
+class NearestNeighborLSTM(torch.nn.Module):
     """ Interaction vector is obtained by concatenating the relative coordinates of
         top-n neighbours filtered according to criterion (euclidean distance).
         The concatenated vector is passed through an LSTM.
@@ -392,24 +369,24 @@ class NN_LSTM(torch.nn.Module):
             Dimension of resultant interaction vector
     """
 
-    def __init__(self, n=4, hidden_dim=256, out_dim=32, track_mask=None):
-        super(NN_LSTM, self).__init__()
+    def __init__(self, n=4, hidden_dim=256, out_dim=32):
+        super(NearestNeighborLSTM, self).__init__()
         self.n = n
         self.out_dim = out_dim
+        self.input_dim = 4
         self.embedding = torch.nn.Sequential(
-            torch.nn.Linear(4, int(out_dim/self.n)),
+            torch.nn.Linear(self.input_dim, int(out_dim/self.n)),
             torch.nn.ReLU(),
         )
         self.hidden_dim = hidden_dim
         self.pool_lstm = torch.nn.LSTMCell(out_dim, hidden_dim)
         self.hidden2pool = torch.nn.Linear(hidden_dim, out_dim)
-        self.track_mask = track_mask
 
-    def reset(self, num_tracks, device):
-        self.hidden_cell_state = (
+    def reset(self, num_tracks, max_num_neigh, device):
+        self.hidden_cell_state = [
             [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
             [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
-        )
+        ]
 
     def forward(self, _, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
@@ -426,60 +403,55 @@ class NN_LSTM(torch.nn.Module):
         interaction_vector : Tensor [num_tracks, self.out_dim]
             interaction vector of all agents in the scene
         """
-        num_tracks = obs2.size(0)
 
-        ## If only primary pedestrian of the scene present
-        if torch.sum(self.track_mask).item() == 1:
-            return torch.zeros(num_tracks, self.out_dim, device=obs1.device)
+        batch_size = obs2.size(0)
+        num_tracks = obs2.size(1)
 
         hidden_cell_stacked = [
-            torch.stack([h for m, h in zip(self.track_mask, self.hidden_cell_state[0]) if m], dim=0),
-            torch.stack([c for m, c in zip(self.track_mask, self.hidden_cell_state[1]) if m], dim=0),
+            torch.stack(self.hidden_cell_state[0], dim=0),
+            torch.stack(self.hidden_cell_state[1], dim=0),
         ]
 
         # Get relative position of all agents wrt one another 
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        # [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
         rel_position = rel_obs(obs2)
-        # Deleting Diagonal (agents wrt themselves) 
-        # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks - 1, 2]
-        rel_position = rel_position[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
-
+        ## Deleting Diagonal (Ped wrt itself)
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        rel_position = delete_diagonal(rel_position, batch_size, num_tracks)
 
         # Get relative velocities of all agents wrt one another 
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
+        # [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
         rel_direction = rel_directional(obs1, obs2)
-        # Deleting Diagonal (agents wrt themselves) 
-        # [num_tracks, num_tracks, 2] --> [num_tracks, num_tracks - 1, 2]
-        rel_direction = rel_direction[~torch.eye(num_tracks).bool()].reshape(num_tracks, num_tracks-1, 2)
+        ## Deleting Diagonal (Ped wrt itself)
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        rel_direction = delete_diagonal(rel_direction, batch_size, num_tracks)
 
-        # Combine [num_tracks, num_tracks - 1, 4]
-        overall_grid = torch.cat([rel_position, rel_direction], dim=2)
+        # Combine [batch_size, num_tracks, num_tracks - 1, 4]
+        overall_grid = torch.cat([rel_position, rel_direction], dim=-1)
 
         # Get nearest n neighours
+        rel_distance = torch.norm(rel_position, dim=-1)
+        rel_distance = torch.nan_to_num(rel_distance, nan=1000)  # High dummy distance
         if (num_tracks - 1) < self.n:
-            nearest_grid = torch.zeros((num_tracks, self.n, 4), device=obs2.device)
-            nearest_grid[:, :(num_tracks-1)] = overall_grid
+            nearest_grid = torch.zeros((batch_size, num_tracks, self.n, self.input_dim), device=obs2.device)
+            _, dist_index = torch.topk(-rel_distance, num_tracks-1, dim=-1)
+            nearest_grid[:, :, :(num_tracks-1)] = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
         else:
-            rel_distance = torch.norm(rel_position, dim=2)
-            _, dist_index = torch.topk(-rel_distance, self.n, dim=1)
-            nearest_grid = torch.gather(overall_grid, 1, dist_index.unsqueeze(2).repeat(1, 1, 4))
+            _, dist_index = torch.topk(-rel_distance, self.n, dim=-1)
+            nearest_grid = torch.gather(overall_grid, 2, dist_index.unsqueeze(-1).repeat(1, 1, 1, self.input_dim))
 
+        # Remove NaNs
+        nearest_grid = torch.nan_to_num(nearest_grid)
         ## Embed top-n relative neighbour attributes
         nearest_grid = self.embedding(nearest_grid)
-        nearest_grid = nearest_grid.view(num_tracks, -1)
+        nearest_grid = nearest_grid.view(batch_size * num_tracks, -1)
 
         ## Update interaction-encoder LSTM
         hidden_cell_stacked = self.pool_lstm(nearest_grid, hidden_cell_stacked)
         interaction_vector = self.hidden2pool(hidden_cell_stacked[0])
 
-        ## Save hidden-cell-states
-        mask_index = [i for i, m in enumerate(self.track_mask) if m]
-        for i, h, c in zip(mask_index,
-                           hidden_cell_stacked[0],
-                           hidden_cell_stacked[1]):
-            self.hidden_cell_state[0][i] = h
-            self.hidden_cell_state[1][i] = c
-
+        self.hidden_cell_state[0] = list(hidden_cell_stacked[0])
+        self.hidden_cell_state[1] = list(hidden_cell_stacked[1])
         return interaction_vector
 
 class TrajectronPooling(torch.nn.Module):
@@ -509,11 +481,11 @@ class TrajectronPooling(torch.nn.Module):
         self.hidden2pool = torch.nn.Linear(hidden_dim, out_dim)
         self.track_mask = track_mask
 
-    def reset(self, num_tracks, device):
-        self.hidden_cell_state = (
+    def reset(self, num_tracks, max_num_neigh, device):
+        self.hidden_cell_state = [
             [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
             [torch.zeros(self.hidden_dim, device=device) for _ in range(num_tracks)],
-        )
+        ]
 
     def forward(self, _, obs1, obs2):
         """ Forward function. All agents must belong to the same scene
@@ -531,152 +503,36 @@ class TrajectronPooling(torch.nn.Module):
             interaction vector of all agents in the scene
         """
 
-        num_tracks = obs2.size(0)
-
-        ## If only primary pedestrian of the scene present
-        if torch.sum(self.track_mask).item() == 1:
-            return torch.zeros(num_tracks, self.out_dim, device=obs1.device)
+        batch_size = obs2.size(0)
+        num_tracks = obs2.size(1)
 
         hidden_cell_stacked = [
-            torch.stack([h for m, h in zip(self.track_mask, self.hidden_cell_state[0]) if m], dim=0),
-            torch.stack([c for m, c in zip(self.track_mask, self.hidden_cell_state[1]) if m], dim=0),
+            torch.stack(self.hidden_cell_state[0], dim=0),
+            torch.stack(self.hidden_cell_state[1], dim=0),
         ]
 
-        ## Construct neighbour grid using current position and velocity
+        ## Construct Neighbour grid using current position and velocity (We need "relative" !)
         curr_vel = obs2 - obs1
         curr_pos = obs2
-        states = torch.cat([curr_pos, curr_vel], dim=1)
-        neigh_grid = torch.stack([
-            torch.cat([states[i], torch.sum(states[one_cold(i, num_tracks)], dim=0)])
-            for i in range(num_tracks)], dim=0)
-        neigh_grid = self.embedding(neigh_grid).view(num_tracks, -1)
+        states = torch.cat([curr_pos, curr_vel], dim=-1)
+        states = states.view(batch_size * num_tracks, -1)
+
+        ## Only consider visible pedestrians
+        neigh_grid = torch.zeros(batch_size * num_tracks, self.out_dim, device=obs1.device)
+        nan_mask = torch.isnan(states).any(dim=-1)
+        states_vis = states[~nan_mask]
+        ## Get neighbour configuration embedding
+        neigh_grid_vis = torch.stack([
+            torch.cat([states_vis[i], torch.sum(states_vis[one_cold(i, len(states_vis))], dim=0)])
+            for i in range(len(states_vis))], dim=0)
+        neigh_grid_vis = self.embedding(neigh_grid_vis)
+        neigh_grid[~nan_mask] = neigh_grid_vis
 
         ## Update interaction-encoder LSTM
         hidden_cell_stacked = self.pool_lstm(neigh_grid, hidden_cell_stacked)
         interaction_vector = self.hidden2pool(hidden_cell_stacked[0])
 
-        ## Save hidden-cell-states
-        mask_index = [i for i, m in enumerate(self.track_mask) if m]
-        for i, h, c in zip(mask_index,
-                           hidden_cell_stacked[0],
-                           hidden_cell_stacked[1]):
-            self.hidden_cell_state[0][i] = h
-            self.hidden_cell_state[1][i] = c
+        self.hidden_cell_state[0] = list(hidden_cell_stacked[0])
+        self.hidden_cell_state[1] = list(hidden_cell_stacked[1])
 
         return interaction_vector
-
-class SAttention_fast(torch.nn.Module):
-    """ Interaction vector is obtained by attention-weighting the embeddings of relative coordinates obtained
-        using Interaction Encoder LSTM. Proposed in S-Attention
-        
-        Attributes
-        ----------
-        track_mask : Bool [num_tracks,]
-            Mask of tracks visible at the current time-instant
-            as well as tracks belonging to the particular scene 
-        spatial_dim : Scalar
-            Embedding dimension of relative position of neighbour       
-        hidden_dim : Scalar
-            Hidden-state dimension of interaction-encoder LSTM
-        out_dim: Scalar
-            Dimension of resultant interaction vector
-    """
-
-    def __init__(self, n=4, spatial_dim=32, hidden_dim=256, out_dim=32, track_mask=None):
-        super(SAttention_fast, self).__init__()
-        self.n = n
-        if out_dim is None:
-            out_dim = hidden_dim
-        self.out_dim = out_dim
-        self.embedding = torch.nn.Sequential(
-            torch.nn.Linear(2, spatial_dim),
-            torch.nn.ReLU(),
-        )
-        self.spatial_dim = spatial_dim
-        self.hiddentospat = torch.nn.Linear(hidden_dim, spatial_dim)
-        self.hidden_dim = hidden_dim
-        self.pool_lstm = torch.nn.LSTMCell(spatial_dim, spatial_dim)
-        self.track_mask = track_mask
-
-        ## Attention Embeddings (Query, Key, Value)
-        self.wq = torch.nn.Linear(spatial_dim, spatial_dim, bias=False)
-        self.wk = torch.nn.Linear(spatial_dim, spatial_dim, bias=False)
-        self.wv = torch.nn.Linear(spatial_dim, spatial_dim, bias=False)
-        self.multihead_attn = torch.nn.MultiheadAttention(embed_dim=spatial_dim, num_heads=1)
-
-        self.out_projection = torch.nn.Linear(spatial_dim, self.out_dim)
-
-    def reset(self, num_tracks, device):
-        self.hidden_cell_state = (
-            torch.zeros((num_tracks, num_tracks, self.spatial_dim), device=device),
-            torch.zeros((num_tracks, num_tracks, self.spatial_dim), device=device),
-        )
-
-    def forward(self, hidden_state, obs1, obs2):
-        """ Forward function. All agents must belong to the same scene
-
-        Parameters
-        ----------
-        obs1 :  Tensor [num_tracks, 2]
-            x-y positions of all agents at previous time-step t-1
-        obs2 :  Tensor [num_tracks, 2]
-            x-y positions of all agents at current time-step t
-        hidden_states :  Tensor [num_tracks, hidden_dim]
-            LSTM hidden state of all agents at current time-step t
-
-        Returns
-        -------
-        interaction_vector : Tensor [num_tracks, self.out_dim]
-            interaction vector of all agents in the scene
-        """
-
-        # Make Adjacency Matrix of visible pedestrians
-        num_tracks_in_batch = len(self.track_mask)
-        adj_vector = self.track_mask.unsqueeze(1).float()
-        adj_matrix = torch.mm(adj_vector, adj_vector.transpose(0, 1)).bool()
-        # Remove reference to self
-        adj_matrix[torch.eye(num_tracks_in_batch).bool()] = False
-        ## Filter hidden cell state
-        hidden_cell_stacked = [self.hidden_cell_state[0][adj_matrix], self.hidden_cell_state[1][adj_matrix]]
-
-        ## Current Pedestrians in Scene
-        num_tracks = obs2.size(0)
-
-        ## If only primary pedestrian of the scene present
-        if torch.sum(self.track_mask).item() == 1:
-            return torch.zeros(num_tracks, self.out_dim, device=obs1.device)
-
-
-        # [num_tracks, 2] --> [num_tracks, num_tracks, 2]
-        rel_position = rel_obs(obs2)
-        # Deleting Diagonal (agents wrt themselves)
-        # [num_tracks, num_tracks, 2] --> [num_tracks * (num_tracks - 1), 2]
-        rel_position = rel_position[~torch.eye(num_tracks).bool()]
-        rel_embed = self.embedding(rel_position)
-
-        ## Update interaction-encoder LSTMs
-        pool_hidden_states = self.pool_lstm(rel_embed, hidden_cell_stacked)
-        
-        ## Save hidden-cell-states
-        self.hidden_cell_state[0][adj_matrix] = pool_hidden_states[0]
-        self.hidden_cell_state[1][adj_matrix] = pool_hidden_states[1]
-
-        ## Attention between hidden_states of motion encoder & hidden_states of interactions encoders ##
-        
-        # Embed Hidden-state of Motion LSTM: [num_tracks, hidden_dim] --> [num_tracks, self.spatial_dim]
-        hidden_state_spat = self.hiddentospat(hidden_state)
-        
-        # Concat Hidden-state of Motion LSTM to Hidden-state of Interaction LSTMs
-        # embedded.shape = [num_tracks, num_tracks, self.spatial_dim]
-        embedded = torch.cat([hidden_state_spat.unsqueeze(1), pool_hidden_states[0].reshape(num_tracks, num_tracks-1, self.spatial_dim)], dim=1)
-        
-        ## Attention
-        # [num_tracks, num_tracks, self.spatial_dim] --> [num_tracks, num_tracks, self.spatial_dim]
-        # i.e. [batch, seq, self.spatial_dim] --> [seq, batch, self.spatial_dim]
-        embedded = embedded.transpose(0, 1)
-        query = self.wq(embedded)
-        key = self.wk(embedded)
-        value = self.wv(embedded)
-        attn_output, _ = self.multihead_attn(query, key, value)
-        attn_vectors = attn_output[0]
-        return self.out_projection(attn_vectors)
