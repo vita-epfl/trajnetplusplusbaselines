@@ -1,4 +1,4 @@
-from .loss import PredictionLoss, L2Loss
+from .loss import PredictionLoss
 from .lstm import LSTM, LSTMPredictor
 from .gridbased_pooling import GridBasedPooling
 from .non_gridbased_pooling import NearestNeighborMLP, HiddenStateMLPPooling, AttentionMLPPooling

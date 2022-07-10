@@ -83,3 +83,8 @@ def viz(groundtruth, prediction, visualize, output_file=None):
 
     with show.predicted_paths(gt_paths, pred_paths, pred_neigh_paths, output_file):
         pass
+
+def drop_partial(scene):
+    visible_mask =  ~numpy.isnan(scene).any(0).any(1)
+    scene = scene[:, visible_mask]
+    return scene, visible_mask

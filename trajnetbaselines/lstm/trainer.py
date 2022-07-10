@@ -14,7 +14,7 @@ import numpy as np
 import trajnetplusplustools
 
 from .. import augmentation
-from .loss import PredictionLoss, L2Loss
+from .loss import PredictionLoss
 from .lstm import LSTM, LSTMPredictor, drop_distant
 from .gridbased_pooling import GridBasedPooling
 from .non_gridbased_pooling import NearestNeighborMLP, HiddenStateMLPPooling, AttentionMLPPooling
@@ -22,8 +22,9 @@ from .non_gridbased_pooling import NearestNeighborLSTM, TrajectronPooling
 
 from .. import __version__ as VERSION
 
-from .utils import center_scene, random_rotation
+from .utils import center_scene, random_rotation, drop_partial
 from .data_load_utils import prepare_data
+from evaluator.eval_utils import trajnet_batch_eval, trajnet_batch_multi_eval
 
 class Trainer(object):
     def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
@@ -109,6 +110,10 @@ class Trainer(object):
             scene, mask = drop_distant(scene)
             scene_goal = scene_goal[mask]
 
+            ## Drop Partial
+            scene, mask = drop_partial(scene)
+            scene_goal = scene_goal[mask]
+
             ##process scene
             if self.normalize_scene:
                 scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
@@ -165,9 +170,13 @@ class Trainer(object):
     def val(self, scenes, goals, epoch):
         eval_start = time.time()
 
-        val_loss = 0.0
-        test_loss = 0.0
-        self.model.train()
+        val_fde_loss = 0.0
+        val_ade_loss = 0.0
+        val_pred_col_loss = 0.0
+        val_gt_col_loss = 0.0
+        val_top3_ade_loss = 0.0
+        val_top3_fde_loss = 0.0
+        self.model.eval()
 
         ## Initialize batch of scenes
         batch_scene = []
@@ -188,6 +197,10 @@ class Trainer(object):
             scene, mask = drop_distant(scene)
             scene_goal = scene_goal[mask]
 
+            ## Drop Partial
+            # scene, mask = drop_partial(scene)
+            # scene_goal = scene_goal[mask]
+
             ##process scene
             if self.normalize_scene:
                 scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
@@ -202,29 +215,49 @@ class Trainer(object):
                 batch_scene = np.concatenate(batch_scene, axis=1)
                 batch_scene_goal = np.concatenate(batch_scene_goal, axis=0)
                 batch_split = np.cumsum(batch_split)
-                
+                seq_start_end = torch.LongTensor(batch_split)
+                seq_start_end = torch.stack((seq_start_end[:-1], seq_start_end[1:]), dim=1)
+
                 batch_scene = torch.Tensor(batch_scene).to(self.device)
                 batch_scene_goal = torch.Tensor(batch_scene_goal).to(self.device)
                 batch_split = torch.Tensor(batch_split).to(self.device).long()
-                
-                loss_val_batch, loss_test_batch = self.val_batch(batch_scene, batch_scene_goal, batch_split)
-                val_loss += loss_val_batch
-                test_loss += loss_test_batch
+
+                predictions = self.val_batch(batch_scene, batch_scene_goal, batch_split)
+
+                ## Targets (Num_peds x Num_timesteps x 2)
+                targets = batch_scene[-self.pred_length:].permute(1, 0, 2)
+                predictions = predictions[-self.pred_length:].permute(1, 0, 2)
+
+                ## Unimodal Eval
+                ade_loss, fde_loss, pred_col_loss, gt_col_loss = trajnet_batch_eval(predictions, targets, seq_start_end)
+                ## If Multimodal as well
+                # ade_loss, fde_loss, pred_col_loss, gt_col_loss = trajnet_batch_eval(predictions[0], targets, seq_start_end)
+                val_fde_loss += fde_loss
+                val_ade_loss += ade_loss
+                val_pred_col_loss += pred_col_loss
+                val_gt_col_loss += gt_col_loss
+
+                ## Multimodal Eval
+                # top3_ade_loss, top3_fde_loss = trajnet_batch_multi_eval(predictions, targets, seq_start_end)
+                # val_top3_ade_loss += top3_ade_loss
+                # val_top3_fde_loss += top3_fde_loss
 
                 ## Reset Batch
                 batch_scene = []
                 batch_scene_goal = []
                 batch_split = [0]
 
+        val_fde_loss = np.round(val_fde_loss/ len(scenes), 3)
+        val_ade_loss = np.round(val_ade_loss/ len(scenes), 3)
+        val_pred_col_loss = np.round(val_pred_col_loss / len(scenes), 3)
+        val_gt_col_loss = np.round(val_gt_col_loss / len(scenes), 3)
+        # val_top3_ade_loss = np.round(val_top3_ade_loss / len(scenes), 3)
+        # val_top3_fde_loss = np.round(val_top3_fde_loss / len(scenes), 3)
+        eval_time = time.time() - eval_start
+        print("Eval Time: {}, FDE Loss: {}, ADE Loss: {}, Pred: {}, GT: {}".format(eval_time, val_fde_loss, val_ade_loss, val_pred_col_loss, val_gt_col_loss))
+
         eval_time = time.time() - eval_start
 
-        self.log.info({
-            'type': 'val-epoch',
-            'epoch': epoch + 1,
-            'loss': round(val_loss / (len(scenes)), 3),
-            'test_loss': round(test_loss / len(scenes), 3),
-            'time': round(eval_time, 1),
-        })
 
     def train_batch(self, batch_scene, batch_scene_goal, batch_split):
         """Training of B batches in parallel, B : batch_size
@@ -255,12 +288,8 @@ class Trainer(object):
 
         rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
-        # For collision loss calculation
-        primary_prediction = batch_scene[-self.pred_length:].clone()
-        primary_prediction[:, batch_split[:-1]] = outputs[-self.pred_length:, batch_split[:-1]]
-
         ## Loss wrt primary tracks of each scene only
-        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * self.batch_size
+        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -295,20 +324,13 @@ class Trainer(object):
             self.start_length = 0
 
         observed = batch_scene[self.start_length:self.obs_length]
-        prediction_truth = batch_scene[self.obs_length:self.seq_length-1].clone()  ## CLONE
-        targets = batch_scene[self.obs_length:self.seq_length] - batch_scene[self.obs_length-1:self.seq_length-1]
         observed_test = observed.clone()
 
         with torch.no_grad():
-            ## groundtruth of neighbours provided (Better validation curve to monitor model)
-            rel_outputs, _ = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
-            loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
-
             ## groundtruth of neighbours not provided
-            rel_outputs_test, _ = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
-            loss_test = self.criterion(rel_outputs_test[-self.pred_length:], targets, batch_split) * self.batch_size
+            _, outputs_test = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
 
-        return loss.item(), loss_test.item()
+        return outputs_test
 
 def main(epochs=25):
     parser = argparse.ArgumentParser()
@@ -335,8 +357,8 @@ def main(epochs=25):
                         help='glob expression for data files')
     parser.add_argument('--goals', action='store_true',
                         help='flag to consider goals of pedestrians')
-    parser.add_argument('--loss', default='pred', choices=('L2', 'pred'),
-                        help='loss objective, L2 loss (L2) and Gaussian loss (pred)')
+    parser.add_argument('--loss', default='pred', choices=('pred'),
+                        help='loss objective: Gaussian loss (pred)')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp',
                                  'nn', 'attentionmlp', 'nn_lstm', 'traj_pool'),
@@ -501,8 +523,7 @@ def main(epochs=25):
     start_epoch = 0
 
     # Loss Criterion
-    criterion = L2Loss(col_wt=args.col_wt, col_distance=args.col_distance) if args.loss == 'L2' \
-                    else PredictionLoss(col_wt=args.col_wt, col_distance=args.col_distance)
+    criterion = PredictionLoss(col_wt=args.col_wt, col_distance=args.col_distance)
 
     # train
     if args.load_state:

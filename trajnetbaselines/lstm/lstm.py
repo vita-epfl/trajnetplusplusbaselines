@@ -238,16 +238,8 @@ class LSTM(torch.nn.Module):
 
         # decoder, predictions
         for obs1, obs2 in zip(prediction_truth[:-1], prediction_truth[1:]):
-            if obs1 is None:
-                obs1 = positions[-2].detach()  # DETACH!!!
-            else:
-                for primary_id in batch_split[:-1]:
-                    obs1[primary_id] = positions[-2][primary_id].detach()  # DETACH!!!
-            if obs2 is None:
-                obs2 = positions[-1].detach()
-            else:
-                for primary_id in batch_split[:-1]:
-                    obs2[primary_id] = positions[-1][primary_id].detach()  # DETACH!!!
+            obs1 = positions[-2].detach()  # DETACH!!!
+            obs2 = positions[-1].detach()
             hidden_cell_state, normal = self.step(self.decoder, hidden_cell_state, obs1, obs2, goals, batch_split)
 
             # concat predictions
