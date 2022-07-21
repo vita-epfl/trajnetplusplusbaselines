@@ -14,7 +14,7 @@ import numpy as np
 import trajnetplusplustools
 
 from .. import augmentation
-from .loss import PredictionLoss, L2Loss
+from .loss import PredictionLoss, L2Loss, CurriculumL2Loss
 from .lstm import LSTM, LSTMPredictor, drop_distant
 from .gridbased_pooling import GridBasedPooling
 from .non_gridbased_pooling import NearestNeighborMLP, HiddenStateMLPPooling, AttentionMLPPooling
@@ -502,7 +502,8 @@ def main(epochs=25):
 
     # Loss Criterion
     criterion = L2Loss(col_wt=args.col_wt, col_distance=args.col_distance) if args.loss == 'L2' \
-                    else PredictionLoss(col_wt=args.col_wt, col_distance=args.col_distance)
+                    else CurriculumL2Loss(col_wt=args.col_wt, col_distance=args.col_distance, mode2_prob=0.5)
+                    # else PredictionLoss(col_wt=args.col_wt, col_distance=args.col_distance)
 
     # train
     if args.load_state:

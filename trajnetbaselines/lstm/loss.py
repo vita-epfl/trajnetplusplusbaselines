@@ -206,3 +206,59 @@ def gan_d_loss(scores_real, scores_fake):
     loss_real = bce_loss(scores_real, y_real)
     loss_fake = bce_loss(scores_fake, y_fake)
     return loss_real + loss_fake
+
+
+class CurriculumL2Loss(torch.nn.Module):
+    """Curriculum L2 Loss (deterministic version of PredictionLoss)
+
+    This Loss penalizes only the primary trajectories
+    """
+    def __init__(self, keep_batch_dim=False,
+                 col_wt=0.0, col_distance=0.2, mode2_prob=0.0):
+        super(CurriculumL2Loss, self).__init__()
+        self.loss = torch.nn.MSELoss(reduction='none')
+        self.keep_batch_dim = keep_batch_dim
+        self.loss_multiplier = 100
+
+        self.col_wt = col_wt
+        self.col_distance = col_distance
+        if self.col_wt:
+            print("Using Auxiliary collision loss")
+
+        self.mode2_prob = mode2_prob
+
+    def forward(self, inputs, targets, batch_split, positions=None):
+
+        val = random.uniform(0, 1)
+        mode1 = True
+        if val < self.mode2_prob:
+            mode1 = False
+
+        ## Extract primary pedestrians
+        # [pred_length, num_tracks, 2] --> [pred_length, batch_size, 2]
+        if mode1:
+            targets = targets.transpose(0, 1)
+            targets = targets[batch_split[:-1]]
+            targets = targets.transpose(0, 1)
+
+        col_loss = 0.0
+        if self.col_wt and mode1:
+            assert positions is not None, "Prediction positions required to calculate collision loss"
+            col_loss = CollisionLoss(positions, batch_split, self.col_wt, self.col_distance)
+
+        # [pred_length, num_tracks, 5] --> [pred_length, batch_size, 5]
+        if mode1:
+            inputs = inputs.transpose(0, 1)
+            inputs = inputs[batch_split[:-1]]
+            inputs = inputs.transpose(0, 1)
+
+        if not mode1:
+            inputs = torch.nan_to_num(inputs)
+            targets = torch.nan_to_num(targets)
+
+        loss = self.loss(inputs[:, :, :2], targets)
+
+        if self.col_wt and mode1:
+            return torch.mean(loss) * self.loss_multiplier + col_loss * self.loss_multiplier
+
+        return (torch.mean(loss) * self.loss_multiplier)
