@@ -217,7 +217,7 @@ class Trainer(object):
                 predictions = self.val_batch(batch_scene, batch_scene_goal, batch_split)
 
                 ## Targets (Num_peds x Num_timesteps x 2)
-                targets = batch_scene[-self.pred_length:].transpose(1, 0, 2)
+                targets = batch_scene[-self.pred_length:].permute(1, 0, 2)
 
                 ## Unimodal Eval
                 ade_loss, fde_loss, pred_col_loss, gt_col_loss = trajnet_batch_eval(predictions, targets, seq_start_end)
@@ -330,7 +330,7 @@ class Trainer(object):
             ## groundtruth of neighbours not provided
             rel_outputs_test, predictions = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
             # loss_test = self.criterion(rel_outputs_test[-self.pred_length:], targets, batch_split) * self.batch_size
-            predictions = predictions.permute(1, 0, 2)
+            predictions = predictions[-self.pred_length:].permute(1, 0, 2)
 
         # return loss.item(), loss_test.item()
         return predictions
