@@ -130,7 +130,7 @@ class L2Loss(torch.nn.Module):
         if self.keep_batch_dim:
             return loss.mean(dim=0).mean(dim=1) * self.loss_multiplier
         
-        if self.col_wt:
+        if self.col_wt and positions is not None:
             return torch.mean(loss) * self.loss_multiplier + col_loss * self.loss_multiplier
         return (torch.mean(loss) * self.loss_multiplier)
 
@@ -146,7 +146,7 @@ def CollisionLoss(predictions, batch_split, col_wt=10.0, col_distance=0.2):
     """
 
     predictions[predictions != predictions] = -1000
-    col_loss = 0.0
+    col_loss = torch.tensor([0.0], requires_grad=True)
     for (start, end) in zip(batch_split[:-1], batch_split[1:]):
         primary = predictions[:, start:start+1, :2]
         if (start + 1) == end:  # No neighbours
@@ -158,7 +158,7 @@ def CollisionLoss(predictions, batch_split, col_wt=10.0, col_distance=0.2):
             continue
         colliding_neighs_dist = distance_to_neighs[colliding_neigh_mask] / col_distance
         col_val = 1 - colliding_neighs_dist
-        col_loss += col_wt * col_val.sum()
+        col_loss = col_loss + col_wt * col_val.sum()
     return col_loss
 
 

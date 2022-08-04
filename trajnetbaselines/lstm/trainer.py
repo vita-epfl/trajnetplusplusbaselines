@@ -14,7 +14,7 @@ import numpy as np
 import trajnetplusplustools
 
 from .. import augmentation
-from .loss import PredictionLoss, L2Loss, CurriculumL2Loss
+from .loss import PredictionLoss, L2Loss, CurriculumL2Loss, CollisionLoss
 from .lstm import LSTM, LSTMPredictor, drop_distant
 from .gridbased_pooling import GridBasedPooling
 from .non_gridbased_pooling import NearestNeighborMLP, HiddenStateMLPPooling, AttentionMLPPooling
@@ -30,7 +30,7 @@ class Trainer(object):
     def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
                  device=None, batch_size=8, obs_length=9, pred_length=12, augment=True,
                  normalize_scene=False, save_every=1, start_length=0, obs_dropout=False,
-                 augment_noise=False, val_flag=True):
+                 augment_noise=False, val_flag=True, mode2_prob=0.0):
         self.model = model if model is not None else LSTM()
         self.criterion = criterion if criterion is not None else PredictionLoss()
         self.optimizer = optimizer if optimizer is not None else \
@@ -57,6 +57,7 @@ class Trainer(object):
         self.obs_dropout = obs_dropout
 
         self.val_flag = val_flag
+        self.mode2_prob = mode2_prob
 
     def loop(self, train_scenes, val_scenes, train_goals, val_goals, out, epochs=35, start_epoch=0):
         for epoch in range(start_epoch, epochs):
@@ -276,14 +277,25 @@ class Trainer(object):
         prediction_truth = batch_scene[self.obs_length:self.seq_length-1].clone()
         targets = batch_scene[self.obs_length:self.seq_length] - batch_scene[self.obs_length-1:self.seq_length-1]
 
-        rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
+        val = random.uniform(0, 1)
+        mode1 = True
+        if val < self.mode2_prob:
+            mode1 = False
 
-        # For collision loss calculation
-        primary_prediction = batch_scene[-self.pred_length:].clone()
-        primary_prediction[:, batch_split[:-1]] = outputs[-self.pred_length:, batch_split[:-1]]
+        if mode1:
+            # print("Mode 1")
+            rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
 
-        ## Loss wrt primary tracks of each scene only
-        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * self.batch_size
+            # For collision loss calculation
+            primary_prediction = batch_scene[-self.pred_length:].clone()
+            primary_prediction[:, batch_split[:-1]] = outputs[-self.pred_length:, batch_split[:-1]]
+
+            ## Loss wrt primary tracks of each scene only
+            loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * self.batch_size
+        else:
+            # print("Mode 2")
+            rel_outputs, outputs = self.model(observed, batch_scene_goal, batch_split, n_predict=self.pred_length)
+            loss = CollisionLoss(outputs, batch_split, col_wt=1.0)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -328,7 +340,7 @@ class Trainer(object):
             # loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
 
             ## groundtruth of neighbours not provided
-            rel_outputs_test, predictions = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
+            _, predictions = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
             # loss_test = self.criterion(rel_outputs_test[-self.pred_length:], targets, batch_split) * self.batch_size
             predictions = predictions[-self.pred_length:].permute(1, 0, 2)
 
@@ -436,6 +448,8 @@ def main(epochs=25):
     hyperparameters.add_argument('--col_wt', default=0., type=float,
                                  help='collision loss weight')
     hyperparameters.add_argument('--col_distance', default=0.2, type=float,
+                                 help='distance threshold post which collision occurs')
+    hyperparameters.add_argument('--mode2_prob', default=0.0, type=float,
                                  help='distance threshold post which collision occurs')
     args = parser.parse_args()
 
@@ -553,7 +567,7 @@ def main(epochs=25):
                       criterion=criterion, batch_size=args.batch_size, obs_length=args.obs_length,
                       pred_length=args.pred_length, augment=args.augment, normalize_scene=args.normalize_scene,
                       save_every=args.save_every, start_length=args.start_length, obs_dropout=args.obs_dropout,
-                      augment_noise=args.augment_noise, val_flag=val_flag)
+                      augment_noise=args.augment_noise, val_flag=val_flag, mode2_prob=args.mode2_prob)
     trainer.loop(train_scenes, val_scenes, train_goals, val_goals, args.output, epochs=args.epochs, start_epoch=start_epoch)
 
 
