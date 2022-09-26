@@ -58,15 +58,17 @@ class Trainer(object):
         self.val_flag = val_flag
 
     def loop(self, train_scenes, val_scenes, train_goals, val_goals, out, epochs=35, start_epoch=0):
+        import itertools
         for epoch in range(start_epoch, epochs):
+            train_scenes1, train_scenes = itertools.tee(train_scenes, 2)
             if epoch % self.save_every == 0:
                 state = {'epoch': epoch, 'state_dict': self.model.state_dict(),
                          'optimizer': self.optimizer.state_dict(),
                          'scheduler': self.lr_scheduler.state_dict()}
                 LSTMPredictor(self.model).save(state, out + '.epoch{}'.format(epoch))
-            self.train(train_scenes, train_goals, epoch)
-            if self.val_flag:
-                self.val(val_scenes, val_goals, epoch)
+            self.train(train_scenes1, train_goals, epoch)
+            # if self.val_flag:
+            #     self.val(val_scenes, val_goals, epoch)
 
 
         state = {'epoch': epoch + 1, 'state_dict': self.model.state_dict(),
@@ -83,7 +85,7 @@ class Trainer(object):
         start_time = time.time()
 
         print('epoch', epoch)
-        random.shuffle(scenes)
+        # random.shuffle(scenes)
         epoch_loss = 0.0
         self.model.train()
         self.optimizer.zero_grad()
@@ -92,8 +94,10 @@ class Trainer(object):
         batch_scene = []
         batch_scene_goal = []
         batch_split = [0]
+        scene_i = -1
 
-        for scene_i, (filename, scene_id, paths) in enumerate(scenes):
+        for filename, scene_id, paths in scenes:
+            scene_i+=1
             scene_start = time.time()
 
             ## make new scene
@@ -122,7 +126,7 @@ class Trainer(object):
             batch_split.append(int(scene.shape[1]))
             batch_scene_goal.append(scene_goal)
 
-            if ((scene_i + 1) % self.batch_size == 0) or ((scene_i + 1) == len(scenes)):
+            if (scene_i + 1) % self.batch_size == 0:
                 ## Construct Batch
                 batch_scene = np.concatenate(batch_scene, axis=1)
                 batch_scene_goal = np.concatenate(batch_scene_goal, axis=0)
@@ -147,7 +151,7 @@ class Trainer(object):
             if (scene_i + 1) % (10*self.batch_size) == 0:
                 self.log.info({
                     'type': 'train',
-                    'epoch': epoch, 'batch': scene_i, 'n_batches': len(scenes),
+                    'epoch': epoch, 'batch': scene_i, # 'n_batches': len(scenes),
                     'time': round(total_time, 3),
                     'data_time': round(preprocess_time, 3),
                     'lr': self.get_lr(),
@@ -158,7 +162,7 @@ class Trainer(object):
         self.log.info({
             'type': 'train-epoch',
             'epoch': epoch + 1,
-            'loss': round(epoch_loss / (len(scenes)), 5),
+            # 'loss': round(epoch_loss / (len(scenes)), 5),
             'time': round(time.time() - start_time, 1),
         })
 

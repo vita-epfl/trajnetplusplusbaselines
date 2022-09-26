@@ -1,3 +1,4 @@
+import itertools
 import trajnetplusplustools
 import os
 import pickle
@@ -38,21 +39,34 @@ def prepare_data(path, subset='/train/', sample=1.0, goals=True):
 
     ## read goal files
     all_goals = {}
-    all_scenes = []
+    all_scenes = None
 
     ## List file names
     files = [f.split('.')[-2] for f in os.listdir(path + subset) if f.endswith('.ndjson')]
     ## Iterate over file names
+    from itertools import chain
     for file in files:
+        print(file)
         reader = trajnetplusplustools.Reader(path + subset + file + '.ndjson', scene_type='paths')
         ## Necessary modification of train scene to add filename
-        scene = [(file, s_id, s) for s_id, s in reader.scenes(sample=sample)]
+        # scene = [(file, s_id, s) for s_id, s in reader.scenes(sample=sample)]
+
+        print("after reader")
+        def temp_gen(file, reader):
+            for s_id, s in reader.scenes(sample=sample):
+                yield (file, s_id, s)
+        scene = temp_gen(file, reader)
+        scene1, scene = itertools.tee(scene, 2)
         if goals:
             goal_dict = pickle.load(open('goal_files/' + subset + file +'.pkl', "rb"))
             ## Get goals corresponding to train scene
-            all_goals[file] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scene}
-        all_scenes += scene
-
+            all_goals[file] = {s_id: [goal_dict[path[0].pedestrian] for path in s] for _, s_id, s in scene1}
+       
+        if all_scenes is None:
+            all_scenes = scene
+        else:
+            all_scenes = chain(all_scenes, scene)
+    
     if goals:
         return all_scenes, all_goals, True
     return all_scenes, None, True
