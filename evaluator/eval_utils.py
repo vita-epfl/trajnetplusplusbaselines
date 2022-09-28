@@ -127,3 +127,42 @@ def trajnet_batch_multi_eval(preds, gt, seq_start_end):
         s_topk_fde += topk_fde(s_preds, gt[start:end])
 
     return s_topk_ade, s_topk_fde
+
+## NBA
+def ade_all(pred, gt):
+    """Average displacement error between all predictions and groundtruth.
+    pred = Num_ped x Num_timesteps x 2
+    gt = Num_ped x Num_timesteps x 2
+    """
+    primary_pred = pred
+    primary_gt = gt
+    return np.mean(np.mean(np.linalg.norm(primary_pred - primary_gt, axis=-1), axis=-1), axis=-1)
+
+def fde_all(pred, gt):
+    """Final displacement error between all predictions and groundtruth.
+    pred = Num_ped x Num_timesteps x 2
+    gt = Num_ped x Num_timesteps x 2
+    """
+    pred_last = pred[:, -1]
+    gt_last = gt[:, -1]
+    return np.mean(np.linalg.norm(gt_last - pred_last, axis=-1))
+
+
+def trajnet_batch_nba_eval(pred, gt, seq_start_end):
+    """Calculate ADE, FDE, Pred_Col, GT_Col for batch of samples.
+    pred = Num_ped x Num_timesteps x 2
+    gt = Num_ped x Num_timesteps x 2
+    seq_start_end (batch delimiter) = Num_batches x 2
+    """ 
+    s_ade = 0
+    s_fde = 0
+    s_pred_col = 0
+    s_gt_col = 0
+
+    for (start, end) in seq_start_end:
+        s_ade += ade_all(pred[start:end], gt[start:end])
+        s_fde += fde_all(pred[start:end], gt[start:end])
+        s_pred_col += pred_col(pred[start:end-1], gt[start:end-1]) ## Ignore Ball
+        # s_gt_col += gt_col(pred[start:end-1], gt[start:end-1]) ## Ignore Ball
+
+    return s_ade, s_fde, s_pred_col, s_gt_col

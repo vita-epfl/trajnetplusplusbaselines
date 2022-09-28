@@ -1,4 +1,4 @@
-"""Command line tool to train an LSTM model."""
+"""Command line tool to train an LSTM model on NBA."""
 
 import argparse
 import logging
@@ -24,6 +24,9 @@ from .. import __version__ as VERSION
 
 from .utils import center_scene, random_rotation
 from .data_load_utils import prepare_data
+from .dataloader_nba import NBADataset, seq_collate
+from evaluator.eval_utils import trajnet_batch_nba_eval
+
 
 class Trainer(object):
     def __init__(self, model=None, criterion=None, optimizer=None, lr_scheduler=None,
@@ -83,7 +86,7 @@ class Trainer(object):
         start_time = time.time()
 
         print('epoch', epoch)
-        random.shuffle(scenes)
+        # random.shuffle(scenes)
         epoch_loss = 0.0
         self.model.train()
         self.optimizer.zero_grad()
@@ -93,36 +96,45 @@ class Trainer(object):
         batch_scene_goal = []
         batch_split = [0]
 
-        for scene_i, (filename, scene_id, paths) in enumerate(scenes):
+        # for scene_i, (filename, scene_id, paths) in enumerate(scenes):
+        for scene_i, raw_scene in enumerate(scenes):
             scene_start = time.time()
 
             ## make new scene
-            scene = trajnetplusplustools.Reader.paths_to_xy(paths)
+            # scene = trajnetplusplustools.Reader.paths_to_xy(paths)
+            raw_scene = raw_scene.permute(1, 0, 2)
+            raw_scene = raw_scene.numpy()
 
             ## get goals
-            if goals is not None:
-                scene_goal = np.array(goals[filename][scene_id])
-            else:
-                scene_goal = np.array([[0, 0] for path in paths])
+            # if goals is not None:
+            #     scene_goal = np.array(goals[filename][scene_id])
+            # else:
+            #     scene_goal = np.array([[0, 0] for path in scene])
+            raw_scene_goal = np.array([[0, 0] for path in raw_scene])
 
             ## Drop Distant
-            scene, mask = drop_distant(scene)
-            scene_goal = scene_goal[mask]
+            # scene, mask = drop_distant(scene)
+            # scene_goal = scene_goal[mask]
 
-            ##process scene
-            if self.normalize_scene:
-                scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
-            if self.augment:
-                scene, scene_goal = random_rotation(scene, goals=scene_goal)
-            if self.augment_noise:
-                scene = augmentation.add_noise(scene, thresh=0.02, ped='neigh')
+            for k in range(11): # 11 players
+                scene = np.roll(raw_scene, k, axis=1) 
+                scene_goal = np.roll(raw_scene_goal, k, axis=1)
 
-            ## Augment scene to batch of scenes
-            batch_scene.append(scene)
-            batch_split.append(int(scene.shape[1]))
-            batch_scene_goal.append(scene_goal)
+                ##process scene
+                if self.normalize_scene:
+                    scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
+                if self.augment:
+                    scene, scene_goal = random_rotation(scene, goals=scene_goal)
+                if self.augment_noise:
+                    scene = augmentation.add_noise(scene, thresh=0.02, ped='neigh')
 
-            if ((scene_i + 1) % self.batch_size == 0) or ((scene_i + 1) == len(scenes)):
+                ## Augment scene to batch of scenes
+                batch_scene.append(scene)
+                batch_split.append(int(scene.shape[1]))
+                batch_scene_goal.append(scene_goal)
+
+            # if ((scene_i + 1) % self.batch_size == 0) or ((scene_i + 1) == len(scenes)):
+            if ((scene_i + 1) % 1 == 0) or ((scene_i + 1) == len(scenes)):
                 ## Construct Batch
                 batch_scene = np.concatenate(batch_scene, axis=1)
                 batch_scene_goal = np.concatenate(batch_scene_goal, axis=0)
@@ -144,7 +156,8 @@ class Trainer(object):
                 batch_scene_goal = []
                 batch_split = [0]
 
-            if (scene_i + 1) % (10*self.batch_size) == 0:
+            # if (scene_i + 1) % (10*self.batch_size) == 0:
+            if (scene_i + 1) % (80) == 0:
                 self.log.info({
                     'type': 'train',
                     'epoch': epoch, 'batch': scene_i, 'n_batches': len(scenes),
@@ -165,32 +178,36 @@ class Trainer(object):
     def val(self, scenes, goals, epoch):
         eval_start = time.time()
 
-        val_loss = 0.0
-        test_loss = 0.0
-        self.model.train()
+        val_fde_loss = 0.0
+        val_ade_loss = 0.0
+        val_pred_col_loss = 0.0
+        val_gt_col_loss = 0.0
+        val_top3_ade_loss = 0.0
+        val_top3_fde_loss = 0.0
+        self.model.eval()
 
         ## Initialize batch of scenes
         batch_scene = []
         batch_scene_goal = []
         batch_split = [0]
 
-        for scene_i, (filename, scene_id, paths) in enumerate(scenes):
+        # for scene_i, (filename, scene_id, paths) in enumerate(scenes):
+        for scene_i, scene in enumerate(scenes):
+
             ## make new scene
-            scene = trajnetplusplustools.Reader.paths_to_xy(paths)
+            # scene = trajnetplusplustools.Reader.paths_to_xy(paths)
+            scene = scene.permute(1, 0, 2)
 
             ## get goals
-            if goals is not None:
-                scene_goal = np.array(goals[filename][scene_id])
-            else:
-                scene_goal = np.array([[0, 0] for path in paths])
-
-            ## Drop Distant
-            scene, mask = drop_distant(scene)
-            scene_goal = scene_goal[mask]
+            # if goals is not None:
+            #     scene_goal = np.array(goals[filename][scene_id])
+            # else:
+            #     scene_goal = np.array([[0, 0] for path in scene])
+            scene_goal = np.array([[0, 0] for path in scene])
 
             ##process scene
-            if self.normalize_scene:
-                scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
+            # if self.normalize_scene:
+            #     scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
 
             ## Augment scene to batch of scenes
             batch_scene.append(scene)
@@ -202,29 +219,50 @@ class Trainer(object):
                 batch_scene = np.concatenate(batch_scene, axis=1)
                 batch_scene_goal = np.concatenate(batch_scene_goal, axis=0)
                 batch_split = np.cumsum(batch_split)
-                
+
+                seq_start_end = torch.LongTensor(batch_split)
+                seq_start_end = torch.stack((seq_start_end[:-1], seq_start_end[1:]), dim=1)
                 batch_scene = torch.Tensor(batch_scene).to(self.device)
                 batch_scene_goal = torch.Tensor(batch_scene_goal).to(self.device)
                 batch_split = torch.Tensor(batch_split).to(self.device).long()
-                
-                loss_val_batch, loss_test_batch = self.val_batch(batch_scene, batch_scene_goal, batch_split)
-                val_loss += loss_val_batch
-                test_loss += loss_test_batch
+
+                pred_gt = batch_scene[self.obs_length:].clone()
+                targets = pred_gt.transpose(1, 0)
+
+                with torch.no_grad():
+                    predictions = self.val_batch(batch_scene, batch_scene_goal, batch_split)
+
+                targets = pred_gt.transpose(1, 0)
+                predictions = predictions.transpose(1, 0)
+                ade_loss, fde_loss, pred_col_loss, gt_col_loss = trajnet_batch_nba_eval(predictions, targets, seq_start_end)
+                ## If Multimodal as well
+                # ade_loss, fde_loss, pred_col_loss, gt_col_loss = trajnet_batch_eval(predictions[0], targets, seq_start_end)
+                val_fde_loss += fde_loss
+                val_ade_loss += ade_loss
+                val_pred_col_loss += pred_col_loss
+                val_gt_col_loss += gt_col_loss
+
+                ## Multimodal Eval
+                # top3_ade_loss, top3_fde_loss = trajnet_batch_multi_eval(predictions, targets, seq_start_end)
+                # val_top3_ade_loss += top3_ade_loss
+                # val_top3_fde_loss += top3_fde_loss
 
                 ## Reset Batch
                 batch_scene = []
                 batch_scene_goal = []
                 batch_split = [0]
 
+        val_fde_loss = np.round(val_fde_loss/ len(scenes), 3)
+        val_ade_loss = np.round(val_ade_loss/ len(scenes), 3)
+        val_pred_col_loss = np.round(val_pred_col_loss / len(scenes), 3)
+        val_gt_col_loss = np.round(val_gt_col_loss / len(scenes), 3)
+        # val_top3_ade_loss = np.round(val_top3_ade_loss / len(scenes), 3)
+        # val_top3_fde_loss = np.round(val_top3_fde_loss / len(scenes), 3)
         eval_time = time.time() - eval_start
+        print("Num Scenes: ", len(scenes))
+        print("Eval Time: {}, FDE Loss: {}, ADE Loss: {}, Pred: {}, GT: {}".format(eval_time, val_fde_loss, val_ade_loss, val_pred_col_loss, val_gt_col_loss))
+        # print("Eval Time: {}, Top3 FDE Loss: {}, Top3 ADE Loss: {}".format(eval_time, val_top3_ade_loss, val_top3_fde_loss))
 
-        self.log.info({
-            'type': 'val-epoch',
-            'epoch': epoch + 1,
-            'loss': round(val_loss / (len(scenes)), 3),
-            'test_loss': round(test_loss / len(scenes), 3),
-            'time': round(eval_time, 1),
-        })
 
     def train_batch(self, batch_scene, batch_scene_goal, batch_split):
         """Training of B batches in parallel, B : batch_size
@@ -260,7 +298,8 @@ class Trainer(object):
         primary_prediction[:, batch_split[:-1]] = outputs[-self.pred_length:, batch_split[:-1]]
 
         ## Loss wrt primary tracks of each scene only
-        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * self.batch_size
+        # loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * self.batch_size
+        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * 11
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -300,17 +339,12 @@ class Trainer(object):
         observed_test = observed.clone()
 
         with torch.no_grad():
-            ## groundtruth of neighbours provided (Better validation curve to monitor model)
-            rel_outputs, _ = self.model(observed, batch_scene_goal, batch_split, prediction_truth)
-            loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split) * self.batch_size
-
             ## groundtruth of neighbours not provided
-            rel_outputs_test, _ = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
-            loss_test = self.criterion(rel_outputs_test[-self.pred_length:], targets, batch_split) * self.batch_size
+            _, outputs_test = self.model(observed_test, batch_scene_goal, batch_split, n_predict=self.pred_length)
 
-        return loss.item(), loss_test.item()
+        return outputs_test[-self.pred_length:]
 
-def main(epochs=25):
+def main(epochs=15):
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=epochs, type=int,
                         help='number of epochs')
@@ -325,7 +359,7 @@ def main(epochs=25):
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
-    parser.add_argument('--step_size', default=10, type=int,
+    parser.add_argument('--step_size', default=6, type=int,
                         help='step_size of lr scheduler')
     parser.add_argument('-o', '--output', default=None,
                         help='output file')
@@ -394,6 +428,8 @@ def main(epochs=25):
                                  help='latent dimension of encoding hidden dimension during social pooling')
     hyperparameters.add_argument('--norm', default=0, type=int,
                                  help='normalization scheme for input batch during grid-based pooling')
+    hyperparameters.add_argument('--tag', action='store_true',
+                                 help='add tag for each agent (team A, team B, ball)')
 
     ## Non-Grid-based pooling
     hyperparameters.add_argument('--no_vel', action='store_true',
@@ -459,8 +495,19 @@ def main(epochs=25):
 
     args.path = 'DATA_BLOCK/' + args.path
     ## Prepare data
-    train_scenes, train_goals, _ = prepare_data(args.path, subset='/train/', sample=args.sample, goals=args.goals)
-    val_scenes, val_goals, val_flag = prepare_data(args.path, subset='/val/', sample=args.sample, goals=args.goals)
+    # train_scenes, train_goals, _ = prepare_data(args.path, subset='/train/', sample=args.sample, goals=args.goals)
+    # val_scenes, val_goals, val_flag = prepare_data(args.path, subset='/val/', sample=args.sample, goals=args.goals)
+    train_goals = None
+    train_scenes = NBADataset(
+        obs_len=args.obs_length,
+        pred_len=args.pred_length,
+        training=True)
+    val_goals = None
+    val_scenes = NBADataset(
+        obs_len=args.obs_length,
+        pred_len=args.pred_length,
+        training=False)
+    val_flag = True
 
     ## pretrained pool model (if any)
     pretrained_pool = None
@@ -484,7 +531,8 @@ def main(epochs=25):
                                 cell_side=args.cell_side, n=args.n, front=args.front,
                                 out_dim=args.pool_dim, embedding_arch=args.embedding_arch,
                                 constant=args.pool_constant, pretrained_pool_encoder=pretrained_pool,
-                                norm=args.norm, layer_dims=args.layer_dims, latent_dim=args.latent_dim)
+                                norm=args.norm, layer_dims=args.layer_dims, latent_dim=args.latent_dim,
+                                tag=args.tag)
 
     # create forecasting model
     model = LSTM(pool=pool,

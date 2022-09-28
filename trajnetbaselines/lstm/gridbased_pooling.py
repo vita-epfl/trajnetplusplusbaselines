@@ -16,7 +16,7 @@ class GridBasedPooling(torch.nn.Module):
     def __init__(self, cell_side=2.0, n=4, hidden_dim=128, out_dim=None,
                  type_='occupancy', pool_size=1, blur_size=1, front=False,
                  embedding_arch='one_layer', pretrained_pool_encoder=None,
-                 constant=0, norm=0, layer_dims=None, latent_dim=16):
+                 constant=0, norm=0, layer_dims=None, latent_dim=16, tag=False):
         """
         Pools in a grid of size 'n * cell_side' centred at the ped location
         cell_side: Scalar
@@ -66,6 +66,11 @@ class GridBasedPooling(torch.nn.Module):
             self.hidden_dim_encoding = torch.nn.Linear(hidden_dim, latent_dim)
             self.pooling_dim = latent_dim + 2
 
+        # Tag
+        self.tag = tag
+        if self.tag:
+            self.pooling_dim += 3
+
         ## Final Representation Size
         if out_dim is None:
             out_dim = hidden_dim
@@ -91,6 +96,8 @@ class GridBasedPooling(torch.nn.Module):
         elif self.embedding_arch == 'lstm_layer':
             self.embedding = self.lstm_layer(hidden_dim)
 
+        self.training_tag()
+
     def forward(self, hidden_state, obs1, obs2):
         batch_size, num_tracks = obs1.size(0), obs1.size(1) 
         ## Make chosen grid
@@ -108,6 +115,28 @@ class GridBasedPooling(torch.nn.Module):
         if self.embedding:
             return self.embedding(grid)
         return grid
+
+    def training_tag(self, N=11):
+        batch_category = []
+        category = torch.zeros(N,3).type(torch.float32)
+        category[0:5,0] = 1
+        category[5:10,1] = 1
+        category[10,2] = 1
+        for k in range(11):
+            new_category = torch.roll(category, k, 0)
+            batch_category.append(new_category.repeat(N,1,1))
+        self.train_tag = torch.stack(batch_category)
+
+    def val_tag(self, x):
+        B = x.shape[0]
+        N = x.shape[1]
+        category = torch.zeros(N,3).type_as(x)
+        category[0:5,0] = 1
+        category[5:10,1] = 1
+        category[10,2] = 1
+        category = category.repeat(B,N,1,1)
+        x = torch.cat((x,category),dim=-1)
+        return x
 
     def occupancies(self, obs1, obs2):
         ## Generate the Occupancy Map
@@ -132,11 +161,17 @@ class GridBasedPooling(torch.nn.Module):
         unfolded = vel.unsqueeze(1).repeat(1, vel.size(1), 1, 1)
         ## [batch_size, num_tracks, 2] --> [batch_size, num_tracks, num_tracks, 2]
         relative = unfolded - vel.unsqueeze(2)
+
+        if self.tag and self.training:
+            relative = torch.cat((relative, self.train_tag), dim=-1)
+        if self.tag and (not self.training):
+            relative = self.val_tag(relative)
+
         ## Deleting Diagonal (Ped wrt itself)
         ## mask: [batch_size, num_tracks, num_tracks]
         mask = ~torch.eye(num_tracks).unsqueeze(0).repeat(batch_size, 1, 1).bool()
         ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
-        relative = relative[mask].reshape(batch_size, num_tracks, num_tracks-1, 2)
+        relative = relative[mask].reshape(batch_size, num_tracks, num_tracks-1, -1)
         relative = torch.nan_to_num(relative)
 
         ## Generate Occupancy Map
