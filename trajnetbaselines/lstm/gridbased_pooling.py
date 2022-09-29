@@ -70,6 +70,9 @@ class GridBasedPooling(torch.nn.Module):
         self.tag = tag
         if self.tag:
             self.pooling_dim += 3
+            if self.type_ == 'social':
+                self.hidden_dim_encoding = torch.nn.Linear(hidden_dim+3, latent_dim)
+                self.pooling_dim -= 3
 
         ## Final Representation Size
         if out_dim is None:
@@ -142,7 +145,21 @@ class GridBasedPooling(torch.nn.Module):
         ## Generate the Occupancy Map
         # obs1 : batch_size, num_tracks, 2
         # obs2 : batch_size, num_tracks, 2
-        return self.occupancy(obs2, past_obs=obs1)
+        num_tracks = obs2.size(1)
+        batch_size = obs2.size(0)
+        relative = torch.ones(batch_size, 11, 11, 1, device=obs1.device)
+        if self.tag and self.training:
+            relative = torch.cat((relative, self.train_tag), dim=-1)
+        if self.tag and (not self.training):
+            relative = self.val_tag(relative)
+
+        ## Deleting Diagonal (Ped wrt itself)
+        ## mask: [batch_size, num_tracks, num_tracks]
+        mask = ~torch.eye(num_tracks).unsqueeze(0).repeat(batch_size, 1, 1).bool()
+        ## [batch_size, num_tracks, num_tracks, 2] --> [batch_size, num_tracks, num_tracks-1, 2]
+        relative = relative[mask].reshape(batch_size, num_tracks, num_tracks-1, -1)
+        relative = torch.nan_to_num(relative)
+        return self.occupancy(obs2, relative, past_obs=obs1)
 
     def directional(self, obs1, obs2):
         ## Makes the Directional Grid
@@ -193,6 +210,11 @@ class GridBasedPooling(torch.nn.Module):
         ## Generate values to input in hiddenstate grid tensor (compressed hidden-states in this case)
         ## [batch_size, num_tracks, hidden_dim] --> [batch_size, num_tracks, num_tracks, pooling_dim]
         hidden_state_grid = hidden_state.unsqueeze(1).repeat(1, num_tracks, 1, 1)
+        if self.tag and self.training:
+            hidden_state_grid = torch.cat((hidden_state_grid, self.train_tag), dim=-1)
+        if self.tag and (not self.training):
+            hidden_state_grid = self.val_tag(hidden_state_grid)
+
         ## Deleting Diagonal (Ped wrt itself)
         ## mask: [batch_size, num_tracks, num_tracks]
         mask = ~torch.eye(num_tracks).unsqueeze(0).repeat(batch_size, 1, 1).bool()
