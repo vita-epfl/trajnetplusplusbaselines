@@ -72,7 +72,7 @@ class LSTM(torch.nn.Module):
         ## Goal
         self.goal_flag = goal_flag
         self.goal_dim = goal_dim or embedding_dim
-        self.goal_embedding = InputEmbedding(2, self.goal_dim, scale)
+        self.goal_embedding = torch.nn.Linear(3, self.goal_dim)
         goal_rep_dim = self.goal_dim if self.goal_flag else 0
 
         ## Pooling
@@ -131,9 +131,10 @@ class LSTM(torch.nn.Module):
         ## Mask Goal direction & embed
         if self.goal_flag:
             ## Get relative direction to goals (wrt current position)
-            norm_factors = (torch.norm(obs2 - goals, dim=1))
-            goal_direction = (obs2 - goals) / norm_factors.unsqueeze(1)
-            goal_direction[norm_factors == 0] = torch.tensor([0., 0.], device=obs1.device)
+            # norm_factors = (torch.norm(obs2 - goals, dim=1))
+            # goal_direction = (obs2 - goals) / norm_factors.unsqueeze(1)
+            # goal_direction[norm_factors == 0] = torch.tensor([0., 0.], device=obs1.device)
+            goal_direction = goals
             goal_direction = goal_direction[track_mask]
             goal_emb = self.goal_embedding(goal_direction)
             input_emb = torch.cat([input_emb, goal_emb], dim=1)

@@ -110,7 +110,13 @@ class Trainer(object):
             #     scene_goal = np.array(goals[filename][scene_id])
             # else:
             #     scene_goal = np.array([[0, 0] for path in scene])
-            raw_scene_goal = np.array([[0, 0] for path in raw_scene])
+            # raw_scene_goal = np.array([[0, 0] for path in raw_scene])
+
+            # Scene Goal --> Category embedding here
+            raw_scene_goal = np.zeros((11, 3), dtype=float)
+            raw_scene_goal[0:5,0] = 1
+            raw_scene_goal[5:10,1] = 1
+            raw_scene_goal[10,2] = 1
 
             ## Drop Distant
             # scene, mask = drop_distant(scene)
@@ -122,9 +128,9 @@ class Trainer(object):
 
                 ##process scene
                 if self.normalize_scene:
-                    scene, _, _, scene_goal = center_scene(scene, self.obs_length, goals=scene_goal)
+                    scene, _, _ = center_scene(scene, self.obs_length, goals=None)
                 if self.augment:
-                    scene, scene_goal = random_rotation(scene, goals=scene_goal)
+                    scene = random_rotation(scene, goals=None)
                 if self.augment_noise:
                     scene = augmentation.add_noise(scene, thresh=0.02, ped='neigh')
 
@@ -203,7 +209,12 @@ class Trainer(object):
             #     scene_goal = np.array(goals[filename][scene_id])
             # else:
             #     scene_goal = np.array([[0, 0] for path in scene])
-            scene_goal = np.array([[0, 0] for path in scene])
+            # scene_goal = np.array([[0, 0] for path in scene])
+            # Scene Goal --> Category embedding here
+            scene_goal = np.zeros((11, 3), dtype=float)
+            scene_goal[0:5,0] = 1
+            scene_goal[5:10,1] = 1
+            scene_goal[10,2] = 1
 
             ##process scene
             # if self.normalize_scene:
@@ -406,7 +417,7 @@ def main(epochs=15):
                                  help='coordinate embedding dimension')
     hyperparameters.add_argument('--pool_dim', type=int, default=256,
                                  help='output dimension of interaction vector')
-    hyperparameters.add_argument('--goal_dim', type=int, default=64,
+    hyperparameters.add_argument('--goal_dim', type=int, default=16,
                                  help='goal embedding dimension')
 
     ## Grid-based pooling
