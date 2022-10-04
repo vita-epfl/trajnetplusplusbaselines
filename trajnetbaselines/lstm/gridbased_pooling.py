@@ -149,7 +149,8 @@ class GridBasedPooling(torch.nn.Module):
         batch_size = obs2.size(0)
         relative = torch.ones(batch_size, 11, 11, 1, device=obs1.device)
         if self.tag and self.training:
-            relative = torch.cat((relative, self.train_tag), dim=-1)
+            repeat = batch_size // 11
+            relative = torch.cat((relative, self.train_tag.repeat(repeat, 1, 1, 1)), dim=-1)
         if self.tag and (not self.training):
             relative = self.val_tag(relative)
 
@@ -180,7 +181,8 @@ class GridBasedPooling(torch.nn.Module):
         relative = unfolded - vel.unsqueeze(2)
 
         if self.tag and self.training:
-            relative = torch.cat((relative, self.train_tag), dim=-1)
+            repeat = batch_size // 11
+            relative = torch.cat((relative, self.train_tag.repeat(repeat, 1, 1, 1)), dim=-1)
         if self.tag and (not self.training):
             relative = self.val_tag(relative)
 
@@ -211,7 +213,8 @@ class GridBasedPooling(torch.nn.Module):
         ## [batch_size, num_tracks, hidden_dim] --> [batch_size, num_tracks, num_tracks, pooling_dim]
         hidden_state_grid = hidden_state.unsqueeze(1).repeat(1, num_tracks, 1, 1)
         if self.tag and self.training:
-            hidden_state_grid = torch.cat((hidden_state_grid, self.train_tag), dim=-1)
+            repeat = batch_size // 11
+            hidden_state_grid = torch.cat((hidden_state_grid, self.train_tag.repeat(repeat, 1, 1, 1)), dim=-1)
         if self.tag and (not self.training):
             hidden_state_grid = self.val_tag(hidden_state_grid)
 

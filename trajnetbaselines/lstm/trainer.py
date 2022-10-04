@@ -139,8 +139,7 @@ class Trainer(object):
                 batch_split.append(int(scene.shape[1]))
                 batch_scene_goal.append(scene_goal)
 
-            # if ((scene_i + 1) % self.batch_size == 0) or ((scene_i + 1) == len(scenes)):
-            if ((scene_i + 1) % 1 == 0) or ((scene_i + 1) == len(scenes)):
+            if ((scene_i + 1) % self.batch_size == 0) or ((scene_i + 1) == len(scenes)):
                 ## Construct Batch
                 batch_scene = np.concatenate(batch_scene, axis=1)
                 batch_scene_goal = np.concatenate(batch_scene_goal, axis=0)
@@ -309,8 +308,7 @@ class Trainer(object):
         primary_prediction[:, batch_split[:-1]] = outputs[-self.pred_length:, batch_split[:-1]]
 
         ## Loss wrt primary tracks of each scene only
-        # loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * self.batch_size
-        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * 11
+        loss = self.criterion(rel_outputs[-self.pred_length:], targets, batch_split, primary_prediction) * 11 * self.batch_size
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -367,7 +365,7 @@ def main(epochs=15):
                         help='prediction length')
     parser.add_argument('--start_length', default=0, type=int,
                         help='starting time step of encoding observation')
-    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--batch_size', default=1, type=int)
     parser.add_argument('--lr', default=1e-3, type=float,
                         help='initial learning rate')
     parser.add_argument('--step_size', default=6, type=int,
