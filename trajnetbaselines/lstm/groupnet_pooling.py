@@ -501,8 +501,8 @@ class MS_HGNN_combined(nn.Module):
     def forward(self, ftraj_input, prev_positions, curr_positions):
         # final_feature = torch.zeros_like(ftraj_input)
         # return final_feature.view(-1, self.out_dim)
-        ftraj_input = ftraj_input.detach()
-        ftraj_input = torch.nan_to_num(ftraj_input)
+        # ftraj_input = ftraj_input.detach()
+        # ftraj_input = torch.nan_to_num(ftraj_input)
         # query_input = F.normalize(ftraj_input,p=2,dim=2)
         # feat_corr = torch.matmul(query_input,query_input.permute(0,2,1))
         ftraj_inter,_ = self.interaction(ftraj_input)
