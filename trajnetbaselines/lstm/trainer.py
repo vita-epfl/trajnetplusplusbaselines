@@ -19,6 +19,7 @@ from .lstm import LSTM, LSTMPredictor, drop_distant
 from .gridbased_pooling import GridBasedPooling
 from .non_gridbased_pooling import NearestNeighborMLP, HiddenStateMLPPooling, AttentionMLPPooling
 from .non_gridbased_pooling import NearestNeighborLSTM, TrajectronPooling
+from .groupnet_pooling import MS_HGNN_combined
 
 from .. import __version__ as VERSION
 
@@ -382,7 +383,7 @@ def main(epochs=15):
                         help='loss objective, L2 loss (L2) and Gaussian loss (pred)')
     parser.add_argument('--type', default='vanilla',
                         choices=('vanilla', 'occupancy', 'directional', 'social', 'hiddenstatemlp',
-                                 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool'),
+                                 'nn', 'attentionmlp', 'nn_lstm', 'traj_pool', 'groupnet'),
                         help='type of interaction encoder')
     parser.add_argument('--sample', default=1.0, type=float,
                         help='sample ratio when loading train/val scenes')
@@ -535,6 +536,9 @@ def main(epochs=15):
         pool = NearestNeighborLSTM(n=args.neigh, hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
     elif args.type == 'traj_pool':
         pool = TrajectronPooling(hidden_dim=args.hidden_dim, out_dim=args.pool_dim)
+    elif args.type == 'groupnet':
+        args.device = torch.device('cuda')
+        pool = MS_HGNN_combined(model_dim=args.hidden_dim)
     elif args.type != 'vanilla':
         pool = GridBasedPooling(type_=args.type, hidden_dim=args.hidden_dim,
                                 cell_side=args.cell_side, n=args.n, front=args.front,
