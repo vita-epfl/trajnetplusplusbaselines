@@ -147,15 +147,15 @@ class MS_HGNN_oridinary(nn.Module):
         node_feat = curr_hidden
 
         nodetoedge_idx = 0
-        # if self.nmp_layers <= 1:
-        #     pass
-        # else:
-        #     for nmp_l, nmp_mlp in enumerate(self.nmp_mlps):
-        #         if nmp_l%2==0:
-        #             node_feat = nmp_mlp(self.edge2node(edge_feat, rel_rec, rel_send,node_feat,nodetoedge_idx)) # [num_ped, h_dim]
-        #             nodetoedge_idx += 1
-        #         else:    
-        #             edge_feat, _ = nmp_mlp(self.node2edge(node_feat, rel_rec, rel_send,nodetoedge_idx)) # [num_ped, h_dim] -> [num_edge, 2*h_dim] -> [num_edge, h_dim]
+        if self.nmp_layers <= 1:
+            pass
+        else:
+            for nmp_l, nmp_mlp in enumerate(self.nmp_mlps):
+                if nmp_l%2==0:
+                    node_feat = nmp_mlp(self.edge2node(edge_feat, rel_rec, rel_send,node_feat,nodetoedge_idx)) # [num_ped, h_dim]
+                    nodetoedge_idx += 1
+                else:    
+                    edge_feat, _ = nmp_mlp(self.node2edge(node_feat, rel_rec, rel_send,nodetoedge_idx)) # [num_ped, h_dim] -> [num_edge, 2*h_dim] -> [num_edge, h_dim]
         node_feat = self.nmp_mlp_end(self.edge2node(edge_feat, rel_rec, rel_send, node_feat, nodetoedge_idx))
         return node_feat, factors
 

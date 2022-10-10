@@ -154,6 +154,9 @@ def trajnet_batch_nba_eval(pred, gt, seq_start_end):
     gt = Num_ped x Num_timesteps x 2
     seq_start_end (batch delimiter) = Num_batches x 2
     """ 
+    pred = pred.cpu()
+    gt = gt.cpu()
+    seq_start_end = seq_start_end.cpu()
     s_ade = 0
     s_fde = 0
     s_pred_col = 0
