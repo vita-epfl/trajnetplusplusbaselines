@@ -1,0 +1,24 @@
+format: jb-book
+root: intro
+parts:
+- caption: Simulation
+  chapters:
+  - file: scenarios
+  - file: integrators
+  - file: performance
+- caption: PedPed Potentials
+  chapters:
+  - file: pedped_1d
+  - file: pedped_1p1d
+  - file: pedped_2d
+  - file: pedped_1d_wall
+  - file: pedped_diamond
+  # - file: pedped_1d_bayesian
+  - file: trajnet
+- caption: Demo
+  chapters:
+  - file: corridor
+- caption: References
+  chapters:
+  - file: modules
+  - file: bibliography

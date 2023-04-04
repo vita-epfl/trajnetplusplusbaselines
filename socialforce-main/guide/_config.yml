@@ -1,0 +1,68 @@
+# Book settings
+# Learn more at https://jupyterbook.org/customize/config.html
+
+title: DeepSocialForce
+author: <a href="https://www.svenkreiss.com">Sven Kreiss</a> and <a href="https://github.com/svenkreiss/socialforce/graphs/contributors">contributors</a>.
+copyright: "2020-2021"
+email: research@svenkreiss.com
+logo: logo.png
+# only_build_toc_files: true  # Auto-exclude files not in the toc
+
+# Force re-execution of notebooks on each build.
+# See https://jupyterbook.org/content/execute.html
+execute:
+  execute_notebooks: auto
+
+sphinx:
+  extra_extensions: [sphinx.ext.autodoc]
+  config:
+    autodoc_member_order: bysource
+    language: en
+    latex_toplevel_sectioning: 'part'
+    html_theme_options:
+      extra_navbar: ""
+      extra_footer: |
+        <p>Powered by <a href="https://jupyterbook.org/">Jupyter Book</a>.</p>
+      home_page_in_toc: True
+      path_to_docs: guide
+      repository_branch: main
+      repository_url: https://github.com/svenkreiss/socialforce
+      toc_title: "On this page"
+      use_fullscreen_button: False
+      use_issues_button: True
+      use_repository_button: True
+
+parse:
+  myst_enable_extensions:
+    # don't forget to list any other extensions you want enabled,
+    # including those that are enabled by default!
+    - amsmath
+    - dollarmath
+
+# Define the name of the latex output file for PDF builds
+latex:
+  latex_documents:
+    targetname: article.tex
+
+execute:
+  timeout: 1200
+
+# Add a bibtex file so that we can create citations
+bibtex_bibfiles:
+  - references.bib
+
+# Information about where the book exists on the web
+repository:
+  url: https://github.com/svenkreiss/socialforce  # Online location of your book
+  path_to_book: guide  # Optional path to your book, relative to the repository root
+  branch: torch  # Which branch of the repository should be used when creating links (optional)
+
+# Add GitHub buttons to your book
+# See https://jupyterbook.org/customize/config.html#add-a-link-to-your-repository
+html:
+  use_issues_button: true
+  use_repository_button: true
+  favicon: favicon.png
+  extra_navbar: ""
+  extra_footer: |
+    <div>Powered by <a href="https://jupyterbook.org/">Jupyter Book</a>.</div>

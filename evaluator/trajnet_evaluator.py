@@ -235,9 +235,14 @@ def eval(gt, input_file, args):
 
 def trajnet_evaluate(args):
     """Evaluates test_pred against test_private"""
+    # by wjf-1107-debug:
+    # print("Initial Table::")
+
     model_names = [model.split('/')[-1].replace('.pkl', '') + '_modes' + str(args.modes) for model in args.output]
     labels = args.labels if args.labels is not None else model_names
     table = Table()
+    # by wjf-1107-debug:
+    # print("After Table::")
 
     for num, model_name in enumerate(model_names):
         print(model_name)
@@ -256,6 +261,8 @@ def trajnet_evaluate(args):
 
         # Add results to Table
         final_result, sub_final_result = table.add_entry(labels[num], results)
+        # by wjf-1107-debug:
+        # print("Final Results::")
 
     # Output Result Table
     table.print_table()
