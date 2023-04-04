@@ -1,0 +1,23 @@
+---------------- start ----------------
+Sat Apr 01 2023 20:02:40
+max threads: 5
+max memory: 10000 MB
+time limit: 48 hours
+gpu id(s): 3
+---------------------------------------
+INFO:root:{'type': 'process', 'argv': ['/media/data/jfwang/solution/caffe/data/ilsvrc12/ilsvrc12/plus_integral_clean/trajnetbaselines/autobot/trainer.py', '--path', 'synth_data', '--num-encoder-layers', '2', '--num-decoder-layers', '2', '--num-epochs', '162', '--batch-size', '8', '--type', 'directional'], 'args': {'path': 'synth_data', 'seed': 42, 'type': 'directional', 'save_every': 5, 'obs_length': 9, 'pred_length': 12, 'start_length': 0, 'output': 'OUTPUT_BLOCK/synth_data/Autobot_train.pkl', 'goals': False, 'sample': 1.0, 'load_state': None, 'load_full_state': None, 'nonstrict_load_state': None, 'exp_id': 'train', 'num_modes': 1, 'hidden_size': 128, 'num_encoder_layers': 2, 'num_decoder_layers': 2, 'tx_hidden_size': 384, 'tx_num_heads': 16, 'dropout': 0.05, 'entropy_weight': 30.0, 'kl_weight': 20.0, 'use_FDEADE_aux_loss': True, 'batch_size': 8, 'learning_rate': 0.0005, 'adam_epsilon': 0.0001, 'learning_rate_sched': [10, 20, 30, 40, 50], 'grad_clip_norm': 5, 'num_epochs': 162}, 'version': '0.1.0', 'hostname': 'cvg-srv06'}
+Traceback (most recent call last):
+  File "/home/jfwang/anaconda3/envs/plus/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/home/jfwang/anaconda3/envs/plus/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/media/data/jfwang/solution/caffe/data/ilsvrc12/ilsvrc12/plus_integral_clean/trajnetbaselines/autobot/trainer.py", line 461, in <module>
+    main()
+  File "/media/data/jfwang/solution/caffe/data/ilsvrc12/ilsvrc12/plus_integral_clean/trajnetbaselines/autobot/trainer.py", line 442, in main
+    pool = GridBasedPooling(type_=args.type, hidden_dim=args.hidden_dim,
+AttributeError: 'Namespace' object has no attribute 'hidden_dim'
+Validation folder does NOT exist
+----------------- end -----------------
+Sat Apr 01 2023 20:02:48
+elapsed time: 000:00:07
+---------------------------------------

@@ -1,0 +1,54 @@
+name: deploy-guide
+
+on:
+  push:
+    branches:
+    - main
+    - torch
+  # release:
+  #   types:
+  #     - released
+
+# This job installs dependencies, build the guide, and pushes it to `gh-pages`
+jobs:
+  deploy-guide:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.8
+
+    - name: Data setup
+      run: |
+        wget -q https://github.com/vita-epfl/trajnetplusplusdata/releases/download/v4.0/train.zip
+        mkdir data-trajnet
+        unzip train.zip -d data-trajnet
+
+    - name: Install ffmpeg
+      uses: FedericoCarboni/setup-ffmpeg@v1
+      id: setup-ffmpeg
+    - name: ffmpeg codecs
+      run: ffmpeg -codecs
+
+    - name: Install PyTorch without CUDA
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install torch==1.9.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
+
+    - name: Install dependencies
+      run: python -m pip install -e ".[dev,plot]" --no-build-isolation
+
+    - name: Build the guide
+      timeout-minutes: 45
+      run: cd guide && jupyter-book build -W --keep-going .
+
+    # Push the book's HTML to gh-pages
+    - name: GitHub Pages action
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./guide/_build/html
+        force_orphan: true  # https://github.com/peaceiris/actions-gh-pages/issues/455

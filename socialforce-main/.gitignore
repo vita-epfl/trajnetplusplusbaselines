@@ -1,0 +1,25 @@
+# data
+circle_parameters*.pkl
+data-trajnet*/
+
+# Python
+venv*/
+*.egg-info/
+.pytest_cache/
+__pycache__/
+dist/
+.ipynb_checkpoints/
+guide_py/
+guide/_build/
+guide/simulator.prof
+guide/simulator_flame.svg
+
+# editors
+.vscode/
+
+# OS
+.DS_Store
+
+# data
+docs/simulator.prof
+docs/simulator_flame.svg
